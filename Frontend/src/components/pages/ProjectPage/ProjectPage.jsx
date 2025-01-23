@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import {MoreOptionsButton, AddProjectButton} from "../../common/button"
+import SearchBar from "../../common/searchbar";
+import CreateProjectModal from "./AddProject";
 
 const styles = {
   projectList: {
@@ -144,7 +146,8 @@ const ProjectCard = ({ title, tasksCompleted, totalTasks }) => {
 
 const ProjectPage = () => {
   const [projects, setProjects] = useState([]);
-
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  
   useEffect(() => {
     const fetchProjects = async () => {
       try {
@@ -169,10 +172,18 @@ const ProjectPage = () => {
           </p>
         </div>
         <div style={styles.buttonContainer}>
-          <button style={{ ...styles.button, ...styles.secondaryButton }}>
-            <MoreHorizIcon />
-          </button>
-          <button style={styles.button}>+ Add Project</button>
+          <SearchBar
+            placeholder="Search projects..."
+            style={{
+              width: "250px",
+              borderRadius: "12px",
+              fontSize: "18px",
+            }}
+            onChange={(e) => console.log(e.target.value)}
+          />
+          <MoreOptionsButton onClick={() => alert("More options clicked!")} />
+          <AddProjectButton onClick={() => setIsModalOpen(true)} />
+      {isModalOpen && <CreateProjectModal onClose={() => setIsModalOpen(false)} />}
         </div>
       </div>
       <div style={styles.projectGrid}>

@@ -2,7 +2,8 @@ import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import KanbanBoard from "./components/pages/ProjectPage/KanbanBoard";
 import MainLayout from "./components/layouts/MainLayout";
-import ProjectPage from "./components/pages/ProjectPage/ProjectPage"; 
+import ProjectPage from "./components/pages/ProjectPage/ProjectPage";
+import CreateProjectModal from "./components/pages/ProjectPage/AddProject";
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="/messages" element={<h1>Messages</h1>} />
           <Route path="/documents" element={<h1>Documents</h1>} />
           <Route path="/kanban" element={<KanbanBoard />} />
+          <Route path="/test" element={<CreateProjectModal />} />
         </Routes>
       </MainLayout>
     </Router>
