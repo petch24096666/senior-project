@@ -1,3 +1,4 @@
+import axios from "axios";
 import React, { useEffect, useState } from "react";
 import { useNavigate } from 'react-router-dom';
 
@@ -113,19 +114,37 @@ const SignIn = () => {
     };
     }, []);
 
+    const [values, setValues] = useState({
+        email: '',
+        password: ''
+    })
+
+    function signin(event){
+        event.preventDefault();
+        axios.post("http://localhost:8081/signin", values)
+        .then(res=>{
+            if(res.data.Status === "Success"){
+                navigate("/dashboard")
+            }else{
+                alert(res.data.Error)
+            }
+        }).catch(err=>console.log(err))
+    }
+
     return (
         <div style={styles.signinPage}>
             <div style={styles.signinContainer}>
                 <div style={styles.signinLeft}>
                     <h2 style={styles.signinLeftTitle}>Sign In</h2>
-                    <form>
-                        <input type="email" placeholder="Email" style={styles.signinInput} />
-                        <input type="password" placeholder="Password" style={styles.signinInput} />
+                    <form onSubmit={signin}>
+                        <input type="email" placeholder="Email" style={styles.signinInput} 
+                        onChange={e=>setValues({...values,email:e.target.value})} />
+                        <input type="password" placeholder="Password" style={styles.signinInput}
+                        onChange={e=>setValues({...values,password:e.target.value})} />
                         <p style={styles.forgotPassword}>Forgot Your Password?</p>
                         <button type="submit" style={styles.signinButton}>Sign In</button>
                     </form>
                 </div>
-                {/* Right Section */}
                 <div style={styles.signinRight}>
                     <h2 style={styles.signinRightTitle}>Hello, Friend!</h2>
                     <p style={styles.signinRightDescription}>

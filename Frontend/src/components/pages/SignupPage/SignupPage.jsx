@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import axios from "axios";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 const styles = {
@@ -101,37 +102,58 @@ const SignUp = () => {
   }, []);
 
   const handleSignInClick = () => {
-    navigate("/"); // นำทางกลับไปหน้า Sign In
+    navigate("/");
   };
+
+  const [name, setName] = useState([])
+  const [email, setEmail] = useState([])
+  const [password, setPassword] = useState([])
+  
+  function signup(event) {
+    event.preventDefault();
+
+    // ข้อมูลที่ส่งไปยัง Backend
+    axios.post("http://localhost:8081/signup", {
+        name: name,
+        email: email,
+        password: password
+    })
+    .then(res => {
+        console.log(res);
+        navigate('/');
+    })
+    .catch(err => console.error("Error:", err));
+}
 
   return (
     <div style={styles.signupPage}>
       <div style={styles.signupContainer}>
-        {/* Left Section */}
         <div style={styles.signupLeft}>
           <h2 style={styles.signupLeftTitle}>Sign Up</h2>
-          <form>
+          <form onSubmit={signup}>
             <input
               type="text"
               placeholder="Name"
               style={styles.signupInput}
+              onChange={e=>setName(e.target.value)}
             />
             <input
               type="email"
               placeholder="Email"
               style={styles.signupInput}
+              onChange={e=>setEmail(e.target.value)}
             />
             <input
               type="password"
               placeholder="Password"
               style={styles.signupInput}
+              onChange={e=>setPassword(e.target.value)}
             />
             <button type="submit" style={styles.signupLeftButton}>
               Sign Up
             </button>
           </form>
         </div>
-        {/* Right Section */}
         <div style={styles.signupRight}>
           <h2 style={styles.signupRightTitle}>Welcome Back!</h2>
           <p style={styles.signupRightDescription}>
