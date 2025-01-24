@@ -59,6 +59,7 @@ const LoginPage = () => {
     inputGroup: {
       textAlign: "left",
       marginBottom: "16px",
+      marginRight: "25px",
     },
     label: {
       display: "block",
