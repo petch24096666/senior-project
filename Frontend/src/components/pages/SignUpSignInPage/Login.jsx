@@ -170,7 +170,7 @@ const LoginPage = () => {
             <label style={styles.label}>Password</label>
             <input
               type="password"
-              placeholder="********"
+              placeholder="∗∗∗∗∗∗∗∗∗"
               style={styles.input}
               value={values.password}
               onChange={e => setValues({ ...values, password: e.target.value })}
