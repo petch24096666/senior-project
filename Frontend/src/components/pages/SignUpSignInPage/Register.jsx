@@ -146,7 +146,7 @@ const RegisterPage = () => {
       <div style={styles.card}>
         <h2 style={styles.title}>Create your account</h2>
         <p style={styles.subtitle}>
-          Already have an account? <a href="#" style={styles.link}>Sign in</a>
+          Already have an account? <a href="/" style={styles.link}>Sign in</a>
         </p>
         <form onSubmit={register}>
           <div style={styles.inputGroup}>

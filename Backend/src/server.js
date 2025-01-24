@@ -48,14 +48,14 @@ app.post("/login", (req,res)=>{
 })
 
 // ตัวอย่างการตั้งค่า API Routes
-/*app.get('/api/projects', (req, res) => {
+app.get('/api/projects', (req, res) => {
   res.json({
     data: [
       { title: 'Project 1', tasksCompleted: 5, totalTasks: 10 },
       { title: 'Project 2', tasksCompleted: 1, totalTasks: 14 },
     ],
   });
-});*/
+});
 
 app.listen(8081, () => {
   console.log("Server running");

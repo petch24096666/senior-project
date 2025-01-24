@@ -5,11 +5,6 @@ import axios from "axios";
 const LoginPage = () => {
   const navigate = useNavigate();
 
-  const handleLogin = () => {
-    navigate("/register");
-  };
-
-  // Corrected useState usage and spelling error in 'password'
   const [values, setValues] = useState({
     email: '',
     password: ''
@@ -203,7 +198,7 @@ const LoginPage = () => {
 
         <p style={styles.signup}>
           Don't have an account?{" "}
-          <a href="#" style={styles.signupLink} onClick={handleLogin}>
+          <a href="/register" style={styles.signupLink}>
             Sign up
           </a>
         </p>
