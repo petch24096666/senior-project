@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import KanbanBoard from "./components/pages/ProjectPage/KanbanBoard";
 import MainLayout from "./components/layouts/MainLayout";
 import ProjectPage from "./components/pages/ProjectPage/ProjectPage"; 
-import DashboardPage from "./components/pages/ProjectPage/Dashboard";
+import DashboardPage from "./components/pages/Dashboard/Dashboard";
 import LoginPage from "./components/pages/SignUpSignInPage/Login";
 import RegisterPage from "./components/pages/SignUpSignInPage/Register";
 
