@@ -1,5 +1,6 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import LoginPage from "./components/pages/ProjectPage/LoginPage";
 import KanbanBoard from "./components/pages/ProjectPage/KanbanBoard";
 import MainLayout from "./components/layouts/MainLayout";
 import ProjectPage from "./components/pages/ProjectPage/ProjectPage";
@@ -10,7 +11,7 @@ function App() {
     <Router>
       <MainLayout>
         <Routes>
-          <Route path="/" element={<h1>Welcome</h1>} />
+          <Route path="/" element={<LoginPage />} />
           <Route path="/dashboard" element={<h1>Dashboard</h1>} />
           <Route path="/mytasks" element={<h1>My Tasks</h1>} />
           <Route path="/projects" element={<ProjectPage />} />

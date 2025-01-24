@@ -1,20 +1,38 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 const LoginPage = () => {
+  const navigate = useNavigate();
 
-    const navigate = useNavigate();
+  const handleLogin = () => {
+    navigate("/register");
+  };
 
-    const handleLogin = () => {
-      navigate("/register");
-    };
-  
-const styles = {
+  // Corrected useState usage and spelling error in 'password'
+  const [values, setValues] = useState({
+    email: '',
+    password: ''
+  });
+
+  function login(event) {
+    event.preventDefault();
+    axios.post("http://localhost:8081/login", values)
+      .then(res => {
+        if (res.data.Status === "Success") {
+          navigate("/dashboard");
+        } else {
+          alert(res.data.Error);
+        }
+      }).catch(err => console.log(err));
+  }
+
+  const styles = {
     container: {
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
-      height: "100vh",
+      height: "96vh",
       backgroundColor: "#F9FAFB",
       margin: "0",
       fontFamily: "'Arial', sans-serif",
@@ -57,9 +75,6 @@ const styles = {
       backgroundColor: "#F9FAFB",
       outline: "none",
     },
-    inputPlaceholder: {
-      color: "#9CA3AF",
-    },
     options: {
       display: "flex",
       justifyContent: "space-between",
@@ -70,9 +85,6 @@ const styles = {
     forgotLink: {
       color: "#2563EB",
       textDecoration: "none",
-    },
-    forgotHover: {
-      textDecoration: "underline",
     },
     button: {
       width: "100%",
@@ -86,9 +98,6 @@ const styles = {
       fontWeight: "600",
       marginBottom: "24px",
     },
-    buttonHover: {
-      backgroundColor: "#1D4ED8",
-    },
     divider: {
       display: "flex",
       alignItems: "center",
@@ -100,6 +109,11 @@ const styles = {
       height: "1px",
       backgroundColor: "#E5E7EB",
       margin: "0 10px",
+    },
+    checkbox: {
+      height: "1.7vh",
+      marginRight: "5px",
+      verticalAlign: "bottom",
     },
     orText: {
       fontSize: "14px",
@@ -123,9 +137,6 @@ const styles = {
       alignItems: "center",
       justifyContent: "center",
     },
-    socialBtnHover: {
-      backgroundColor: "#F3F4F6",
-    },
     signup: {
       fontSize: "14px",
       color: "#4B5563",
@@ -142,35 +153,40 @@ const styles = {
       <div style={styles.card}>
         <h2 style={styles.title}>Welcome back</h2>
         <p style={styles.subtitle}>Please enter your details to sign in</p>
+        <form onSubmit={login}>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>Email</label>
+            <input
+              type="email"
+              placeholder="Enter your email"
+              style={styles.input}
+              value={values.email}
+              onChange={e => setValues({ ...values, email: e.target.value })}
+              required
+            />
+          </div>
 
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>Email</label>
-          <input
-            type="email"
-            placeholder="Enter your email"
-            style={styles.input}
-          />
-        </div>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>Password</label>
+            <input
+              type="password"
+              placeholder="********"
+              style={styles.input}
+              value={values.password}
+              onChange={e => setValues({ ...values, password: e.target.value })}
+              required
+            />
+          </div>
 
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>Password</label>
-          <input
-            type="password"
-            placeholder="********"
-            style={styles.input}
-          />
-        </div>
+          <div style={styles.options}>
+            <label>
+              <input type="checkbox" style={styles.checkbox} /> Remember me
+            </label>
+            <a href="#" style={styles.forgotLink}>Forgot password?</a>
+          </div>
 
-        <div style={styles.options}>
-          <label>
-            <input type="checkbox" /> Remember me
-          </label>
-          <a href="#" style={styles.forgotLink}>
-            Forgot password?
-          </a>
-        </div>
-
-        <button style={styles.button}>Sign in</button>
+          <button type="submit" style={styles.button}>Sign in</button>
+        </form>
 
         <div style={styles.divider}>
           <span style={styles.line}></span>

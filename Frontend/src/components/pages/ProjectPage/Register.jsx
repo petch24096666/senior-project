@@ -1,25 +1,36 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
 
 const RegisterPage = () => {
   const navigate = useNavigate();
 
-  const handleRegister = () => {
-    navigate("/dashboard");
-  };
+  const [fullname, setFullname] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+
+  function register(event) {
+    event.preventDefault();
+    axios.post("http://localhost:8081/register", { fullname, email, password })
+      .then(res => {
+        navigate("/");
+      }).catch(err => console.log(err));
+  }
 
   const styles = {
     container: {
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
-      height: "100vh",
+      height: "97vh",
       backgroundColor: "#F9FAFB",
       margin: "0",
       fontFamily: "'Arial', sans-serif",
     },
     card: {
       width: "400px",
+      height: "600px",
       padding: "40px",
       backgroundColor: "#fff",
       borderRadius: "12px",
@@ -30,7 +41,7 @@ const RegisterPage = () => {
       fontSize: "24px",
       fontWeight: "bold",
       color: "#111827",
-      marginBottom: "8px",
+      marginTop: "-5px",
     },
     subtitle: {
       fontSize: "14px",
@@ -40,6 +51,7 @@ const RegisterPage = () => {
     inputGroup: {
       textAlign: "left",
       marginBottom: "16px",
+      marginRight: "25px",
     },
     label: {
       display: "block",
@@ -65,7 +77,12 @@ const RegisterPage = () => {
       marginBottom: "24px",
     },
     checkbox: {
-      marginRight: "8px",
+      height: "1.7vh",
+      marginRight: "5px",
+      verticalAlign: "bottom",
+    },
+    textlink: {
+      marginBottom: "-2px"
     },
     link: {
       color: "#2563EB",
@@ -131,37 +148,37 @@ const RegisterPage = () => {
         <p style={styles.subtitle}>
           Already have an account? <a href="#" style={styles.link}>Sign in</a>
         </p>
+        <form onSubmit={register}>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>Full Name</label>
+            <input type="text" placeholder="John Doe" style={styles.input} onChange={e => setFullname(e.target.value)}/>
+          </div>
 
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>Full Name</label>
-          <input type="text" placeholder="John Doe" style={styles.input} />
-        </div>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>Email address</label>
+            <input type="email" placeholder="john@example.com" style={styles.input} onChange={e => setEmail(e.target.value)}/>
+          </div>
 
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>Email address</label>
-          <input type="email" placeholder="john@example.com" style={styles.input} />
-        </div>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>Password</label>
+            <input type="password" placeholder="∗∗∗∗∗∗∗∗∗" style={styles.input} onChange={e => setPassword(e.target.value)}/>
+          </div>
 
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>Password</label>
-          <input type="password" placeholder="********" style={styles.input} />
-        </div>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>Confirm Password</label>
+            <input type="password" placeholder="∗∗∗∗∗∗∗∗∗" style={styles.input} />
+          </div>
 
-        <div style={styles.inputGroup}>
-          <label style={styles.label}>Confirm Password</label>
-          <input type="password" placeholder="********" style={styles.input} />
-        </div>
+          <div style={styles.options}>
+            <input type="checkbox" style={styles.checkbox} />
+            <label style={styles.textlink}>
+              I agree to the <a href="#" style={styles.link}>Terms of Service</a> and{" "}
+              <a href="#" style={styles.link}>Privacy Policy</a>
+            </label>
+          </div>
 
-        <div style={styles.options}>
-          <input type="checkbox" style={styles.checkbox} />
-          <label>
-            I agree to the <a href="#" style={styles.link}>Terms of Service</a> and{" "}
-            <a href="#" style={styles.link}>Privacy Policy</a>
-          </label>
-        </div>
-
-        <button style={styles.button} onClick={handleRegister}>Register</button>
-
+          <button style={styles.button}>Register</button>
+        </form>
         <div style={styles.divider}>
           <span style={styles.line}></span>
           <span style={styles.orText}>Or continue with</span>
