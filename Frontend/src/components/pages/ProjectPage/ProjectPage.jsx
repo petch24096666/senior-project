@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
-import {MoreOptionsButton, AddProjectButton} from "../../common/button"
+import { MoreOptionsButton, AddProjectButton } from "../../common/button"
 import SearchBar from "../../common/searchbar";
 import CreateProjectModal from "./AddProject";
 
@@ -120,6 +120,8 @@ const styles = {
   }),
 };
 
+
+
 const ProjectCard = ({ title, tasksCompleted, totalTasks }) => {
   const progress = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
 
@@ -146,14 +148,17 @@ const ProjectCard = ({ title, tasksCompleted, totalTasks }) => {
 
 const ProjectPage = () => {
   const [projects, setProjects] = useState([]);
+  const [filteredProjects, setFilteredProjects] = useState([]);
+  const [searchQuery, setSearchQuery] = useState(""); // เพิ่ม state สำหรับเก็บค่าค้นหา
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
+
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const response = await axios.get("http://localhost:8081/api/projects");
+        const response = await axios.get("http://localhost:5000/api/projects");
         console.log("Response Data:", response.data);
         setProjects(response.data.data || []);
+        setFilteredProjects(response.data.data || []);  // กำหนดค่าทั้ง projects และ filteredProjects
       } catch (error) {
         console.error("Error fetching projects:", error);
       }
@@ -162,6 +167,22 @@ const ProjectPage = () => {
     fetchProjects(); // เรียก fetchProjects
   }, []);
 
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+
+    const normalizedQuery = query.toLowerCase().replace(/\s+/g, ""); 
+
+    if (normalizedQuery === "") {
+      setFilteredProjects(projects);  // คืนค่าเดิมถ้าค้นหาว่างเปล่า
+    } else {
+      const filtered = projects.filter((project) => {
+        const normalizedTitle = project.title.toLowerCase().replace(/\s+/g, "");
+        return normalizedTitle.includes(normalizedQuery);
+      });
+      setFilteredProjects(filtered);
+    }
+  };
+  
   return (
     <div style={styles.projectList}>
       <div style={styles.headerContainer}>
@@ -174,21 +195,22 @@ const ProjectPage = () => {
         <div style={styles.buttonContainer}>
           <SearchBar
             placeholder="Search projects..."
+            value={searchQuery}
             style={{
               width: "250px",
               borderRadius: "12px",
               fontSize: "18px",
             }}
-            onChange={(e) => console.log(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
           />
           <MoreOptionsButton onClick={() => alert("More options clicked!")} />
           <AddProjectButton onClick={() => setIsModalOpen(true)} />
-      {isModalOpen && <CreateProjectModal onClose={() => setIsModalOpen(false)} />}
+          {isModalOpen && <CreateProjectModal onClose={() => setIsModalOpen(false)} />}
         </div>
       </div>
       <div style={styles.projectGrid}>
-        {projects.length > 0 ? (
-          projects.map((project, index) => (
+        {filteredProjects.length > 0 ? (
+          filteredProjects.map((project, index) => (
             <ProjectCard
               key={index}
               title={project.title}

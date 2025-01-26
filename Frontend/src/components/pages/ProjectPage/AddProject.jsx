@@ -1,5 +1,6 @@
 import { display, height, padding, textAlign, width } from "@mui/system";
 import React, { useState } from "react";
+import axios from "axios"; // Import Axios
 
 const styles = {
   overlay: {
@@ -118,12 +119,10 @@ const styles = {
 };
 
 
-
-
-
 const CreateProjectModal = ({ onClose }) => {
   const [projectName, setProjectName] = useState("");
   const [teamMembers, setTeamMembers] = useState([{ email: "", role: "" }]);
+  const [isSaving, setIsSaving] = useState(false); // เพิ่มสถานะการโหลด
 
   const handleAddMember = () => {
     setTeamMembers([...teamMembers, { email: "", role: "" }]);
@@ -141,10 +140,35 @@ const CreateProjectModal = ({ onClose }) => {
     setTeamMembers(updatedMembers);
   };
 
-  const handleCreateProject = () => {
-    console.log("Project Name:", projectName);
-    console.log("Team Members:", teamMembers);
-    onClose();
+  const handleCreateProject = async () => {
+    if (!projectName.trim()) {
+      alert("Project name is required.");
+      return;
+    }
+
+    try {
+      setIsSaving(true); // เริ่มต้นโหลด
+      const response = await axios.post("http://localhost:5000/api/projects", {
+        title: projectName,
+        tasksCompleted: 0,  // ค่าเริ่มต้น
+        totalTasks: teamMembers.length, // ใช้จำนวนสมาชิกเป็นจำนวน task
+        teamMembers: teamMembers, // ส่งรายชื่อสมาชิกไปยัง API
+      });
+
+      if (response.data.success) {
+        alert("Project created successfully!");
+        setProjectName(""); // รีเซ็ตฟอร์ม
+        setTeamMembers([{ email: "", role: "" }]);
+        onClose();
+      } else {
+        alert("Failed to create project. Try again.");
+      }
+    } catch (error) {
+      console.error("Error saving project:", error);
+      alert("Error occurred while creating the project.");
+    } finally {
+      setIsSaving(false); // หยุดโหลด
+    }
   };
 
   return (
@@ -202,14 +226,17 @@ const CreateProjectModal = ({ onClose }) => {
           <button style={styles.buttonCancel} onClick={onClose}>
             Cancel
           </button>
-          <button style={styles.buttonCreate} onClick={handleCreateProject}>
-            Create Project
+          <button 
+            style={styles.buttonCreate} 
+            onClick={handleCreateProject} 
+            disabled={isSaving} // ปิดปุ่มขณะกำลังบันทึก
+          >
+            {isSaving ? "Saving..." : "Create Project"}
           </button>
         </div>
       </div>
     </div>
   );
-
 };
 
 export default CreateProjectModal;
