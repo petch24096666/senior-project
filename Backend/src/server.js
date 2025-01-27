@@ -70,15 +70,15 @@ app.get('/api/projects', (req, res) => {
 
 // เพิ่มโปรเจคใหม่ลงในฐานข้อมูล
 app.post("/api/projects", (req, res) => {
-  const { title, tasksCompleted, totalTasks, teamMembers } = req.body;
+  const { title, description, tasksCompleted, totalTasks, teamMembers } = req.body;
 
-  if (!title || totalTasks === undefined || !teamMembers || teamMembers.length === 0) {
+  if (!title || !description || totalTasks === undefined || !teamMembers || teamMembers.length === 0) {
     return res.status(400).json({ success: false, error: "Invalid input data" });
   }
 
-  // SQL สำหรับบันทึกโปรเจคใหม่
-  const sqlProject = "INSERT INTO projects (title, tasksCompleted, totalTasks) VALUES (?, ?, ?)";
-  const projectValues = [title, tasksCompleted || 0, totalTasks];
+  // SQL สำหรับบันทึกโปรเจคใหม่พร้อม description
+  const sqlProject = "INSERT INTO projects (title, description, tasksCompleted, totalTasks) VALUES (?, ?, ?, ?)";
+  const projectValues = [title, description, tasksCompleted || 0, totalTasks];
 
   db.query(sqlProject, projectValues, (err, result) => {
     if (err) {
@@ -103,13 +103,18 @@ app.post("/api/projects", (req, res) => {
 // อัปเดตข้อมูลโปรเจค
 app.put('/api/projects/:id', (req, res) => {
   const { id } = req.params;
-  const { title, tasksCompleted, totalTasks } = req.body;
+  const { title, description, tasksCompleted, totalTasks } = req.body;
 
-  const sql = "UPDATE projects SET title = ?, tasksCompleted = ?, totalTasks = ? WHERE id = ?";
-  const values = [title, tasksCompleted, totalTasks, id];
+  if (!title || !description || totalTasks === undefined) {
+    return res.status(400).json({ success: false, error: "Invalid input data" });
+  }
+
+  const sql = "UPDATE projects SET title = ?, description = ?, tasksCompleted = ?, totalTasks = ? WHERE id = ?";
+  const values = [title, description, tasksCompleted, totalTasks, id];
 
   db.query(sql, values, (err, result) => {
     if (err) {
+      console.error("Error updating project:", err);
       return res.status(500).json({ error: "Database update error" });
     }
     res.status(200).json({ success: true, message: "Project updated successfully" });
