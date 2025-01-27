@@ -4,6 +4,8 @@ import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import { MoreOptionsButton, AddProjectButton } from "../../common/button"
 import SearchBar from "../../common/searchbar";
 import CreateProjectModal from "./AddProject";
+const url = import.meta.env.VITE_BACKEND_URL;
+
 
 const styles = {
   projectList: {
@@ -176,7 +178,7 @@ const ProjectPage = () => {
 
   const fetchProjects = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/api/projects");
+      const response = await axios.get(`${url}/api/projects`);
       console.log("Fetched projects:", response.data);
       setProjects(response.data.data || []);
       setFilteredProjects(response.data.data || []);

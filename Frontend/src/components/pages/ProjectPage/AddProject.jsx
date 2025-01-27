@@ -2,6 +2,7 @@ import { border, display, height, padding, textAlign, width } from "@mui/system"
 import { TextAreaField } from '@aws-amplify/ui-react';
 import React, { useState } from "react";
 import axios from "axios"; // Import Axios
+const url = import.meta.env.VITE_BACKEND_URL;
 
 const styles = {
   overlay: {
@@ -163,7 +164,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
         teamMembers: teamMembers,
       });
   
-      const response = await axios.post("http://localhost:5000/api/projects", {
+      const response = await axios.post(`${url}/api/projects`, {
         title: projectName,
         description: projectDescription,
         tasksCompleted: 0,

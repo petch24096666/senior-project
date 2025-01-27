@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+const url = import.meta.env.VITE_BACKEND_URL;
 
 const RegisterPage = () => {
   const navigate = useNavigate();
@@ -12,7 +13,7 @@ const RegisterPage = () => {
 
   function register(event) {
     event.preventDefault();
-    axios.post("http://localhost:8081/register", { fullname, email, password })
+    axios.post(`${url}/api/register`, { fullname, email, password })
       .then(res => {
         navigate("/");
       }).catch(err => console.log(err));
