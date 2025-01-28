@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Button } from "@mui/material"; // Import Button จาก MUI
 import { TextAreaField } from "@aws-amplify/ui-react";
 import axios from "axios";
+import deleteIcon from "../../../assets/icons/Trash-icon.png";
+import crossIcon from "../../../assets/icons/cross-icon.png";
 
 const url = import.meta.env.VITE_BACKEND_URL;
 
@@ -165,7 +167,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
         <div style={styles.header}>
           <span>Create New Project</span>
           <button style={styles.removeButton} onClick={onClose}>
-            &times;
+            <img src={crossIcon} alt="Remove"/>
           </button>
         </div>
 
@@ -223,7 +225,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
                   <option value="Viewer">Viewer</option>
                 </select>
                 <button style={styles.removeButton} onClick={() => handleRemoveMember(index)}>
-                  &times;
+                  <img src={deleteIcon} alt="Remove"/>
                 </button>
               </div>
             ))}
