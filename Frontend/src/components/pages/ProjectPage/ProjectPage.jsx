@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
 import { MoreOptionsButton, AddProjectButton } from "../../common/button"
 import SearchBar from "../../common/searchbar";
 import CreateProjectModal from "./AddProject";
+import ProjectCard from "../../common/projectcard"
+import ConfirmationPopup from "../../common/ConfirmationPopup";
 const url = import.meta.env.VITE_BACKEND_URL;
 
 
@@ -39,135 +40,15 @@ const styles = {
     alignItems: "center",
     gap: "10px",
   },
-  button: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "8px",
-    backgroundColor: "#4F46E5",
-    color: "#fff",
-    padding: "10px 16px",
-    border: "none",
-    cursor: "pointer",
-    fontFamily: "Inter, sans-serif",
-    fontSize: "14px",
-    fontWeight: "500",
-  },
-  secondaryButton: {
-    backgroundColor: "#E5E7EB",
-    color: "#111827",
-  },
   projectGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(4, 1fr)",
     columnGap: "24px",
     rowGap: "32px",
   },
-  cardContainer: {
-    width: "262px",
-    height: "223px",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    padding: "25px",
-    border: "1px solid #E5E7EB",
-    borderRadius: "12px",
-    backgroundColor: "white",
-    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-  },
-  cardHeader: {
-    fontFamily: "Inter, sans-serif",
-    fontSize: "24px",
-    fontWeight: "600",
-    lineHeight: "29.05px",
-    color: "#111827",
-  },
-  taskRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: "10px",
-  },
-  taskLabel: {
-    fontFamily: "Inter, sans-serif",
-    fontSize: "16px",
-    fontWeight: "400",
-    lineHeight: "16px",
-    color: "#6B7280",
-  },
-  taskIcon: {
-    fontSize: "16px",
-    color: "#6366F1",
-  },
-  cardTaskNumber: {
-    fontFamily: "Inter, sans-serif",
-    fontSize: "24px",
-    fontWeight: "600",
-    lineHeight: "29.05px",
-    color: "#111827",
-    marginTop: "8px",
-  },
-  progressBarContainer: {
-    width: "100%",
-    height: "6px",
-    backgroundColor: "#E5E7EB",
-    borderRadius: "3px",
-    overflow: "hidden",
-    marginTop: "10px",
-  },
-  progressBar: (progress) => ({
-    width: `${progress}%`,
-    height: "100%",
-    backgroundColor: "#6366F1",
-  }),
-  cardDescription: {
-    fontFamily: "Inter, sans-serif",
-    fontSize: "14px",
-    fontWeight: "400",
-    lineHeight: "20px",
-    color: "#6B7280",
-    marginTop: "10px",
-    marginBottom: "10px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    display: "-webkit-box",
-    WebkitLineClamp: 3,  // แสดงสูงสุด 3 บรรทัด
-    WebkitBoxOrient: "vertical",
-  }
 };
 
 
-
-const ProjectCard = ({ title, description, tasksCompleted, totalTasks }) => {
-  const progress = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
-
-  return (
-    <div style={styles.cardContainer}>
-      <h3 style={styles.cardHeader}>{title || "Untitled Project"}</h3>
-
-      <p style={styles.cardDescription}>
-        {description || "No description available"}
-      </p>
-
-      <div style={styles.taskRow}>
-        <span style={styles.taskLabel}>Tasks</span>
-        <span style={styles.taskIcon}>
-          <PlaylistAddCheckIcon />
-        </span>
-      </div>
-
-      <div>
-        <span style={styles.cardTaskNumber}>
-          {`${tasksCompleted || 0}/${totalTasks || 0}`}
-        </span>
-      </div>
-
-      <div style={styles.progressBarContainer}>
-        <div style={styles.progressBar(progress)}></div>
-      </div>
-    </div>
-  );
-};
 
 
 const ProjectPage = () => {
@@ -175,6 +56,8 @@ const ProjectPage = () => {
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [searchQuery, setSearchQuery] = useState(""); // เพิ่ม state สำหรับเก็บค่าค้นหา
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState(null); // เก็บ ID ของโปรเจ็กต์ที่เลือก
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
 
   const fetchProjects = async () => {
     try {
@@ -206,6 +89,34 @@ const ProjectPage = () => {
     }
   };
 
+  const handleOpenPopup = (projectId) => {
+    setSelectedProjectId(projectId); // เก็บ ID ของโปรเจ็กต์ที่ต้องการลบ
+    setIsPopupOpen(true); // เปิด Popup
+  };
+
+  const handleClosePopup = () => {
+    setIsPopupOpen(false); // ปิด Popup
+    setSelectedProjectId(null); // ล้างค่า ID ที่เลือก
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedProjectId) return; // ตรวจสอบว่า ID ไม่เป็น null
+    try {
+      await axios.delete(`${url}/api/projects/${selectedProjectId}`);
+      console.log(`Project with ID ${selectedProjectId} deleted.`);
+      fetchProjects(); // ดึงข้อมูลใหม่หลังจากลบ
+      handleClosePopup(); // ปิด Popup หลังลบสำเร็จ
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      alert("Failed to delete the project. Please try again.");
+    }
+  };
+
+  const handleEdit = () => {
+    console.log("Edit clicked");
+  };
+
+
   return (
     <div style={styles.projectList}>
       <div style={styles.headerContainer}>
@@ -226,20 +137,39 @@ const ProjectPage = () => {
             }}
             onChange={(e) => handleSearch(e.target.value)}
           />
-          <MoreOptionsButton onClick={() => alert("More options clicked!")} />
-          <AddProjectButton onClick={() => setIsModalOpen(true)} />
+          <MoreOptionsButton
+          sx={{
+            backgroundColor: "#E5E7EB",
+            color: "#111827"}}
+          onClick={() => alert("More options clicked!")} 
+          />
+          <AddProjectButton
+            sx={{ backgroundColor: "#4F46E5" }}
+            onClick={() => setIsModalOpen(true)}
+          />
           {isModalOpen && <CreateProjectModal onClose={() => setIsModalOpen(false)} onProjectCreated={fetchProjects} />}
         </div>
       </div>
       <div style={styles.projectGrid}>
+        {/* แสดง Popup */}
+        <ConfirmationPopup
+          open={isPopupOpen}
+          title="Confirm Deletion"
+          message="Are you sure you want to delete this project? This action cannot be undone."
+          onCancel={handleClosePopup}
+          onConfirm={handleConfirmDelete}
+        />
         {filteredProjects.length > 0 ? (
           filteredProjects.map((project, index) => (
             <ProjectCard
               key={index}
+              id={project.id}
               title={project.title}
               description={project.description}
               tasksCompleted={project.tasksCompleted}
               totalTasks={project.totalTasks}
+              onEdit={handleEdit}
+              onDelete={() => handleOpenPopup(project.id)}
             />
           ))
         ) : (
