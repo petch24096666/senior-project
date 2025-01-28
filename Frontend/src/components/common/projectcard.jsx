@@ -4,6 +4,8 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 
 const styles = {
     cardContainer: {
@@ -83,6 +85,18 @@ const styles = {
         WebkitLineClamp: 3, // แสดงสูงสุด 3 บรรทัด
         WebkitBoxOrient: "vertical",
     },
+    menuItem: {
+        display: "flex",
+        alignItems: "center",
+        gap: "10px", // เพิ่มระยะห่างระหว่างไอคอนและข้อความ
+        fontFamily: "Inter, sans-serif",
+        fontSize: "14px",
+        fontWeight: "500",
+        color: "#374151",
+    },
+    menuItemDelete: {
+        color: "#EF4444", // เปลี่ยนสีสำหรับ Delete ให้ดูชัดเจน
+    },
 };
 
 const ProjectCard = ({ title, description, tasksCompleted, totalTasks, onEdit, onDelete }) => {
@@ -120,7 +134,9 @@ const ProjectCard = ({ title, description, tasksCompleted, totalTasks, onEdit, o
                         onEdit && onEdit();
                     }}
                 >
-                    Edit
+                    <div style={styles.menuItem}>
+                        <EditIcon /> Edit
+                    </div>
                 </MenuItem>
                 <MenuItem
                     onClick={() => {
@@ -128,7 +144,9 @@ const ProjectCard = ({ title, description, tasksCompleted, totalTasks, onEdit, o
                         onDelete && onDelete();
                     }}
                 >
-                    Delete
+                    <div style={{ ...styles.menuItem, ...styles.menuItemDelete }}>
+                        <DeleteIcon /> Delete
+                    </div>
                 </MenuItem>
             </Menu>
 
