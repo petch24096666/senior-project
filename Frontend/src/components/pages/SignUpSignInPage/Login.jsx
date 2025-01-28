@@ -1,26 +1,68 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+
 const url = import.meta.env.VITE_BACKEND_URL;
 
 const LoginPage = () => {
   const navigate = useNavigate();
 
   const [values, setValues] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
+
+  const [rememberMe, setRememberMe] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("rememberedEmail");
+    if (savedEmail) {
+      setValues((prev) => ({ ...prev, email: savedEmail }));
+      setRememberMe(true);
+    }
+  }, []);
+
+  function validateForm() {
+    let newErrors = {};
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneRegex = /^[0-9]{10}$/;
+
+    if (!values.email.trim()) {
+      newErrors.email = "โปรดกรอกอีเมลหรือหมายเลขโทรศัพท์";
+    } else if (!emailRegex.test(values.email) && !phoneRegex.test(values.email)) {
+      newErrors.email = "อีเมลหรือหมายเลขโทรศัพท์ไม่ถูกต้อง";
+    }
+
+    if (!values.password.trim()) {
+      newErrors.password = "โปรดกรอกรหัสผ่าน";
+    } else if (values.password.length < 6) {
+      newErrors.password = "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }
 
   function login(event) {
     event.preventDefault();
+    if (!validateForm()) return;
+
     axios.post(`${url}/api/login`, values)
-      .then(res => {
+      .then((res) => {
         if (res.data.Status === "Success") {
+          if (rememberMe) {
+            localStorage.setItem("rememberedEmail", values.email);
+          } else {
+            localStorage.removeItem("rememberedEmail");
+          }
           navigate("/dashboard");
         } else {
-          alert(res.data.Error);
+          setErrors({ general: res.data.Error });
         }
-      }).catch(err => console.log(err));
+      })
+      .catch((err) => console.log(err));
   }
 
   const styles = {
@@ -28,7 +70,7 @@ const LoginPage = () => {
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
-      height: "96vh",
+      height: "100vh",
       backgroundColor: "#F9FAFB",
       margin: "0",
       fontFamily: "'Arial', sans-serif",
@@ -55,7 +97,6 @@ const LoginPage = () => {
     inputGroup: {
       textAlign: "left",
       marginBottom: "16px",
-      marginRight: "25px",
     },
     label: {
       display: "block",
@@ -63,21 +104,37 @@ const LoginPage = () => {
       color: "#4B5563",
       marginBottom: "6px",
     },
-    input: {
+    input: (hasError) => ({
       width: "100%",
       padding: "12px",
-      border: "1px solid #E5E7EB",
+      border: `1px solid ${hasError ? "#E53E3E" : "#E5E7EB"}`,
+      backgroundColor: "#F9FAFB",
       borderRadius: "8px",
       fontSize: "14px",
-      backgroundColor: "#F9FAFB",
       outline: "none",
+    }),
+    errorText: {
+      color: "#E53E3E",
+      fontSize: "12px",
+      marginTop: "4px",
+      display: "flex",
+      alignItems: "center",
+      gap: "5px",
     },
     options: {
       display: "flex",
       justifyContent: "space-between",
+      alignItems: "center",
       fontSize: "14px",
       color: "#4B5563",
       marginBottom: "24px",
+    },
+    checkboxContainer: {
+      display: "flex",
+      alignItems: "center",
+    },
+    checkbox: {
+      marginRight: "8px",
     },
     forgotLink: {
       color: "#2563EB",
@@ -106,11 +163,6 @@ const LoginPage = () => {
       height: "1px",
       backgroundColor: "#E5E7EB",
       margin: "0 10px",
-    },
-    checkbox: {
-      height: "1.7vh",
-      marginRight: "5px",
-      verticalAlign: "bottom",
     },
     orText: {
       fontSize: "14px",
@@ -151,58 +203,72 @@ const LoginPage = () => {
         <h2 style={styles.title}>Welcome back</h2>
         <p style={styles.subtitle}>Please enter your details to sign in</p>
         <form onSubmit={login}>
+          {/* 📩 Email Input */}
           <div style={styles.inputGroup}>
             <label style={styles.label}>Email</label>
             <input
-              type="email"
+              type="text"
               placeholder="Enter your email"
-              style={styles.input}
+              style={styles.input(errors.email)}
               value={values.email}
-              onChange={e => setValues({ ...values, email: e.target.value })}
+              onChange={(e) => setValues({ ...values, email: e.target.value })}
               required
             />
+            {errors.email && (
+              <div style={styles.errorText}>⚠️ {errors.email}</div>
+            )}
           </div>
 
+          {/* 🔑 Password Input */}
           <div style={styles.inputGroup}>
             <label style={styles.label}>Password</label>
             <input
               type="password"
-              placeholder="∗∗∗∗∗∗∗∗∗"
-              style={styles.input}
+              placeholder="********"
+              style={styles.input(errors.password)}
               value={values.password}
-              onChange={e => setValues({ ...values, password: e.target.value })}
+              onChange={(e) => setValues({ ...values, password: e.target.value })}
               required
             />
+            {errors.password && (
+              <div style={styles.errorText}>⚠️ {errors.password}</div>
+            )}
           </div>
 
+          {/* 🔘 Remember Me + Forgot Password */}
           <div style={styles.options}>
-            <label>
-              <input type="checkbox" style={styles.checkbox} />Remember me
+            <label style={styles.checkboxContainer}>
+              <input
+                type="checkbox"
+                style={styles.checkbox}
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              Remember me
             </label>
-            <a href="#" style={styles.forgotLink}>Forgot password?</a>
+            <a href="/forgotpassword" style={styles.forgotLink}>Forgot password?</a>
           </div>
 
+          {/* 🔵 Login Button */}
           <button type="submit" style={styles.button}>Sign in</button>
+
+          {/* 🔗 Social Login */}
+          <div style={styles.divider}>
+            <span style={styles.line}></span>
+            <span style={styles.orText}>Or continue with</span>
+            <span style={styles.line}></span>
+          </div>
+
+          <div style={styles.socialButtons}>
+            <button style={styles.socialBtn}>G</button>
+            <button style={styles.socialBtn}>🔗</button>
+            <button style={styles.socialBtn}>📁</button>
+          </div>
+
+          <p style={styles.signup}>
+            Don't have an account? <a href="/register" style={styles.signupLink}>Sign up</a>
+          </p>
         </form>
-
-        <div style={styles.divider}>
-          <span style={styles.line}></span>
-          <span style={styles.orText}>Or continue with</span>
-          <span style={styles.line}></span>
-        </div>
-
-        <div style={styles.socialButtons}>
-          <button style={styles.socialBtn}>G</button>
-          <button style={styles.socialBtn}>🔗</button>
-          <button style={styles.socialBtn}>📁</button>
-        </div>
-
-        <p style={styles.signup}>
-          Don't have an account?{" "}
-          <a href="/register" style={styles.signupLink}>
-            Sign up
-          </a>
-        </p>
       </div>
     </div>
   );
