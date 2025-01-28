@@ -1,11 +1,12 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import KanbanBoard from "./components/pages/ProjectPage/KanbanBoard";
+import KanbanBoard from "./components/pages/KanbanBoard/KanbanBoard";
 import MainLayout from "./components/layouts/MainLayout";
 import ProjectPage from "./components/pages/ProjectPage/ProjectPage"; 
 import DashboardPage from "./components/pages/Dashboard/Dashboard";
 import LoginPage from "./components/pages/SignUpSignInPage/Login";
 import RegisterPage from "./components/pages/SignUpSignInPage/Register";
+import ForgotpasswordPage from "./components/pages/SignUpSignInPage/ForgotPassword";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
             {/* เส้นทาง root โดยไม่มี Layout */}
               <Route path="/" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/forgotpassword" element={<ForgotpasswordPage />} />
             {/* เส้นทางที่ใช้ MainLayout */}
             <Route
               path="/*"
