@@ -1,5 +1,8 @@
-import { display, height, padding, textAlign, width } from "@mui/system";
+import { border, display, height, padding, textAlign, width } from "@mui/system";
+import { TextAreaField } from '@aws-amplify/ui-react';
 import React, { useState } from "react";
+import axios from "axios"; // Import Axios
+const url = import.meta.env.VITE_BACKEND_URL;
 
 const styles = {
   overlay: {
@@ -118,12 +121,11 @@ const styles = {
 };
 
 
-
-
-
-const CreateProjectModal = ({ onClose }) => {
+const CreateProjectModal = ({ onClose, onProjectCreated }) => {
   const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
   const [teamMembers, setTeamMembers] = useState([{ email: "", role: "" }]);
+  const [isSaving, setIsSaving] = useState(false); // เพิ่มสถานะการโหลด
 
   const handleAddMember = () => {
     setTeamMembers([...teamMembers, { email: "", role: "" }]);
@@ -141,11 +143,52 @@ const CreateProjectModal = ({ onClose }) => {
     setTeamMembers(updatedMembers);
   };
 
-  const handleCreateProject = () => {
-    console.log("Project Name:", projectName);
-    console.log("Team Members:", teamMembers);
-    onClose();
-  };
+  const handleCreateProject = async () => {
+    if (!projectName.trim()) {
+      alert("Project name is required.");
+      return;
+    }
+  
+    if (teamMembers.length === 0) {
+      alert("At least one team member is required.");
+      return;
+    }
+  
+    try {
+      setIsSaving(true);
+      console.log("Sending data:", {
+        title: projectName,
+        description: projectDescription,
+        tasksCompleted: 0,
+        totalTasks: teamMembers.length || 0,
+        teamMembers: teamMembers,
+      });
+  
+      const response = await axios.post(`${url}/api/projects`, {
+        title: projectName,
+        description: projectDescription,
+        tasksCompleted: 0,
+        totalTasks: teamMembers.length || 0, // เพิ่มการตรวจสอบให้แน่ใจว่าเป็นตัวเลข
+        teamMembers: teamMembers,
+      });
+  
+      if (response.data.success) {
+        alert("Project created successfully!");
+        setProjectName("");
+        setProjectDescription("");
+        setTeamMembers([{ email: "", role: "" }]);
+        onProjectCreated();
+        onClose();
+      } else {
+        alert("Failed to create project. Try again.");
+      }
+    } catch (error) {
+      console.error("Error saving project:", error);
+      alert("Error occurred while creating the project.");
+    } finally {
+      setIsSaving(false);
+    }
+  };  
 
   return (
     <div style={styles.overlay}>
@@ -164,6 +207,27 @@ const CreateProjectModal = ({ onClose }) => {
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               style={styles.inputField}
+            />
+          </div>
+          <div style={styles.sectionSpacing}>
+            <label style={styles.inputLabel}>Project Description</label>
+            <TextAreaField
+              placeholder="Enter project description..."
+              rows={5}
+              value={projectDescription}
+              onChange={(e) => setProjectDescription(e.target.value)}
+              inputStyles={{
+                width: "385px",
+                padding: "12px 16px",
+                fontSize: "14px",
+                border: "1px solid #D1D5DB",
+                borderRadius: "8px",
+                backgroundColor: "#F9FAFB",
+                color: "#374151",
+                fontFamily: "Inter, sans-serif",
+                resize: "none",
+                outline: "none",
+              }}
             />
           </div>
           <div>
@@ -202,14 +266,17 @@ const CreateProjectModal = ({ onClose }) => {
           <button style={styles.buttonCancel} onClick={onClose}>
             Cancel
           </button>
-          <button style={styles.buttonCreate} onClick={handleCreateProject}>
-            Create Project
+          <button
+            style={styles.buttonCreate}
+            onClick={handleCreateProject}
+            disabled={isSaving} // ปิดปุ่มขณะกำลังบันทึก
+          >
+            {isSaving ? "Saving..." : "Create Project"}
           </button>
         </div>
       </div>
     </div>
   );
-
 };
 
 export default CreateProjectModal;

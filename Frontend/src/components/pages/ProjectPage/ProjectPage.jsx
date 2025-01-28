@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
-import {MoreOptionsButton, AddProjectButton} from "../../common/button"
+import { MoreOptionsButton, AddProjectButton } from "../../common/button"
 import SearchBar from "../../common/searchbar";
 import CreateProjectModal from "./AddProject";
+const url = import.meta.env.VITE_BACKEND_URL;
+
 
 const styles = {
   projectList: {
@@ -118,25 +120,48 @@ const styles = {
     height: "100%",
     backgroundColor: "#6366F1",
   }),
+  cardDescription: {
+    fontFamily: "Inter, sans-serif",
+    fontSize: "14px",
+    fontWeight: "400",
+    lineHeight: "20px",
+    color: "#6B7280",
+    marginTop: "10px",
+    marginBottom: "10px",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    display: "-webkit-box",
+    WebkitLineClamp: 3,  // แสดงสูงสุด 3 บรรทัด
+    WebkitBoxOrient: "vertical",
+  }
 };
 
-const ProjectCard = ({ title, tasksCompleted, totalTasks }) => {
+
+
+const ProjectCard = ({ title, description, tasksCompleted, totalTasks }) => {
   const progress = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
 
   return (
     <div style={styles.cardContainer}>
       <h3 style={styles.cardHeader}>{title || "Untitled Project"}</h3>
+
+      <p style={styles.cardDescription}>
+        {description || "No description available"}
+      </p>
+
       <div style={styles.taskRow}>
         <span style={styles.taskLabel}>Tasks</span>
         <span style={styles.taskIcon}>
           <PlaylistAddCheckIcon />
         </span>
       </div>
+
       <div>
         <span style={styles.cardTaskNumber}>
           {`${tasksCompleted || 0}/${totalTasks || 0}`}
         </span>
       </div>
+
       <div style={styles.progressBarContainer}>
         <div style={styles.progressBar(progress)}></div>
       </div>
@@ -144,23 +169,42 @@ const ProjectCard = ({ title, tasksCompleted, totalTasks }) => {
   );
 };
 
+
 const ProjectPage = () => {
   const [projects, setProjects] = useState([]);
+  const [filteredProjects, setFilteredProjects] = useState([]);
+  const [searchQuery, setSearchQuery] = useState(""); // เพิ่ม state สำหรับเก็บค่าค้นหา
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const response = await axios.get("http://localhost:8081/api/projects");
-        console.log("Response Data:", response.data);
-        setProjects(response.data.data || []);
-      } catch (error) {
-        console.error("Error fetching projects:", error);
-      }
-    };
 
-    fetchProjects(); // เรียก fetchProjects
+  const fetchProjects = async () => {
+    try {
+      const response = await axios.get(`${url}/api/projects`);
+      console.log("Fetched projects:", response.data);
+      setProjects(response.data.data || []);
+      setFilteredProjects(response.data.data || []);
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchProjects();
   }, []);
+
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    const normalizedQuery = query.toLowerCase().replace(/\s+/g, "");
+
+    if (normalizedQuery === "") {
+      setFilteredProjects(projects);
+    } else {
+      const filtered = projects.filter((project) => {
+        const normalizedTitle = project.title.toLowerCase().replace(/\s+/g, "");
+        return normalizedTitle.includes(normalizedQuery);
+      });
+      setFilteredProjects(filtered);
+    }
+  };
 
   return (
     <div style={styles.projectList}>
@@ -174,24 +218,26 @@ const ProjectPage = () => {
         <div style={styles.buttonContainer}>
           <SearchBar
             placeholder="Search projects..."
+            value={searchQuery}
             style={{
               width: "250px",
               borderRadius: "12px",
               fontSize: "18px",
             }}
-            onChange={(e) => console.log(e.target.value)}
+            onChange={(e) => handleSearch(e.target.value)}
           />
           <MoreOptionsButton onClick={() => alert("More options clicked!")} />
           <AddProjectButton onClick={() => setIsModalOpen(true)} />
-      {isModalOpen && <CreateProjectModal onClose={() => setIsModalOpen(false)} />}
+          {isModalOpen && <CreateProjectModal onClose={() => setIsModalOpen(false)} onProjectCreated={fetchProjects} />}
         </div>
       </div>
       <div style={styles.projectGrid}>
-        {projects.length > 0 ? (
-          projects.map((project, index) => (
+        {filteredProjects.length > 0 ? (
+          filteredProjects.map((project, index) => (
             <ProjectCard
               key={index}
               title={project.title}
+              description={project.description}
               tasksCompleted={project.tasksCompleted}
               totalTasks={project.totalTasks}
             />

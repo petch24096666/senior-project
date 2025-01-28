@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+const url = import.meta.env.VITE_BACKEND_URL;
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -12,7 +13,7 @@ const LoginPage = () => {
 
   function login(event) {
     event.preventDefault();
-    axios.post("http://localhost:8081/login", values)
+    axios.post(`${url}/api/login`, values)
       .then(res => {
         if (res.data.Status === "Success") {
           navigate("/dashboard");
