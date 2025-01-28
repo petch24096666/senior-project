@@ -176,7 +176,7 @@ const LoginPage = () => {
 
           <div style={styles.options}>
             <label>
-              <input type="checkbox" style={styles.checkbox} /> Remember me
+              <input type="checkbox" style={styles.checkbox} />Remember me
             </label>
             <a href="#" style={styles.forgotLink}>Forgot password?</a>
           </div>

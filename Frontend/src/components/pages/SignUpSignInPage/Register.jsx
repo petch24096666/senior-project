@@ -87,7 +87,7 @@ const RegisterPage = () => {
     link: {
       color: "#2563EB",
       textDecoration: "none",
-      fontWeight: "500",
+      fontWeight: "600",
     },
     button: {
       width: "100%",
