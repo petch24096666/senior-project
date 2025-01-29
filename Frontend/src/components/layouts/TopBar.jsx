@@ -11,24 +11,28 @@ import {
   IconButton,
   Button,
   Divider,
+  Menu,
+  MenuItem,
 } from "@mui/material";
 import projectIcon from "../../assets/icons/project.png";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
+import { useNavigate } from "react-router-dom";
+import axios from "axios"; // ✅ Import axios
+
+const url = import.meta.env.VITE_BACKEND_URL || "http://localhost:8081"; // ✅ ตรวจสอบค่า URL
 
 const TopBar = () => {
-  const [anchorEl, setAnchorEl] = useState(null);
+  const navigate = useNavigate();
 
-  // Mock Data สำหรับการแจ้งเตือน
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [profileAnchorEl, setProfileAnchorEl] = useState(null);
+
+  // ✅ Mock Data สำหรับการแจ้งเตือน
   const notifications = [
     { id: 1, message: "New message from John", time: "5 mins ago", type: "message" },
     { id: 2, message: "Project deadline approaching", time: "1 day ago", type: "alert" },
-    {
-      id: 3,
-      message: "You have been invited to Project Alpha",
-      time: "2 hours ago",
-      type: "invitation",
-    },
+    { id: 3, message: "You have been invited to Project Alpha", time: "2 hours ago", type: "invitation" },
   ];
 
   // เปิดเมนูแจ้งเตือน
@@ -41,17 +45,68 @@ const TopBar = () => {
     setAnchorEl(null);
   };
 
-  const handleAcceptInvitation = (id) => {
-    console.log(`Accepted invitation for notification ID: ${id}`);
-    alert("You have accepted the invitation.");
+  // เปิด Dropdown Profile
+  const handleProfileClick = (event) => {
+    setProfileAnchorEl(event.currentTarget);
   };
 
-  const handleDeclineInvitation = (id) => {
-    console.log(`Declined invitation for notification ID: ${id}`);
-    alert("You have declined the invitation.");
+  // ปิด Dropdown Profile
+  const handleProfileClose = () => {
+    setProfileAnchorEl(null);
   };
+
+  // ไปที่หน้าโปรไฟล์
+  const handleEditProfile = () => {
+    navigate("/profile");
+    handleProfileClose();
+  };
+
+  // ✅ ฟังก์ชัน Logout
+  const handleLogout = async () => {
+    try {
+        const authToken = localStorage.getItem("authToken"); // ✅ ตรวจสอบ Token
+        
+        if (!authToken) {
+            console.warn("No authToken found. Redirecting to home.");
+            navigate("/", { replace: true });
+            return;
+        }
+
+        // ✅ เรียก API Logout และส่ง Token ไป
+        const response = await axios.post(`${url}/api/logout`, {}, {
+            headers: { Authorization: `Bearer ${authToken}` }
+        });
+
+        console.log("Logout Response:", response.data); // ✅ Debugging Log
+
+        // ✅ ล้างข้อมูล Authentication
+        localStorage.removeItem("authToken");
+        sessionStorage.removeItem("authSession");
+        document.cookie = "authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
+        // ✅ ป้องกันการย้อนกลับ (Block Back Button)
+        window.history.pushState(null, "", "/");
+        window.history.replaceState(null, "", "/");
+
+        // ✅ บังคับป้องกัน Back Button
+        window.onpopstate = () => {
+            window.history.pushState(null, "", "/");
+        };
+
+        // ✅ เปลี่ยนเส้นทางไปหน้าแรก และบังคับไม่ให้ย้อนกลับ
+        navigate("/", { replace: true });
+    } catch (error) {
+        console.error("Logout Error:", error);
+        alert("Logout failed. Please try again.");
+    } finally {
+        handleProfileClose();
+    }
+};
+
+
 
   const open = Boolean(anchorEl);
+  const profileOpen = Boolean(profileAnchorEl);
   const id = open ? "notification-popover" : undefined;
 
   return (
@@ -75,66 +130,32 @@ const TopBar = () => {
             JiraDST
           </Typography>
         </Box>
+
         <Box display="flex" alignItems="center" gap={2}>
+          {/* 🔔 ปุ่มแจ้งเตือน */}
           <IconButton onClick={handleNotificationClick}>
             <NotificationsNoneIcon sx={{ cursor: "pointer" }} />
           </IconButton>
-          <AccountCircleIcon sx={{ cursor: "pointer", width: "32px", height: "32px" }} />
+
+          {/* 👤 ปุ่ม Profile Dropdown */}
+          <IconButton onClick={handleProfileClick}>
+            <AccountCircleIcon sx={{ cursor: "pointer", width: "32px", height: "32px" }} />
+          </IconButton>
+
+          {/* Dropdown Menu สำหรับ Profile */}
+          <Menu
+            anchorEl={profileAnchorEl}
+            open={profileOpen}
+            onClose={handleProfileClose}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+            transformOrigin={{ vertical: "top", horizontal: "right" }}
+          >
+            <MenuItem onClick={handleEditProfile}>Edit Profile</MenuItem>
+            <Divider />
+            <MenuItem onClick={handleLogout}>Logout</MenuItem> {/* ✅ เพิ่ม Logout */}
+          </Menu>
         </Box>
       </Toolbar>
-
-      {/* Popover สำหรับการแจ้งเตือน */}
-      <Popover
-        id={id}
-        open={open}
-        anchorEl={anchorEl}
-        onClose={handleClose}
-        anchorOrigin={{
-          vertical: "bottom",
-          horizontal: "right",
-        }}
-        transformOrigin={{
-          vertical: "top",
-          horizontal: "right",
-        }}
-      >
-        <Box sx={{ width: 350, p: 2 }}>
-          <Typography variant="h6">Notifications</Typography>
-          <List>
-            {notifications.map((notification) => (
-              <React.Fragment key={notification.id}>
-                <ListItem alignItems="flex-start" sx={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                  <ListItemText
-                    primary={notification.message}
-                    secondary={notification.time}
-                  />
-                  {notification.type === "invitation" && (
-                    <Box display="flex" gap={1} width="100%" mt={1} justifyContent="flex-end">
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        size="small"
-                        onClick={() => handleAcceptInvitation(notification.id)}
-                      >
-                        Accept
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        size="small"
-                        onClick={() => handleDeclineInvitation(notification.id)}
-                      >
-                        Decline
-                      </Button>
-                    </Box>
-                  )}
-                </ListItem>
-                <Divider />
-              </React.Fragment>
-            ))}
-          </List>
-        </Box>
-      </Popover>
     </AppBar>
   );
 };

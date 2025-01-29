@@ -1,7 +1,10 @@
-import { border, display, height, padding, textAlign, width } from "@mui/system";
-import { TextAreaField } from '@aws-amplify/ui-react';
 import React, { useState } from "react";
-import axios from "axios"; // Import Axios
+import { Button } from "@mui/material"; // Import Button จาก MUI
+import { TextAreaField } from "@aws-amplify/ui-react";
+import axios from "axios";
+import deleteIcon from "../../../assets/icons/Trash-icon.png";
+import crossIcon from "../../../assets/icons/cross-icon.png";
+
 const url = import.meta.env.VITE_BACKEND_URL;
 
 const styles = {
@@ -21,19 +24,18 @@ const styles = {
     backgroundColor: "#fff",
     borderRadius: "12px",
     width: "500px",
-    height: "431px",         // ความกว้างคงที่ตามดีไซน์
-    maxWidth: "90vw",         // จำกัดความกว้างไม่ให้เกินขอบหน้าจอ
-    maxHeight: "90vh",        // จำกัดความสูงเพื่อให้ไม่เกินขอบหน้าจอ
-    overflow: "hidden",       // ป้องกันการเลื่อนออกขอบ
+    height: "431px",
+    maxWidth: "90vw",
+    maxHeight: "90vh",
+    overflow: "hidden",
     boxShadow: "0 4px 10px rgba(0, 0, 0, 0.2)",
     display: "flex",
     flexDirection: "column",
-    padding: "24px"
+    padding: "24px",
   },
   modalContent: {
-    padding: "0 24px 0 24px",
-    overflowY: "auto",       // เปิดให้เลื่อนเฉพาะแนวตั้ง
-    overflowX: "hidden",     // ป้องกันการเลื่อนแนวนอน
+    padding: "0 24px",
+    overflowY: "auto",
     flexGrow: 1,
     scrollbarWidth: "none",
   },
@@ -43,7 +45,7 @@ const styles = {
     fontWeight: "600",
     padding: "24px",
     display: "flex",
-    justifyContent: "space-between"
+    justifyContent: "space-between",
   },
   input: {
     width: "100%",
@@ -62,36 +64,14 @@ const styles = {
   buttonContainer: {
     display: "flex",
     justifyContent: "flex-end",
-    gap: "12px"
-  },
-  buttonCancel: {
-    backgroundColor: "transparent",
-    border: "none",
-    fontSize: "16px",
-    color: "#6B7280",
-    cursor: "pointer",
-  },
-  buttonCreate: {
-    backgroundColor: "#3B82F6",
-    color: "#fff",
-    border: "none",
-    padding: "12px 24px",
-    fontSize: "16px",
-    borderRadius: "8px",
-    cursor: "pointer",
+    gap: "12px",
+    marginTop: "16px",
   },
   addMemberLink: {
     fontFamily: "Inter, sans-serif",
     color: "#3B82F6",
     fontSize: "14px",
     cursor: "pointer",
-  },
-  closeButton: {
-    fontSize: "20px",
-    cursor: "pointer",
-    border: "none",
-    background: "none",
-    justifyContent: "flex"
   },
   removeButton: {
     backgroundColor: "transparent",
@@ -104,7 +84,7 @@ const styles = {
     fontFamily: "Inter, sans-serif",
     fontSize: "14px",
     fontWeight: "500",
-    marginBottom: "8px", // เพิ่มระยะห่างระหว่าง label และ input
+    marginBottom: "8px",
     display: "block",
   },
   inputField: {
@@ -116,16 +96,15 @@ const styles = {
     padding: "0 0 0 16px",
   },
   sectionSpacing: {
-    marginBottom: "24px", // เพิ่มระยะห่างระหว่าง Project Name และ Team Members
+    marginBottom: "24px",
   },
 };
-
 
 const CreateProjectModal = ({ onClose, onProjectCreated }) => {
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [teamMembers, setTeamMembers] = useState([{ email: "", role: "" }]);
-  const [isSaving, setIsSaving] = useState(false); // เพิ่มสถานะการโหลด
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleAddMember = () => {
     setTeamMembers([...teamMembers, { email: "", role: "" }]);
@@ -148,30 +127,22 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
       alert("Project name is required.");
       return;
     }
-  
+
     if (teamMembers.length === 0) {
       alert("At least one team member is required.");
       return;
     }
-  
+
     try {
       setIsSaving(true);
-      console.log("Sending data:", {
+      const response = await axios.post(`${url}/api/projects`, {
         title: projectName,
         description: projectDescription,
         tasksCompleted: 0,
         totalTasks: teamMembers.length || 0,
         teamMembers: teamMembers,
       });
-  
-      const response = await axios.post(`${url}/api/projects`, {
-        title: projectName,
-        description: projectDescription,
-        tasksCompleted: 0,
-        totalTasks: teamMembers.length || 0, // เพิ่มการตรวจสอบให้แน่ใจว่าเป็นตัวเลข
-        teamMembers: teamMembers,
-      });
-  
+
       if (response.data.success) {
         alert("Project created successfully!");
         setProjectName("");
@@ -188,14 +159,16 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
     } finally {
       setIsSaving(false);
     }
-  };  
+  };
 
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
         <div style={styles.header}>
           <span>Create New Project</span>
-          <button style={styles.closeButton} onClick={onClose}>&times;</button>
+          <button style={styles.removeButton} onClick={onClose}>
+            <img src={crossIcon} alt="Remove"/>
+          </button>
         </div>
 
         <div style={styles.modalContent}>
@@ -252,7 +225,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
                   <option value="Viewer">Viewer</option>
                 </select>
                 <button style={styles.removeButton} onClick={() => handleRemoveMember(index)}>
-                  &times;
+                  <img src={deleteIcon} alt="Remove"/>
                 </button>
               </div>
             ))}
@@ -263,16 +236,40 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
           </div>
         </div>
         <div style={styles.buttonContainer}>
-          <button style={styles.buttonCancel} onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            style={styles.buttonCreate}
-            onClick={handleCreateProject}
-            disabled={isSaving} // ปิดปุ่มขณะกำลังบันทึก
+          <Button
+            sx={{
+              fontFamily: "Inter, sans-serif",
+              backgroundColor: "transparent",
+              border: "none",
+              fontSize: "12px",
+              color: "#6B7280",
+              cursor: "pointer",
+            }}
+            variant="outlined"
+            color="secondary"
+            onClick={onClose}
+            disabled={isSaving}
           >
-            {isSaving ? "Saving..." : "Create Project"}
-          </button>
+            Cancel
+          </Button>
+          <Button
+            sx={{
+            fontFamily: "Inter, sans-serif",
+              backgroundColor: "#3B82F6",
+              color: "#fff",
+              border: "none",
+              padding: "12px 24px",
+              fontSize: "12px",
+              borderRadius: "8px",
+              cursor: "pointer",
+            }}
+            variant="contained"
+            color="primary"
+            onClick={handleCreateProject}
+            disabled={isSaving}
+          >
+            {isSaving ? "Saving..." : "Create"}
+          </Button>
         </div>
       </div>
     </div>

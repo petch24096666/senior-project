@@ -9,14 +9,29 @@ const RegisterPage = () => {
   const [fullname, setFullname] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [agree, setAgree] = useState(false); // ✅ State สำหรับ Checkbox
+  const [error, setError] = useState('');
 
   function register(event) {
     event.preventDefault();
+
+    // ✅ ตรวจสอบว่า Password และ Confirm Password ตรงกัน
+    if (password !== confirmPassword) {
+        setError("Passwords do not match. Please try again.");
+        return;
+    }
+
+    // ✅ ตรวจสอบว่า Checkbox ถูกติ๊กหรือไม่
+    if (!agree) {
+        setError("You must agree to the Terms and Privacy Policy.");
+        return;
+    }
+
     axios.post(`${url}/api/register`, { fullname, email, password })
-      .then(res => {
-        navigate("/");
-      }).catch(err => console.log(err));
+        .then(res => {
+            navigate("/");
+        }).catch(err => console.log(err));
   }
 
   const styles = {
@@ -31,7 +46,7 @@ const RegisterPage = () => {
     },
     card: {
       width: "400px",
-      height: "600px",
+      height: "670px",
       padding: "40px",
       backgroundColor: "#fff",
       borderRadius: "12px",
@@ -42,7 +57,6 @@ const RegisterPage = () => {
       fontSize: "24px",
       fontWeight: "bold",
       color: "#111827",
-      marginTop: "-5px",
     },
     subtitle: {
       fontSize: "14px",
@@ -69,6 +83,18 @@ const RegisterPage = () => {
       backgroundColor: "#F9FAFB",
       outline: "none",
     },
+    errorMessage: {
+      display: "flex",
+      alignItems: "center",
+      color: "#D32F2F",
+      fontSize: "14px",
+      marginTop: "5px",
+      marginBottom: "10px",
+    },
+    errorIcon: {
+      marginRight: "8px",
+      fontSize: "16px",
+    },
     options: {
       display: "flex",
       justifyContent: "left",
@@ -93,11 +119,11 @@ const RegisterPage = () => {
     button: {
       width: "100%",
       padding: "14px",
-      backgroundColor: "#2563EB",
+      backgroundColor: agree ? "#2563EB" : "#A0AEC0", // ✅ เปลี่ยนสีปุ่มถ้า Checkbox ไม่ถูกติ๊ก
       color: "white",
       borderRadius: "8px",
       border: "none",
-      cursor: "pointer",
+      cursor: agree ? "pointer" : "not-allowed", // ✅ ปิดการใช้งานปุ่มถ้า Checkbox ไม่ถูกติ๊ก
       fontSize: "16px",
       fontWeight: "600",
       marginBottom: "24px",
@@ -152,33 +178,38 @@ const RegisterPage = () => {
         <form onSubmit={register}>
           <div style={styles.inputGroup}>
             <label style={styles.label}>Full Name</label>
-            <input type="text" placeholder="John Doe" style={styles.input} onChange={e => setFullname(e.target.value)}/>
+            <input type="text" placeholder="John Doe" style={styles.input} onChange={e => setFullname(e.target.value)} required />
           </div>
 
           <div style={styles.inputGroup}>
             <label style={styles.label}>Email address</label>
-            <input type="email" placeholder="john@example.com" style={styles.input} onChange={e => setEmail(e.target.value)}/>
+            <input type="email" placeholder="john@example.com" style={styles.input} onChange={e => setEmail(e.target.value)} required />
           </div>
 
           <div style={styles.inputGroup}>
             <label style={styles.label}>Password</label>
-            <input type="password" placeholder="∗∗∗∗∗∗∗∗∗" style={styles.input} onChange={e => setPassword(e.target.value)}/>
+            <input type="password" placeholder="∗∗∗∗∗∗∗∗∗" style={styles.input} onChange={e => setPassword(e.target.value)} required />
           </div>
 
           <div style={styles.inputGroup}>
             <label style={styles.label}>Confirm Password</label>
-            <input type="password" placeholder="∗∗∗∗∗∗∗∗∗" style={styles.input} />
+            {error && (
+              <div style={styles.errorMessage}>
+                <span style={styles.errorIcon}>🚨</span> {error}
+              </div>
+            )}
+            <input type="password" placeholder="∗∗∗∗∗∗∗∗∗" style={styles.input} onChange={e => setConfirmPassword(e.target.value)} required />
           </div>
 
           <div style={styles.options}>
-            <input type="checkbox" style={styles.checkbox} />
+            <input type="checkbox" style={styles.checkbox} checked={agree} onChange={() => setAgree(!agree)} />
             <label style={styles.textlink}>
               I agree to the <a href="#" style={styles.link}>Terms of Service</a> and{" "}
               <a href="#" style={styles.link}>Privacy Policy</a>
             </label>
           </div>
 
-          <button style={styles.button}>Register</button>
+          <button style={styles.button} disabled={!agree}>Register</button>
         </form>
         <div style={styles.divider}>
           <span style={styles.line}></span>
