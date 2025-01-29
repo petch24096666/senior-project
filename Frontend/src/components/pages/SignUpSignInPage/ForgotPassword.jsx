@@ -9,13 +9,6 @@ const ForgotPassword = () => {
     alert("A password reset link has been sent to your email.");
   };
 
-  const handleBack = () => {
-    console.log("Go back clicked");
-    // สามารถใช้ window.history.back() หรือ navigate("/login") ถ้าใช้ React Router
-    window.history.back();
-  };
-
-  // 🎨 CSS แบบ inline (รวมอยู่ในไฟล์ JSX)
   const styles = {
     "forgotpass-container": {
     display: "flex",
@@ -26,13 +19,14 @@ const ForgotPassword = () => {
     backgroundColor: "#f5f6fa",
     padding: "0",
     margin: "0",
-    overflow: "hidden", // ✅ ปิด Scrollbar แนวตั้ง & แนวนอน
-    position: "fixed", // ✅ ทำให้คงที่ไม่ขยับ
+    overflow: "hidden",
+    position: "fixed",
     top: 0,
     left: 0,
+    marginTop: "-10px"
   },
     "forgotpass-card": {
-      position: "relative", // ✅ ใช้สำหรับจัดไอคอน Back
+      position: "relative",
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
@@ -54,6 +48,7 @@ const ForgotPassword = () => {
       fontSize: "20px",
       cursor: "pointer",
       color: "#333",
+      textDecoration: "none"
     },
     "forgotpass-lockIcon": {
       fontSize: "40px",
@@ -118,21 +113,17 @@ const ForgotPassword = () => {
   return (
     <div style={styles["forgotpass-container"]}>
       <div style={styles["forgotpass-card"]}>
-        {/* 🔙 ไอคอน Back */}
-        <div style={styles["forgotpass-backIcon"]} onClick={handleBack}>
+        <a href="/" style={styles["forgotpass-backIcon"]}>
           ←
-        </div>
+        </a>
 
-        {/* 🔒 ไอคอนล็อค */}
         <div style={styles["forgotpass-lockIcon"]}>🔒</div>
 
-        {/* 📝 หัวข้อ Forgot Password */}
         <h2 style={styles["forgotpass-title"]}>Forgot your password?</h2>
         <p style={styles["forgotpass-description"]}>
           Enter your email address and we’ll send you a link to reset your password.
         </p>
 
-        {/* 📩 ฟอร์มป้อนอีเมล */}
         <form onSubmit={handleSubmit} style={styles["forgotpass-form"]}>
           <div style={styles["forgotpass-inputContainer"]}>
             <label style={styles["forgotpass-label"]}>Email address</label>
@@ -146,7 +137,6 @@ const ForgotPassword = () => {
             />
           </div>
 
-          {/* 🔵 ปุ่มส่งลิงก์รีเซ็ตรหัสผ่าน */}
           <button type="submit" style={styles["forgotpass-button"]}>
             Send reset link
           </button>

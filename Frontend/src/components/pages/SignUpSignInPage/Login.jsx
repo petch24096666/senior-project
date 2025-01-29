@@ -70,7 +70,7 @@ const LoginPage = () => {
       display: "flex",
       justifyContent: "center",
       alignItems: "center",
-      height: "100vh",
+      height: "96vh",
       backgroundColor: "#F9FAFB",
       margin: "0",
       fontFamily: "'Arial', sans-serif",
@@ -97,6 +97,7 @@ const LoginPage = () => {
     inputGroup: {
       textAlign: "left",
       marginBottom: "16px",
+      marginRight: "25px",
     },
     label: {
       display: "block",
@@ -127,7 +128,8 @@ const LoginPage = () => {
       alignItems: "center",
       fontSize: "14px",
       color: "#4B5563",
-      marginBottom: "24px",
+      marginTop: "20px",
+      marginBottom: "20px",
     },
     checkboxContainer: {
       display: "flex",
@@ -224,7 +226,7 @@ const LoginPage = () => {
             <label style={styles.label}>Password</label>
             <input
               type="password"
-              placeholder="********"
+              placeholder="∗∗∗∗∗∗∗∗∗"
               style={styles.input(errors.password)}
               value={values.password}
               onChange={(e) => setValues({ ...values, password: e.target.value })}

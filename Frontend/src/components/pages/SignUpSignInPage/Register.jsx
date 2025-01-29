@@ -11,10 +11,11 @@ const RegisterPage = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agree, setAgree] = useState(false); // ✅ State สำหรับ Checkbox
-  const [error, setError] = useState('');
+  const [error, setError] = useState(""); // ✅ ต้องกำหนดค่าให้ error
 
   function register(event) {
     event.preventDefault();
+    if (!validateForm()) return;
 
     // ✅ ตรวจสอบว่า Password และ Confirm Password ตรงกัน
     if (password !== confirmPassword) {
@@ -27,11 +28,10 @@ const RegisterPage = () => {
         setError("You must agree to the Terms and Privacy Policy.");
         return;
     }
-
     axios.post(`${url}/api/register`, { fullname, email, password })
-        .then(res => {
-            navigate("/");
-        }).catch(err => console.log(err));
+      .then(res => {
+          navigate("/");
+      }).catch(err => console.log(err));
   }
 
   const styles = {
@@ -46,7 +46,7 @@ const RegisterPage = () => {
     },
     card: {
       width: "400px",
-      height: "670px",
+      height: "600px",
       padding: "40px",
       backgroundColor: "#fff",
       borderRadius: "12px",
@@ -57,6 +57,7 @@ const RegisterPage = () => {
       fontSize: "24px",
       fontWeight: "bold",
       color: "#111827",
+      marginTop: "-5px",
     },
     subtitle: {
       fontSize: "14px",
@@ -83,25 +84,14 @@ const RegisterPage = () => {
       backgroundColor: "#F9FAFB",
       outline: "none",
     },
-    errorMessage: {
-      display: "flex",
-      alignItems: "center",
-      color: "#D32F2F",
-      fontSize: "14px",
-      marginTop: "5px",
-      marginBottom: "10px",
-    },
-    errorIcon: {
-      marginRight: "8px",
-      fontSize: "16px",
-    },
     options: {
       display: "flex",
       justifyContent: "left",
       alignItems: "center",
       fontSize: "14px",
       color: "#4B5563",
-      marginBottom: "24px",
+      marginTop: "20px",
+      marginBottom: "20px",
     },
     checkbox: {
       height: "1.7vh",
@@ -165,6 +155,14 @@ const RegisterPage = () => {
     signup: {
       fontSize: "14px",
       color: "#4B5563",
+    },
+    errorText: {
+      color: "#E53E3E",
+      fontSize: "12px",
+      marginTop: "4px",
+      display: "flex",
+      alignItems: "center",
+      gap: "5px",
     },
   };
 
