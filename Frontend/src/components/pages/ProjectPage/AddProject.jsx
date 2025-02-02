@@ -251,10 +251,12 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
           <Button
             sx={{
               fontFamily: "Inter, sans-serif",
-              backgroundColor: "transparent",
+            backgroundColor: "#4F46E5",
+              color: "#fff",
               border: "none",
+              padding: "12px 24px",
               fontSize: "12px",
-              color: "#6B7280",
+              borderRadius: "8px",
               cursor: "pointer",
             }}
             variant="outlined"
@@ -267,7 +269,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
           <Button
             sx={{
             fontFamily: "Inter, sans-serif",
-              backgroundColor: "#3B82F6",
+            backgroundColor: "#4F46E5",
               color: "#fff",
               border: "none",
               padding: "12px 24px",

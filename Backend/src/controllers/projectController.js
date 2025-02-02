@@ -20,15 +20,30 @@ export const getProjectById = async (req, res) => {
   }
 
   try {
-    const [rows] = await db.query(Project.getById, [id]);
-
-    if (rows.length === 0) {
+    // ✅ ดึงข้อมูล Project
+    const [projectResults] = await db.query(Project.getById, [id]);
+    if (!projectResults.length) {
       return res.status(404).json({ success: false, error: "Project not found." });
     }
 
-    res.status(200).json({ success: true, data: rows[0] });
+    const project = projectResults[0];
+
+    // ✅ ดึงข้อมูล Team Members ของโปรเจกต์
+    const [membersResults] = await db.query("SELECT email, role FROM project_members WHERE project_id = ?", [id]);
+
+    // ✅ รวมข้อมูลทั้งหมดเป็น JSON Response
+    res.status(200).json({
+      success: true,
+      data: {
+        id: project.id,
+        title: project.title,
+        description: project.description,
+        teamMembers: membersResults || [],
+      },
+    });
+
   } catch (error) {
-    console.error("Database error:", error.message);
+    console.error("Database error:", error);
     res.status(500).json({ success: false, error: "An error occurred while fetching the project." });
   }
 };
@@ -74,28 +89,39 @@ export const createProject = async (req, res) => {
 // อัปเดตข้อมูลโปรเจค
 export const updateProject = async (req, res) => {
   const { id } = req.params;
-  const updates = req.body;
+  const { title, description, teamMembers } = req.body;
 
-  if (!id) return res.status(400).json({ success: false, error: "Project ID is required" });
-  if (Object.keys(updates).length === 0) return res.status(400).json({ success: false, error: "No valid fields provided for update" });
+  console.log("Updating Project ID:", id);
+  console.log("Request Body:", req.body);
+
+  if (!id) {
+    return res.status(400).json({ success: false, error: "Project ID is required" });
+  }
 
   try {
-    const fieldsToUpdate = Object.keys(updates).map(field => `${field} = ?`).join(", ");
-    const values = [...Object.values(updates), id];
+    // อัปเดต Project Table
+    const updateProjectQuery = "UPDATE projects SET title = ?, description = ? WHERE id = ?";
+    await db.query(updateProjectQuery, [title, description, id]);
 
-    const sql = `UPDATE projects SET ${fieldsToUpdate} WHERE id = ?`;
-    const [result] = await db.query(sql, values);
+    // ลบ Team Members เดิมก่อน
+    const deleteMembersQuery = "DELETE FROM project_members WHERE project_id = ?";
+    await db.query(deleteMembersQuery, [id]);
 
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, error: "Project not found" });
+    // เพิ่ม Team Members ใหม่
+    if (teamMembers.length > 0) {
+      const insertMembersQuery = "INSERT INTO project_members (project_id, email, role) VALUES ?";
+      const memberValues = teamMembers.map((member) => [id, member.email, member.role]);
+      await db.query(insertMembersQuery, [memberValues]);
     }
 
-    res.status(200).json({ success: true, message: "Project updated successfully" });
+    console.log("Project Updated Successfully");
+    res.status(200).json({ success: true, message: "Project updated successfully!" });
   } catch (error) {
-    console.error("Database update error:", error);
-    res.status(500).json({ success: false, error: "Database update error" });
+    console.error("Database error:", error);
+    res.status(500).json({ success: false, error: "An error occurred while updating the project." });
   }
 };
+
 
 // ลบโปรเจค
 export const deleteProject = async (req, res) => {

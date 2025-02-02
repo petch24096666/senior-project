@@ -48,7 +48,7 @@ const styles = {
     justifyContent: "space-between",
   },
   input: {
-    width: "100%",
+    width: "390px",
     padding: "12px 16px",
     fontSize: "14px",
     border: "1px solid #D1D5DB",
@@ -95,73 +95,89 @@ const EditProjectModal = ({ projectId, onClose, onProjectUpdated }) => {
   const [teamMembers, setTeamMembers] = useState([{ email: "", role: "" }]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // ดึงข้อมูลโปรเจกต์ที่ต้องการแก้ไข
+  // ✅ โหลดข้อมูล Project + Team Members
   useEffect(() => {
     const fetchProject = async () => {
       try {
+        console.log("Fetching project data for ID:", projectId);
         const response = await axios.get(`${url}/api/projects/${projectId}`);
         const data = response.data.data;
 
-        setProjectName(data.title || ""); // เซ็ต Project Name
-        setProjectDescription(data.description || ""); // เซ็ต Project Description
-        setTeamMembers(data.teamMembers || [{ email: "", role: "" }]); // เซ็ต Team Members
+        console.log("Fetched Project Data:", data);
+
+        setProjectName(data.title || ""); 
+        setProjectDescription(data.description || ""); 
+        setTeamMembers(data.teamMembers || [{ email: "", role: "" }]); 
       } catch (error) {
         console.error("Error fetching project:", error);
       }
     };
 
-    fetchProject();
+    if (projectId) {
+      fetchProject();
+    }
   }, [projectId]);
 
+  // ✅ เพิ่มสมาชิกทีมใหม่
   const handleAddMember = () => {
     setTeamMembers([...teamMembers, { email: "", role: "" }]);
   };
 
+  // ✅ ลบสมาชิกทีม
   const handleRemoveMember = (index) => {
-    const updatedMembers = [...teamMembers];
-    updatedMembers.splice(index, 1);
-    setTeamMembers(updatedMembers);
+    setTeamMembers(teamMembers.filter((_, i) => i !== index));
   };
 
+  // ✅ อัปเดตค่าของสมาชิกทีม
   const handleMemberChange = (index, field, value) => {
     const updatedMembers = [...teamMembers];
     updatedMembers[index][field] = value;
     setTeamMembers(updatedMembers);
   };
 
+  // ✅ บันทึกการเปลี่ยนแปลง
   const handleSaveChanges = async () => {
     if (!projectName.trim()) {
       alert("Project name is required.");
       return;
     }
-
+  
     if (teamMembers.length === 0) {
       alert("At least one team member is required.");
       return;
     }
-
+  
     try {
       setIsSaving(true);
+      console.log("🔄 Sending update request...");
+  
+      // เช็คว่าทีมเมมเบอร์ถูกต้อง
+      console.log("👥 Team Members Data:", teamMembers);
+  
       const response = await axios.put(`${url}/api/projects/${projectId}`, {
         title: projectName,
         description: projectDescription,
         teamMembers: teamMembers,
       });
-
+  
+      console.log("✅ Update Response:", response.data);
+  
       if (response.data.success) {
-        alert("Project updated successfully!");
-        onProjectUpdated(); // Refresh project list
-        onClose();
+        console.log("🎉 Project updated successfully!");
+        await onProjectUpdated(); // โหลดข้อมูลใหม่
+        onClose(); // ปิด Modal
       } else {
+        console.error("❌ Failed to update project:", response.data);
         alert("Failed to update project. Try again.");
       }
     } catch (error) {
-      console.error("Error saving changes:", error);
+      console.error("🚨 Error updating project:", error.response?.data || error.message);
       alert("Error occurred while updating the project.");
     } finally {
       setIsSaving(false);
     }
   };
+  
 
   return (
     <div style={styles.overlay}>
@@ -239,6 +255,16 @@ const EditProjectModal = ({ projectId, onClose, onProjectUpdated }) => {
         </div>
         <div style={styles.buttonContainer}>
           <Button
+            sx={{
+              fontFamily: "Inter, sans-serif",
+              backgroundColor: "#4F46E5",
+                color: "#fff",
+                border: "none",
+                padding: "12px 24px",
+                fontSize: "12px",
+                borderRadius: "8px",
+                cursor: "pointer",
+            }}
             variant="outlined"
             color="secondary"
             onClick={onClose}
@@ -247,6 +273,16 @@ const EditProjectModal = ({ projectId, onClose, onProjectUpdated }) => {
             Cancel
           </Button>
           <Button
+            sx={{
+              fontFamily: "Inter, sans-serif",
+            backgroundColor: "#4F46E5",
+              color: "#fff",
+              border: "none",
+              padding: "12px 24px",
+              fontSize: "12px",
+              borderRadius: "8px",
+              cursor: "pointer",
+              }}
             variant="contained"
             color="primary"
             onClick={handleSaveChanges}
@@ -261,3 +297,4 @@ const EditProjectModal = ({ projectId, onClose, onProjectUpdated }) => {
 };
 
 export default EditProjectModal;
+
