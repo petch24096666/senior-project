@@ -11,6 +11,7 @@ const styles = {
         gap: '32px',
         overflowY: 'auto',  // ทำให้มีการเลื่อนเฉพาะแนวตั้ง
         overflowX: 'hidden',  // ซ่อนการเลื่อนแนวนอน
+        zoom: "0.85"
     },
     header: {
         alignSelf: 'stretch',

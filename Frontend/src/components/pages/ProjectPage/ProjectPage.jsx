@@ -13,6 +13,7 @@ const styles = {
     padding: "32px 22px",
     maxWidth: "calc(100% - 44px)",
     margin: "0 auto",
+     zoom: "0.85"
   },
   headerContainer: {
     display: "flex",

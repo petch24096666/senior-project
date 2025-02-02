@@ -117,6 +117,7 @@ const TopBar = () => {
         color: "black",
         boxShadow: "none",
         borderBottom: "1px solid #ccc",
+        zoom: "0.85"
       }}
     >
       <Toolbar sx={{ display: "flex", justifyContent: "space-between" }}>
