@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Button } from "@mui/material"; // Import Button จาก MUI
+import React, { useState, useEffect } from "react";
+import { Button } from "@mui/material";
 import { TextAreaField } from "@aws-amplify/ui-react";
 import axios from "axios";
 import deleteIcon from "../../../assets/icons/Trash-icon.png";
@@ -24,7 +24,7 @@ const styles = {
     backgroundColor: "#fff",
     borderRadius: "12px",
     width: "500px",
-    height: "431px",
+    height: "auto",
     maxWidth: "90vw",
     maxHeight: "90vh",
     overflow: "hidden",
@@ -87,24 +87,31 @@ const styles = {
     marginBottom: "8px",
     display: "block",
   },
-  inputField: {
-    width: "400px",
-    height: "42px",
-    borderRadius: "8px",
-    border: "1px solid #D1D5DB",
-    backgroundColor: "#F9FAFB",
-    padding: "0 0 0 16px",
-  },
-  sectionSpacing: {
-    marginBottom: "24px",
-  },
 };
 
-const CreateProjectModal = ({ onClose, onProjectCreated }) => {
+const EditProjectModal = ({ projectId, onClose, onProjectUpdated }) => {
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [teamMembers, setTeamMembers] = useState([{ email: "", role: "" }]);
   const [isSaving, setIsSaving] = useState(false);
+
+  // ดึงข้อมูลโปรเจกต์ที่ต้องการแก้ไข
+  useEffect(() => {
+    const fetchProject = async () => {
+      try {
+        const response = await axios.get(`${url}/api/projects/${projectId}`);
+        const data = response.data.data;
+
+        setProjectName(data.title || ""); // เซ็ต Project Name
+        setProjectDescription(data.description || ""); // เซ็ต Project Description
+        setTeamMembers(data.teamMembers || [{ email: "", role: "" }]); // เซ็ต Team Members
+      } catch (error) {
+        console.error("Error fetching project:", error);
+      }
+    };
+
+    fetchProject();
+  }, [projectId]);
 
   const handleAddMember = () => {
     setTeamMembers([...teamMembers, { email: "", role: "" }]);
@@ -122,7 +129,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
     setTeamMembers(updatedMembers);
   };
 
-  const handleCreateProject = async () => {
+  const handleSaveChanges = async () => {
     if (!projectName.trim()) {
       alert("Project name is required.");
       return;
@@ -135,66 +142,49 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
 
     try {
       setIsSaving(true);
-      console.log("🚀 Sending API request...");
-
-      const response = await axios.post(`${url}/api/projects`, {
+      const response = await axios.put(`${url}/api/projects/${projectId}`, {
         title: projectName,
         description: projectDescription,
-        tasksCompleted: 0,
-        totalTasks: teamMembers.length || 0,
         teamMembers: teamMembers,
       });
 
-      console.log("✅ Project Created:", response.data);
-
       if (response.data.success) {
-        setProjectName("");
-        setProjectDescription("");
-        setTeamMembers([{ email: "", role: "" }]);
-
-        console.log("🔵 Calling onProjectCreated()...");
-        await onProjectCreated(); // ✅ ต้องแน่ใจว่า `await` ถูกเรียก
-        console.log("✅ onProjectCreated() finished!");
-
-        console.log("🔴 Calling onClose()...");
-        onClose(); // ✅ ปิด Modal แน่นอน
+        alert("Project updated successfully!");
+        onProjectUpdated(); // Refresh project list
+        onClose();
       } else {
-        alert("Failed to create project. Try again.");
+        alert("Failed to update project. Try again.");
       }
     } catch (error) {
-      console.error("❌ Error saving project:", error);
-      alert("Error occurred while creating the project.");
+      console.error("Error saving changes:", error);
+      alert("Error occurred while updating the project.");
     } finally {
-      console.log("🟢 Setting isSaving to false...");
-      setIsSaving(false); // ✅ ป้องกันปุ่มค้าง
+      setIsSaving(false);
     }
-};
-
-  
-  
+  };
 
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
         <div style={styles.header}>
-          <span>Create New Project</span>
+          <span>Edit Project</span>
           <button style={styles.removeButton} onClick={onClose}>
-            <img src={crossIcon} alt="Remove"/>
+            <img src={crossIcon} alt="Close" />
           </button>
         </div>
 
         <div style={styles.modalContent}>
-          <div style={styles.sectionSpacing}>
+          <div>
             <label style={styles.inputLabel}>Project Name</label>
             <input
               type="text"
               placeholder="Enter project name"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              style={styles.inputField}
+              style={styles.input}
             />
           </div>
-          <div style={styles.sectionSpacing}>
+          <div>
             <label style={styles.inputLabel}>Project Description</label>
             <TextAreaField
               placeholder="Enter project description..."
@@ -237,7 +227,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
                   <option value="Viewer">Viewer</option>
                 </select>
                 <button style={styles.removeButton} onClick={() => handleRemoveMember(index)}>
-                  <img src={deleteIcon} alt="Remove"/>
+                  <img src={deleteIcon} alt="Remove" />
                 </button>
               </div>
             ))}
@@ -249,14 +239,6 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
         </div>
         <div style={styles.buttonContainer}>
           <Button
-            sx={{
-              fontFamily: "Inter, sans-serif",
-              backgroundColor: "transparent",
-              border: "none",
-              fontSize: "12px",
-              color: "#6B7280",
-              cursor: "pointer",
-            }}
             variant="outlined"
             color="secondary"
             onClick={onClose}
@@ -265,22 +247,12 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
             Cancel
           </Button>
           <Button
-            sx={{
-            fontFamily: "Inter, sans-serif",
-              backgroundColor: "#3B82F6",
-              color: "#fff",
-              border: "none",
-              padding: "12px 24px",
-              fontSize: "12px",
-              borderRadius: "8px",
-              cursor: "pointer",
-            }}
             variant="contained"
             color="primary"
-            onClick={handleCreateProject}
+            onClick={handleSaveChanges}
             disabled={isSaving}
           >
-            {isSaving ? "Saving..." : "Create"}
+            {isSaving ? "Saving..." : "Save Changes"}
           </Button>
         </div>
       </div>
@@ -288,4 +260,4 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
   );
 };
 
-export default CreateProjectModal;
+export default EditProjectModal;
