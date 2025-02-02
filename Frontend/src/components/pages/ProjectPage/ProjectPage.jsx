@@ -5,6 +5,7 @@ import SearchBar from "../../common/searchbar";
 import CreateProjectModal from "./AddProject";
 import ProjectCard from "../../common/projectcard"
 import ConfirmationPopup from "../../common/ConfirmationPopup";
+import EditProjectModal from "./EditProject";
 const url = import.meta.env.VITE_BACKEND_URL;
 
 
@@ -59,17 +60,18 @@ const ProjectPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState(null); // เก็บ ID ของโปรเจ็กต์ที่เลือก
   const [isPopupOpen, setIsPopupOpen] = useState(false);
-
-  const fetchProjects = async () => {
-    try {
-      const response = await axios.get(`${url}/api/projects`);
-      console.log("Fetched projects:", response.data);
-      setProjects(response.data.data || []);
-      setFilteredProjects(response.data.data || []);
-    } catch (error) {
-      console.error("Error fetching projects:", error);
-    }
-  };
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  
+const fetchProjects = async () => {
+  try {
+    const response = await axios.get(`${url}/api/projects`);
+    console.log("Fetched projects:", response.data);
+    setProjects(response.data.data || []);
+    setFilteredProjects(response.data.data || []);
+  } catch (error) {
+    console.error("Error fetching projects:", error);
+  }
+};
 
   useEffect(() => {
     fetchProjects();
@@ -113,8 +115,19 @@ const ProjectPage = () => {
     }
   };
 
-  const handleEdit = () => {
-    console.log("Edit clicked");
+  const handleEditProject = (projectId) => {
+    setSelectedProjectId(projectId);
+    setIsEditModalOpen(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setIsEditModalOpen(false);
+    setSelectedProjectId(null);
+  };
+
+  const handleProjectUpdated = () => {
+    // Fetch updated projects here
+    console.log("Project updated!");
   };
 
 
@@ -153,13 +166,6 @@ const ProjectPage = () => {
       </div>
       <div style={styles.projectGrid}>
         {/* แสดง Popup */}
-        <ConfirmationPopup
-          open={isPopupOpen}
-          title="Confirm Deletion"
-          message="Are you sure you want to delete this project? This action cannot be undone."
-          onCancel={handleClosePopup}
-          onConfirm={handleConfirmDelete}
-        />
         {filteredProjects.length > 0 ? (
           filteredProjects.map((project, index) => (
             <ProjectCard
@@ -169,7 +175,7 @@ const ProjectPage = () => {
               description={project.description}
               tasksCompleted={project.tasksCompleted}
               totalTasks={project.totalTasks}
-              onEdit={handleEdit}
+              onEdit={() => handleEditProject(project.id)}
               onDelete={() => handleOpenPopup(project.id)}
             />
           ))
@@ -177,6 +183,23 @@ const ProjectPage = () => {
           <p>No projects available.</p>
         )}
       </div>
+      {/* Confirmation Popup */}
+      <ConfirmationPopup
+          open={isPopupOpen}
+          title="Confirm Deletion"
+          message="Are you sure you want to delete this project? This action cannot be undone."
+          onCancel={handleClosePopup}
+          onConfirm={handleConfirmDelete}
+        />
+
+        {/* Edit Modal */}
+      {isEditModalOpen && (
+        <EditProjectModal
+          projectId={selectedProjectId}
+          onClose={handleCloseEditModal}
+          onProjectUpdated={fetchProjects}
+        />
+      )}
     </div>
   );
 };
