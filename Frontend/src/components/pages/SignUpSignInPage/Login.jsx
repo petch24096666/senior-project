@@ -48,10 +48,14 @@ const LoginPage = () => {
   function login(event) {
     event.preventDefault();
     if (!validateForm()) return;
-
+  
+    console.log("Attempting to login with:", values);
+  
     axios.post(`${url}/api/login`, values)
       .then((res) => {
-        if (res.data.Status === "Success") {
+        console.log("Login response received:", res.data);
+  
+        if (res.data.success) {
           if (rememberMe) {
             localStorage.setItem("rememberedEmail", values.email);
           } else {
@@ -59,10 +63,13 @@ const LoginPage = () => {
           }
           navigate("/dashboard");
         } else {
-          setErrors({ general: res.data.Error });
+          setErrors({ general: res.data.error || "Login failed" });
         }
       })
-      .catch((err) => console.log(err));
+      .catch((err) => {
+        console.error("API Error:", err.response?.data || err.message);
+        setErrors({ general: err.response?.data?.error || "Something went wrong" });
+      });
   }
 
   const styles = {

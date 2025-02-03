@@ -6,33 +6,38 @@ const url = import.meta.env.VITE_BACKEND_URL;
 const RegisterPage = () => {
   const navigate = useNavigate();
 
-  const [fullname, setFullname] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [agree, setAgree] = useState(false); // ✅ State สำหรับ Checkbox
-  const [error, setError] = useState('');
+  const [fullname, setFullname] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agree, setAgree] = useState(false);
+  const [error, setError] = useState("");
+  const [isRegistering, setIsRegistering] = useState(false); // ✅ State สำหรับสถานะการสมัคร
 
   function register(event) {
     event.preventDefault();
-
-    // ✅ ตรวจสอบว่า Password และ Confirm Password ตรงกัน
+  
     if (password !== confirmPassword) {
-        setError("Passwords do not match. Please try again.");
-        return;
+      setError("Passwords do not match. Please try again.");
+      return;
     }
-
-    // ✅ ตรวจสอบว่า Checkbox ถูกติ๊กหรือไม่
+  
     if (!agree) {
-        setError("You must agree to the Terms and Privacy Policy.");
-        return;
+      setError("You must agree to the Terms and Privacy Policy.");
+      return;
     }
-
+  
+    // ✅ ตรวจสอบค่าก่อนส่งไป Backend
+    console.log("Sending request with data:", { fullname, email, password });
+  
     axios.post(`${url}/api/register`, { fullname, email, password })
-        .then(res => {
-            navigate("/");
-        }).catch(err => console.log(err));
+      .then(res => {
+        console.log("Response received:", res.data);
+        navigate("/");
+      })
+      .catch(err => console.error("API Error:", err.response?.data || err.message));
   }
+  
 
   const styles = {
     container: {
@@ -209,14 +214,15 @@ const RegisterPage = () => {
             </label>
           </div>
 
-          <button style={styles.button} disabled={!agree}>Register</button>
+          <button style={styles.button} disabled={!agree || isRegistering}>
+            {isRegistering ? "Registering..." : "Register"}
+          </button>
         </form>
         <div style={styles.divider}>
           <span style={styles.line}></span>
           <span style={styles.orText}>Or continue with</span>
           <span style={styles.line}></span>
         </div>
-
         <div style={styles.socialButtons}>
           <button style={styles.socialBtn}>G</button>
           <button style={styles.socialBtn}></button>
