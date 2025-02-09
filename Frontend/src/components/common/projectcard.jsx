@@ -23,15 +23,24 @@ const styles = {
     headerRow: {
         display: "flex",
         justifyContent: "space-between",
-        alignItems: "center",
+        alignItems: "center", // ✅ ป้องกันปุ่มไข่ปลาโดนดันลง
         marginBottom: "10px",
+        width: "100%", // ✅ ให้ row ใช้พื้นที่เต็มการ์ด
     },
     cardHeader: {
         fontFamily: "Inter, sans-serif",
-        fontSize: "24px",
+        fontSize: "24px", // ✅ ลดขนาดให้เหมาะสม
         fontWeight: "600",
-        lineHeight: "29.05px",
         color: "#111827",
+        wordWrap: "break-word", // ✅ บังคับให้ข้อความตัดคำเมื่อยาวเกิน
+        overflowWrap: "break-word", // ✅ ทำให้คำที่ยาวเกินไปตัดขึ้นบรรทัดใหม่
+        maxWidth: "85%",  // ✅ จำกัดความกว้างเพื่อให้เหลือพื้นที่สำหรับปุ่ม
+        flexGrow: 1, // ✅ บังคับให้ title ใช้พื้นที่ที่เหลือ
+        display: "-webkit-box",
+        WebkitBoxOrient: "vertical",
+        WebkitLineClamp: 2, // ✅ จำกัดให้แสดงสูงสุด 2 บรรทัด
+        overflow: "hidden", // ✅ ซ่อนข้อความที่เกิน 2 บรรทัด
+        alignItems: "center"
     },
     taskRow: {
         display: "flex",
@@ -118,7 +127,7 @@ const ProjectCard = ({ title, description, tasksCompleted, totalTasks, onEdit, o
             {/* ส่วนหัวของการ์ด (Header + ปุ่มไข่ปลา) */}
             <div style={styles.headerRow}>
                 <h3 style={styles.cardHeader}>{title || "Untitled Project"}</h3>
-                <IconButton onClick={handleMenuOpen}>
+                <IconButton onClick={handleMenuOpen} sx={{ flexShrink: 0, alignSelf: "flex-start" }}>
                     <MoreVertIcon />
                 </IconButton>
             </div>
