@@ -1,6 +1,7 @@
 const User = {
-  registerUser: "INSERT INTO user (`fullname`,`email`,`password`) VALUES (?)",
-  loginUser: "SELECT * FROM user WHERE `email` = ?",
+  registerUser: "INSERT INTO users (`fullname`, `email`, `password`) VALUES (?, ?, ?)",
+  checkEmailExists: "SELECT * FROM users WHERE email = ?",
+  loginUser: "SELECT * FROM users WHERE `email` = ?",
 };
 
 export default User;
