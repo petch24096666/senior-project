@@ -269,9 +269,9 @@ const Task = () => {
     <div style={styles.projectList}>
       <div style={styles.headerContainer}>
         <div>
-          <h1 style={styles.header}>Projects</h1>
+          <h1 style={styles.header}>Projects/Website Redesign Project</h1>
           <p style={styles.description}>
-            Get an overview of your projects and track progress.
+            Manage tasks and monitor progress efficiently.
           </p>
         </div>
         <div style={styles.buttonContainer}>

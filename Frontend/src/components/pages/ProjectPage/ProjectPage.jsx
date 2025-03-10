@@ -130,7 +130,6 @@ const fetchProjects = async () => {
     console.log("Project updated!");
   };
 
-
   return (
     <div style={styles.projectList}>
       <div style={styles.headerContainer}>
