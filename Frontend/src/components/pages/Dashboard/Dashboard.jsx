@@ -31,16 +31,20 @@ const styles = {
         fontFamily: "Inter, sans-serif"
     },
     cardContainer: {
-        display: 'flex',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
         gap: '32px',
-        flexWrap: 'wrap',
     },
     card: {
-        width: '280px',
         padding: '24px',
         background: 'white',
         borderRadius: '12px',
-        boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.05)',
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
     },
     cardHeader: {
         display: 'flex',
@@ -55,16 +59,16 @@ const styles = {
     table: {
         width: "100%",
         borderCollapse: "collapse",
-        fontFamily: "Inter, sans-serif", // ✅ ใช้ฟอนต์ Inter Sans
+        fontFamily: "Inter, sans-serif",
     },
     tableHeaderRow: {
-        backgroundColor: "#F3F4F6", // ✅ ทำให้หัวตารางดูเด่น
+        backgroundColor: "#F3F4F6",
     },
     tableHeader: {
         textAlign: "left",
         fontWeight: "700",
         padding: "12px",
-        fontFamily: "Inter, sans-serif", // ✅ ฟอนต์ Inter Sans
+        fontFamily: "Inter, sans-serif",
     },
     tableRow: {
         borderBottom: "1px solid #E5E7EB",
@@ -73,7 +77,7 @@ const styles = {
     tableCell: {
         textAlign: "left",
         padding: "12px",
-        fontFamily: "Inter, sans-serif", // ✅ ฟอนต์ Inter Sans
+        fontFamily: "Inter, sans-serif",
     },
     section: {
         display: 'flex',
@@ -85,14 +89,119 @@ const styles = {
         background: 'white',
         borderRadius: '12px',
         padding: '24px',
-        boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.05)',
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+    },
+    calendarContainer: {
+        padding: '16px',
+        borderRadius: '12px',
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+        background: 'white',
+        textAlign: 'center',
+    },
+    calendarHeader: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '12px',
+    },
+    calendarButton: {
+        width: '32px',
+        height: '32px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: '8px',
+        background: '#F9FAFB',
+        border: 'none',
+        color: '#6B7280',
+        cursor: 'pointer',
+    },
+    calendarTitle: {
+        fontSize: '14px',
+        fontWeight: '600',
+        color: '#111827',
+        fontFamily: "Inter, sans-serif"
+    },
+    calendarGrid: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(7, 1fr)',
+        gap: '2px',
+        marginBottom: '4px',
+    },
+    dayName: {
+        textAlign: 'center',
+        padding: '2px 0',
+        fontSize: '10px',
+        fontWeight: '500',
+        color: '#6B7280',
+        fontFamily: "Inter, sans-serif"
+    },
+    emptyDay: {
+        height: '28px',
+    },
+    day: {
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '28px',
+        fontSize: '10px',
+        cursor: 'pointer',
+        borderRadius: '8px',
+        color: '#6B7280',
+        fontFamily: "Inter, sans-serif"
+    },
+    todayDay: {
+        backgroundColor: '#EEF2FF',
+        color: '#4F46E5',
+        fontWeight: '600',
+    },
+    selectedDay: {
+        backgroundColor: '#4F46E5',
+        color: 'white',
+        fontWeight: '600',
     }
 };
 
 const Dashboard = () => {
     const [projects, setProjects] = useState([]);
     const [totalTasks, setTotalTasks] = useState(0);
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [selectedDate, setSelectedDate] = useState(new Date());
 
+    // Get current month and year
+    const currentMonth = currentDate.getMonth();
+    const currentYear = currentDate.getFullYear();
+
+    // Navigate to previous month
+    const prevMonth = () => {
+        setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+    };
+
+    // Navigate to next month
+    const nextMonth = () => {
+        setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
+    };
+
+    // Format the month name
+    const monthNames = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    // Day names - short version to save space
+    const dayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    // Get days in month
+    const getDaysInMonth = (year, month) => {
+        return new Date(year, month + 1, 0).getDate();
+    };
+
+    // Get day of week the month starts on (0 = Sunday, 1 = Monday, etc.)
+    const getFirstDayOfMonth = (year, month) => {
+        return new Date(year, month, 1).getDay();
+    };
+
+    const today = new Date();
     useEffect(() => {
         fetchProjects();
     }, []);
@@ -104,7 +213,7 @@ const Dashboard = () => {
 
             setProjects(projectData);
 
-            // ✅ คำนวณจำนวน Tasks ทั้งหมด (ถ้า totalTasks เป็น null หรือ undefined ให้เป็น 0)
+            // Calculate total tasks
             const taskCount = projectData.reduce((acc, project) => acc + (project.totalTasks || 0), 0);
             setTotalTasks(taskCount || 0);
 
@@ -113,11 +222,58 @@ const Dashboard = () => {
         }
     };
 
+    // Render day cells for the calendar
+    const renderCalendarDays = () => {
+        const days = [];
+        
+        // Add empty cells for days before the first day of the month
+        for (let i = 0; i < getFirstDayOfMonth(currentYear, currentMonth); i++) {
+            days.push(<div key={`empty-${i}`} style={styles.emptyDay}></div>);
+        }
+        
+        // Add cells for each day of the month
+        for (let day = 1; day <= getDaysInMonth(currentYear, currentMonth); day++) {
+            const isToday = day === today.getDate() && 
+                            currentMonth === today.getMonth() && 
+                            currentYear === today.getFullYear();
+            
+            const isSelected = selectedDate && 
+                              day === selectedDate.getDate() && 
+                              currentMonth === selectedDate.getMonth() && 
+                              currentYear === selectedDate.getFullYear();
+            
+            const dayStyle = {
+                ...styles.day,
+                ...(isToday ? styles.todayDay : {}),
+                ...(isSelected ? styles.selectedDay : {})
+            };
+            
+            days.push(
+                <div 
+                    key={day} 
+                    onClick={() => setSelectedDate(new Date(currentYear, currentMonth, day))}
+                    style={dayStyle}
+                >
+                    {day}
+                </div>
+            );
+        }
+        
+        return days;
+    };
+
     return (
         <div style={styles.container}>
-            <div style={styles.header}>
-                <h1 style={styles.headerTitle}>Welcome back!</h1>
-                <p style={styles.headerText}>Here's what's happening with your projects today.</p>
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'flex-start',
+                width: '100%'
+            }}>
+                <div style={styles.header}>
+                    <h1 style={styles.headerTitle}>Welcome back!</h1>
+                    <p style={styles.headerText}>Here's what's happening with your projects today.</p>
+                </div>
             </div>
 
             {/* 📌 Overview Cards */}
@@ -138,7 +294,24 @@ const Dashboard = () => {
                     <h2 style={{ fontSize: '32px', fontWeight: '700', color: '#111827' }}>{totalTasks}</h2>
                     <p style={{ color: '#10B981', fontSize: '14px' }}>⬆ 8% from last week</p>
                 </div>
-            </div>
+                {/* Mini Calendar */}
+                <div style={styles.calendarContainer}>
+                    <div style={styles.calendarHeader}>
+                        <button onClick={prevMonth} style={styles.calendarButton}>←</button>
+                        <div style={styles.calendarTitle}>
+                            {monthNames[currentMonth].substring(0, 3)} {currentYear}
+                        </div>
+                        <button onClick={nextMonth} style={styles.calendarButton}>→</button>
+                    </div>
+                    
+                    <div style={styles.calendarGrid}>
+                        {dayNames.map(day => (
+                            <div key={day} style={styles.dayName}>{day}</div>
+                        ))}
+                        {renderCalendarDays()}
+                    </div>
+                </div>
+            </div> 
 
             {/* 📌 Recent Projects Table */}
             <div style={{
@@ -199,7 +372,8 @@ const Dashboard = () => {
                     </tbody>
                 </table>
             </div>
-            {/* 📌 เหี้ยไรไม่รู้ */}
+
+            {/* 📌 Activity Section */}
             <div style={styles.section}>
                 <div style={styles.activityCard}>
                     <h3>Recent Activity</h3>
@@ -215,4 +389,5 @@ const Dashboard = () => {
         </div>
     );
 };
+
 export default Dashboard;
