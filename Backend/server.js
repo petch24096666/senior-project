@@ -4,6 +4,8 @@ import dotenv from "dotenv";
 import projectRoutes from "./src/routes/projectRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import db from "./src/config/database.js";
+import googleCalendarRoutes from "./src/routes/googleCalendar.js";
+import microsoftCalendarRoutes from "./src/routes/microsoftCalendar.js";
 
 dotenv.config();
 
@@ -15,6 +17,8 @@ app.use(cors());
 
 app.use(userRoutes);
 app.use(projectRoutes);
+app.use("/api", googleCalendarRoutes); // ✅ เพิ่ม Google Calendar API
+app.use("/api", microsoftCalendarRoutes); // ✅ เพิ่ม Microsoft Calendar API
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
 (async () => {
