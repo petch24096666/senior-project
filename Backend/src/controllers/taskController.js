@@ -47,32 +47,44 @@ export const getAllTask = async (req, res) => {
     }
   };
 
-export const createTask = async (req, res) => {
-    console.log("🟢 Received Task Data:", req.body); // ตรวจสอบค่าที่ถูกส่งมา
-
+  export const createTask = async (req, res) => {
     const { task_label, task_name, task_description, task_due_date, task_group } = req.body;
 
-    // ตรวจสอบว่าทุกค่าถูกส่งมาครบ
     if (!task_label || !task_name || !task_due_date || !task_group) {
-        console.error("❌ Missing required fields:", { task_label, task_name, task_due_date, task_group });
         return res.status(400).json({ success: false, error: "Missing required fields" });
     }
 
     try {
-        console.log("🟡 SQL Query: INSERT INTO task (task_label, task_name, task_description, task_due_date, task_group) VALUES (?, ?, ?, ?, ?)");
-        console.log("🟢 Data:", { task_label, task_name, task_description, task_due_date, task_group });
-    
+        const task_status = "To Do"; // กำหนดค่าเริ่มต้นให้ task_status เป็น "To Do"
         const [result] = await db.query(
-            "INSERT INTO task (task_label, task_name, task_description, task_due_date, task_group) VALUES (?, ?, ?, ?, ?)",
-            [task_label, task_name, task_description || "", task_due_date, task_group]
+            "INSERT INTO task (task_label, task_name, task_description, task_due_date, task_group, task_status) VALUES (?, ?, ?, ?, ?, ?)",
+            [task_label, task_name, task_description || "", task_due_date, task_group, task_status]
         );
-    
-        console.log("✅ Task Inserted with ID:", result.insertId);
+
         return res.status(201).json({ success: true, message: "Task created successfully", taskId: result.insertId });
-    
     } catch (error) {
         console.error("🔥 Database Insert Error:", error);
         return res.status(500).json({ success: false, error: error.message });
     }
-    
+};
+export const updateTaskStatus = async (req, res) => {
+    const { task_status } = req.body;
+    const { task_id } = req.params;
+
+    if (!task_status) {
+        return res.status(400).json({ success: false, error: "Task status is required." });
+    }
+
+    try {
+        const [result] = await db.query("UPDATE task SET task_status = ? WHERE task_id = ?", [task_status, task_id]);
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ success: false, error: "Task not found." });
+        }
+
+        return res.status(200).json({ success: true, message: "Task status updated successfully." });
+    } catch (error) {
+        console.error("Database error:", error);
+        return res.status(500).json({ success: false, error: "Failed to update task status." });
+    }
 };

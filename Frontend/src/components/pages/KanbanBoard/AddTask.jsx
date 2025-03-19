@@ -254,8 +254,6 @@ const AddTasktModal = ({ onClose, onTaskCreated }) => {
         const response = await axios.post(`${url}/api/task`, newTask);
 
         if (response.data.success) {
-            alert("Task created successfully!");
-
             // รีเซ็ตค่าอินพุต
             setTaskName("");
             setTaskDescription("");
