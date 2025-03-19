@@ -245,7 +245,8 @@ const AddTasktModal = ({ onClose, onTaskCreated }) => {
         const newTask = {
             task_label: selectedLabels.join(","), // ส่ง labels เป็น string คั่นด้วย ,
             task_name: taskName,
-            task_description: taskDescription,
+   
+          task_description: taskDescription,
             task_due_date: taskDueDate,
             task_group: taskGroup
         };
@@ -273,8 +274,7 @@ const AddTasktModal = ({ onClose, onTaskCreated }) => {
     } finally {
         setIsSaving(false);
     }
-  };  
-
+  }; 
   const handleLabelChange = (label) => {
     setSelectedLabels([label]); // เซ็ตค่าใหม่ให้มีแค่ Label ที่เลือก
   };
