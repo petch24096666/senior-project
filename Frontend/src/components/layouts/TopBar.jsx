@@ -19,6 +19,7 @@ import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import { useNavigate } from "react-router-dom";
 import axios from "axios"; // ✅ Import axios
+import { supabase } from "../../utils/supabaseClient";
 
 const url = import.meta.env.VITE_BACKEND_URL || "http://localhost:8081"; // ✅ ตรวจสอบค่า URL
 
@@ -62,47 +63,54 @@ const TopBar = () => {
   };
 
   // ✅ ฟังก์ชัน Logout
+  
+  const url = import.meta.env.VITE_BACKEND_URL; // ✅ ใช้ URL จาก .env
+  
   const handleLogout = async () => {
-    try {
-        const authToken = localStorage.getItem("authToken"); // ✅ ตรวจสอบ Token
-        
-        if (!authToken) {
-            console.warn("No authToken found. Redirecting to home.");
-            navigate("/", { replace: true });
-            return;
-        }
-
-        // ✅ เรียก API Logout และส่ง Token ไป
-        const response = await axios.post(`${url}/api/logout`, {}, {
-            headers: { Authorization: `Bearer ${authToken}` }
-        });
-
-        console.log("Logout Response:", response.data); // ✅ Debugging Log
-
-        // ✅ ล้างข้อมูล Authentication
-        localStorage.removeItem("authToken");
-        sessionStorage.removeItem("authSession");
-        document.cookie = "authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-
-        // ✅ ป้องกันการย้อนกลับ (Block Back Button)
-        window.history.pushState(null, "", "/");
-        window.history.replaceState(null, "", "/");
-
-        // ✅ บังคับป้องกัน Back Button
-        window.onpopstate = () => {
-            window.history.pushState(null, "", "/");
-        };
-
-        // ✅ เปลี่ยนเส้นทางไปหน้าแรก และบังคับไม่ให้ย้อนกลับ
-        navigate("/", { replace: true });
-    } catch (error) {
-        console.error("Logout Error:", error);
-        alert("Logout failed. Please try again.");
-    } finally {
-        handleProfileClose();
-    }
-};
-
+      try {
+          const authToken = localStorage.getItem("authToken"); // ✅ ตรวจสอบ Token
+  
+          // ✅ Logout จาก Supabase
+          const { error: supabaseError } = await supabase.auth.signOut();
+          if (supabaseError) {
+              console.error("❌ Supabase Logout Error:", supabaseError);
+          } else {
+              console.log("✅ Supabase Logout Success");
+          }
+  
+          // ✅ ถ้ามี Token ให้เรียก API Logout
+          if (authToken) {
+              try {
+                  const response = await axios.post(`${url}/api/logout`, {}, {
+                      headers: { Authorization: `Bearer ${authToken}` }
+                  });
+                  console.log("✅ API Logout Response:", response.data);
+              } catch (apiError) {
+                  console.error("❌ API Logout Error:", apiError);
+              }
+          }
+  
+          // ✅ ล้างข้อมูล Authentication
+          localStorage.removeItem("authToken");
+          localStorage.removeItem("googleToken"); // ✅ ลบ Google Token ด้วย
+          sessionStorage.removeItem("authSession");
+          document.cookie = "authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+  
+          // ✅ ป้องกันการย้อนกลับหลัง Logout
+          window.history.pushState(null, "", "/");
+          window.history.replaceState(null, "", "/");
+          window.onpopstate = () => {
+              window.history.pushState(null, "", "/");
+          };
+  
+          // ✅ เปลี่ยนเส้นทางไปหน้า Login และป้องกันการย้อนกลับ
+          navigate("/", { replace: true });
+  
+      } catch (error) {
+          console.error("❌ Logout Error:", error);
+          alert("Logout failed. Please try again.");
+      }
+  };  
 
 
   const open = Boolean(anchorEl);

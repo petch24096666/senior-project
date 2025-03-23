@@ -4,8 +4,10 @@ import dotenv from "dotenv";
 import projectRoutes from "./src/routes/projectRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import db from "./src/config/database.js";
-import googleCalendarRoutes from "./src/routes/googleCalendar.js";
-import microsoftCalendarRoutes from "./src/routes/microsoftCalendar.js";
+import calendarRoutes from "./src/routes/calendarRoutes.js";
+import { google } from "googleapis";
+
+
 
 dotenv.config();
 
@@ -15,10 +17,19 @@ const app = express();
 app.use(express.json());
 app.use(cors());
 
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Unauthorized - No token provided" });
+  }
+
+  req.token = authHeader.split(" ")[1]; // ตัด "Bearer " ออก
+  next();
+};
+
 app.use(userRoutes);
 app.use(projectRoutes);
-app.use("/api", googleCalendarRoutes); // ✅ เพิ่ม Google Calendar API
-app.use("/api", microsoftCalendarRoutes); // ✅ เพิ่ม Microsoft Calendar API
+app.use("/api", verifyToken, calendarRoutes);
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
 (async () => {
@@ -34,3 +45,4 @@ const PORT = process.env.PORT || 8081;
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
 });
+

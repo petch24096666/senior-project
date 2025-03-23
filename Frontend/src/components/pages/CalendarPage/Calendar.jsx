@@ -1,8 +1,9 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { supabase } from "../../../utils/supabaseClient";
 import { Button, Modal, TextField, MenuItem, ToggleButtonGroup, ToggleButton } from "@mui/material";
 
 const styles = {
@@ -64,12 +65,14 @@ const styles = {
 
 const CalendarDashboard = () => {
   const [events, setEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [openModal, setOpenModal] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: "", start: "", color: "#3788d8" });
   const [view, setView] = useState("timeGridDay"); // Default เป็น Today
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]); // วันที่เลือก
   const timelineRef = useRef(null);
   const calendarRef = useRef(null);
+  const [googleToken, setGoogleToken] = useState(localStorage.getItem("googleToken") || null);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   // 📌 เมื่อคลิกที่ปฏิทินซ้าย, Timeline จะเปลี่ยนไปวันที่นั้น
   const handleDateClick = (info) => {
@@ -80,21 +83,217 @@ const CalendarDashboard = () => {
     }
   };
 
-  const handleAddEvent = () => {
-    if (newEvent.title && newEvent.start) {
-      setEvents((prevEvents) => [...prevEvents, newEvent]);
+  const handleEventClick = (clickInfo) => {
+    setSelectedEvent(clickInfo.event);
+    setDeleteModalOpen(true);
+  };
+
+
+  const handleAddEvent = async () => {
+    if (!newEvent.title || !newEvent.start) {
+      alert("Please enter event details.");
+      return;
     }
+
+    const eventDetails = {
+      summary: newEvent.title,
+      description: "Created from my app",
+      start: {
+        dateTime: newEvent.start,
+        timeZone: "Asia/Bangkok",
+      },
+      end: {
+        dateTime: newEvent.end || newEvent.start,
+        timeZone: "Asia/Bangkok",
+      },
+    };
+
+    // ✅ เรียก API Google Calendar
+    const addedEvent = await addEventToGoogleCalendar(eventDetails);
+
+    if (addedEvent) {
+      setEvents((prevEvents) => [...prevEvents, {
+        title: addedEvent.summary,
+        start: addedEvent.start.dateTime,
+        end: addedEvent.end.dateTime,
+        color: "#4285F4",
+      }]);
+    }
+
     setOpenModal(false);
   };
 
-  const handleEventDrop = (info) => {
-    setEvents((prevEvents) =>
-      prevEvents.map((event) =>
-        event.start === info.oldEvent.startStr
-          ? { ...event, start: info.event.startStr, end: info.event.endStr }
-          : event
-      )
-    );
+
+  const addEventToGoogleCalendar = async (eventData) => {
+    try {
+      let googleToken = localStorage.getItem("googleToken");
+
+      if (!googleToken) {
+        console.error("❌ No Google Access Token Found!");
+        return;
+      }
+
+      const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${googleToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(eventData),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Google Calendar API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("✅ Event added to Google Calendar:", data);
+      return data;
+    } catch (error) {
+      console.error("❌ Error adding event:", error);
+    }
+  };
+
+  const handleEventDrop = async (info) => {
+    try {
+      let googleToken = localStorage.getItem("googleToken");
+
+      if (!googleToken) {
+        console.error("❌ No Google Access Token Found!");
+        return;
+      }
+
+      console.log("🔍 Google Token:", googleToken); // ✅ ตรวจสอบ Token
+      console.log("📌 Dropped Event ID:", info.event.id);
+
+      const eventId = info.event.id;
+      if (!eventId) {
+        console.error("❌ Missing eventId");
+        return;
+      }
+
+      const updatedEvent = {
+        summary: info.event.title,
+        start: {
+          dateTime: info.event.start.toISOString(),
+          timeZone: "Asia/Bangkok",
+        },
+        end: {
+          dateTime: info.event.end ? info.event.end.toISOString() : info.event.start.toISOString(),
+          timeZone: "Asia/Bangkok",
+        },
+      };
+
+      // ✅ ตรวจสอบ API request ก่อนส่ง
+      console.log("🔄 Sending update request for:", eventId);
+      console.log("📄 Updated Event Data:", updatedEvent);
+
+      // ✅ เรียก API ผ่าน Backend Proxy
+      const response = await fetch(`http://localhost:8081/api/update-google-event/${eventId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${googleToken}`, // ✅ ส่ง Token ไป
+        },
+        body: JSON.stringify({ updatedEvent }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Google Calendar API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("✅ Event updated successfully in Google Calendar:", data);
+
+      // ✅ อัปเดตสถานะบน FullCalendar
+      setEvents((prevEvents) =>
+        prevEvents.map((event) =>
+          event.id === eventId
+            ? { ...event, start: data.start.dateTime, end: data.end.dateTime }
+            : event
+        )
+      );
+
+    } catch (error) {
+      console.error("❌ Error updating event:", error);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedEvent) return;
+
+    try {
+      const eventId = selectedEvent.id;
+      let googleToken = localStorage.getItem("googleToken");
+
+      if (!googleToken) {
+        console.warn("⚠️ No Google Token found, fetching new one...");
+        googleToken = await getGoogleAccessToken();
+        if (!googleToken) {
+          console.error("❌ Unable to obtain new Google Token!");
+          return;
+        }
+      }
+
+      console.log("🗑️ Deleting Event ID:", eventId);
+
+      const response = await fetch(`http://localhost:8081/api/delete-google-event/${eventId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${googleToken}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Google Calendar API error: ${response.status}`);
+      }
+
+      console.log("✅ Event deleted successfully in Google Calendar");
+
+      // ✅ ลบ Event ออกจาก State
+      setEvents((prevEvents) => prevEvents.filter(event => event.id !== eventId));
+
+      setDeleteModalOpen(false);
+    } catch (error) {
+      console.error("❌ Error deleting event:", error);
+    }
+  };
+
+
+  const handleEventDelete = async (eventId) => {
+    try {
+      let googleToken = localStorage.getItem("googleToken");
+
+      if (!googleToken) {
+        console.warn("⚠️ No Google Token found, fetching new one...");
+        googleToken = await getGoogleAccessToken();
+        if (!googleToken) {
+          console.error("❌ Unable to obtain new Google Token!");
+          return;
+        }
+      }
+
+      console.log("🗑️ Deleting Event ID:", eventId);
+
+      const response = await fetch(`http://localhost:8081/api/delete-google-event/${eventId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${googleToken}`, // ✅ ส่ง Token ไป
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Google Calendar API error: ${response.status}`);
+      }
+
+      console.log("✅ Event deleted successfully in Google Calendar");
+
+      // ✅ อัปเดต UI โดยลบ Event ออกจาก State
+      setEvents((prevEvents) => prevEvents.filter(event => event.id !== eventId));
+
+    } catch (error) {
+      console.error("❌ Error deleting event:", error);
+    }
   };
 
   const handleSelect = (info) => {
@@ -106,6 +305,95 @@ const CalendarDashboard = () => {
     });
     setOpenModal(true);
   };
+
+  const getGoogleAccessToken = async () => {
+    try {
+      const response = await fetch("http://localhost:8081/api/refresh-google-token");
+      const data = await response.json();
+
+      if (data.access_token) {
+        localStorage.setItem("googleToken", data.access_token);
+        return data.access_token;
+      } else {
+        console.error("❌ Failed to get Google access token:", data);
+        return null;
+      }
+    } catch (error) {
+      console.error("❌ Error fetching access token:", error);
+      return null;
+    }
+  };
+
+  const fetchEvents = async () => {
+    try {
+      let googleToken = localStorage.getItem("googleToken");
+
+      if (!googleToken) {
+        googleToken = await getGoogleAccessToken();
+        if (!googleToken) return;
+      }
+
+      const googleResponse = await fetch("http://localhost:8081/api/google-events", {
+        headers: {
+          Authorization: `Bearer ${googleToken}`,
+        },
+      });
+
+      if (!googleResponse.ok) {
+        throw new Error(`HTTP error! status: ${googleResponse.status}`);
+      }
+
+      const googleData = await googleResponse.json();
+      setEvents(
+        googleData.items.map(event => ({
+          id: event.id, // ✅ เพิ่ม id เพื่อให้ FullCalendar ใช้ได้
+          title: event.summary,
+          start: event.start.dateTime || event.start.date,
+          end: event.end?.dateTime || event.end?.date,
+          color: "#4285F4",
+        }))
+      );
+    } catch (error) {
+      console.error("❌ Error fetching events:", error);
+    }
+  };
+
+
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data, error } = await supabase.auth.getSession();
+
+      if (data.session) {
+        console.log("✅ User Logged In:", data.session);
+
+        // ✅ ใช้ provider_token แทน access_token
+        localStorage.setItem("googleToken", data.session.provider_token);
+        setGoogleToken(data.session.provider_token);
+      } else {
+        console.error("❌ Not logged in or session expired:", error);
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+
+  // ✅ เรียก `fetchEvents()` เมื่อ Component โหลด หรือ `googleToken` เปลี่ยน
+  useEffect(() => {
+    if (googleToken) {
+      fetchEvents();
+    }
+  }, [googleToken]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
+  useEffect(() => {
+    console.log("📌 Updated Events:", events);
+  }, [events]);
+
 
   return (
     <div style={styles.container}>
@@ -183,10 +471,11 @@ const CalendarDashboard = () => {
           ref={timelineRef}
           plugins={[timeGridPlugin, interactionPlugin]}
           initialView={view}
-          editable={true} // ✅ เปิดใช้งานการลากและเปลี่ยนเวลาของ Booking
+          editable={true} // ✅ เปิดใช้งานลากเปลี่ยนเวลา
           eventDrop={handleEventDrop} // ✅ ฟังก์ชันอัปเดตเวลาหลังจากลาก
           selectable={true}
           select={handleSelect} // ✅ เลือกช่วงเวลาเพื่อ Booking
+          eventClick={handleEventClick}
           events={events}
         />
       </div>
@@ -222,8 +511,27 @@ const CalendarDashboard = () => {
           </Button>
         </div>
       </Modal>
+      <Modal open={deleteModalOpen} onClose={() => setDeleteModalOpen(false)}>
+        <div style={styles.modalContent}>
+          <h2 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
+            Confirm Delete
+          </h2>
+          <p>Are you sure you want to delete this event?</p>
+          <h3 style={{ color: "red", fontWeight: "bold" }}>{selectedEvent?.title}</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "20px" }}>
+            <Button variant="contained" color="secondary" onClick={() => setDeleteModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="contained" color="error" onClick={handleConfirmDelete}>
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
+
   );
 };
+
 
 export default CalendarDashboard;

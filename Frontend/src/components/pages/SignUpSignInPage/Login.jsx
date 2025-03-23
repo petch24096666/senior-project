@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { supabase } from "../../../utils/supabaseClient";
+import { FaGoogle, FaMicrosoft } from "react-icons/fa";
+
 
 const url = import.meta.env.VITE_BACKEND_URL;
 
@@ -44,6 +47,66 @@ const LoginPage = () => {
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   }
+
+  const handleGoogleLogin = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        scopes: 'https://www.googleapis.com/auth/calendar',
+        redirectTo: "https://klauwpmsqqkfjyxfpbx.supabase.co/auth/v1/callback",
+      },
+    });
+  
+    if (data?.url) {
+      console.log("✅ Redirecting to Google OAuth...");
+      window.location.href = data.url; // ✅ Redirect ไปยัง Google OAuth
+    }
+  
+    if (error) console.error("❌ Login error:", error);
+  };
+  
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        console.log("✅ User Logged In:", session);
+        localStorage.setItem("googleToken", session.provider_token);
+        navigate("/dashboard"); // ✅ Redirect ไป Dashboard
+      }
+    });
+  
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+  
+
+  const handleMicrosoftLogin = async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "microsoft", // 🔥 ลองเปลี่ยนจาก 'azure' เป็น 'microsoft'
+      options: {
+        redirectTo: "http://localhost:5173/dashboard", 
+      },
+    });
+  
+    if (error) console.error("❌ Microsoft Login Error:", error);
+  };
+  
+  
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (data.session?.provider_token) {
+        console.log("✅ User Logged In:", data.session);
+        localStorage.setItem("googleToken", data.session.provider_token); // ✅ เก็บ Token ไว้ใช้เรียก Google API
+      } else {
+        console.error("Not logged in:", error);
+      }
+    };
+  
+    checkAuth();
+  }, []);
+  
+  
 
   function login(event) {
     event.preventDefault();
@@ -267,10 +330,13 @@ const LoginPage = () => {
           </div>
 
           <div style={styles.socialButtons}>
-            <button style={styles.socialBtn}>G</button>
-            <button style={styles.socialBtn}>🔗</button>
-            <button style={styles.socialBtn}>📁</button>
-          </div>
+  <button onClick={handleGoogleLogin} style={styles.socialBtn}>
+    <FaGoogle color="#DB4437" />
+  </button>
+  <button onClick={handleMicrosoftLogin} style={styles.socialBtn}>
+    <FaMicrosoft color="#0078D4" />
+  </button>
+</div>
 
           <p style={styles.signup}>
             Don't have an account? <a href="/register" style={styles.signupLink}>Sign up</a>
