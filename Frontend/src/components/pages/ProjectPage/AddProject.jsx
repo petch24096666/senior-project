@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Button } from "@mui/material"; // Import Button จาก MUI
 import { TextAreaField } from "@aws-amplify/ui-react";
 import axios from "axios";
+import deleteIcon from "../../../assets/icons/Trash-icon.png";
+import crossIcon from "../../../assets/icons/cross-icon.png";
 
 const url = import.meta.env.VITE_BACKEND_URL;
 
@@ -133,6 +135,8 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
 
     try {
       setIsSaving(true);
+      console.log("🚀 Sending API request...");
+
       const response = await axios.post(`${url}/api/projects`, {
         title: projectName,
         description: projectDescription,
@@ -141,23 +145,33 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
         teamMembers: teamMembers,
       });
 
+      console.log("✅ Project Created:", response.data);
+
       if (response.data.success) {
-        alert("Project created successfully!");
         setProjectName("");
         setProjectDescription("");
         setTeamMembers([{ email: "", role: "" }]);
-        onProjectCreated();
-        onClose();
+
+        console.log("🔵 Calling onProjectCreated()...");
+        await onProjectCreated(); // ✅ ต้องแน่ใจว่า `await` ถูกเรียก
+        console.log("✅ onProjectCreated() finished!");
+
+        console.log("🔴 Calling onClose()...");
+        onClose(); // ✅ ปิด Modal แน่นอน
       } else {
         alert("Failed to create project. Try again.");
       }
     } catch (error) {
-      console.error("Error saving project:", error);
+      console.error("❌ Error saving project:", error);
       alert("Error occurred while creating the project.");
     } finally {
-      setIsSaving(false);
+      console.log("🟢 Setting isSaving to false...");
+      setIsSaving(false); // ✅ ป้องกันปุ่มค้าง
     }
-  };
+};
+
+  
+  
 
   return (
     <div style={styles.overlay}>
@@ -165,7 +179,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
         <div style={styles.header}>
           <span>Create New Project</span>
           <button style={styles.removeButton} onClick={onClose}>
-            &times;
+            <img src={crossIcon} alt="Remove"/>
           </button>
         </div>
 
@@ -223,7 +237,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
                   <option value="Viewer">Viewer</option>
                 </select>
                 <button style={styles.removeButton} onClick={() => handleRemoveMember(index)}>
-                  &times;
+                  <img src={deleteIcon} alt="Remove"/>
                 </button>
               </div>
             ))}
@@ -237,10 +251,12 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
           <Button
             sx={{
               fontFamily: "Inter, sans-serif",
-              backgroundColor: "transparent",
+            backgroundColor: "#4F46E5",
+              color: "#fff",
               border: "none",
+              padding: "12px 24px",
               fontSize: "12px",
-              color: "#6B7280",
+              borderRadius: "8px",
               cursor: "pointer",
             }}
             variant="outlined"
@@ -253,7 +269,7 @@ const CreateProjectModal = ({ onClose, onProjectCreated }) => {
           <Button
             sx={{
             fontFamily: "Inter, sans-serif",
-              backgroundColor: "#3B82F6",
+            backgroundColor: "#4F46E5",
               color: "#fff",
               border: "none",
               padding: "12px 24px",

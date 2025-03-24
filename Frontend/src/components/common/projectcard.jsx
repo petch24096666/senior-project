@@ -4,6 +4,8 @@ import MoreVertIcon from "@mui/icons-material/MoreVert";
 import IconButton from "@mui/material/IconButton";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
+import DeleteIcon from "@mui/icons-material/Delete";
+import EditIcon from "@mui/icons-material/Edit";
 
 const styles = {
     cardContainer: {
@@ -21,15 +23,24 @@ const styles = {
     headerRow: {
         display: "flex",
         justifyContent: "space-between",
-        alignItems: "center",
+        alignItems: "center", // ✅ ป้องกันปุ่มไข่ปลาโดนดันลง
         marginBottom: "10px",
+        width: "100%", // ✅ ให้ row ใช้พื้นที่เต็มการ์ด
     },
     cardHeader: {
         fontFamily: "Inter, sans-serif",
-        fontSize: "24px",
+        fontSize: "24px", // ✅ ลดขนาดให้เหมาะสม
         fontWeight: "600",
-        lineHeight: "29.05px",
         color: "#111827",
+        wordWrap: "break-word", // ✅ บังคับให้ข้อความตัดคำเมื่อยาวเกิน
+        overflowWrap: "break-word", // ✅ ทำให้คำที่ยาวเกินไปตัดขึ้นบรรทัดใหม่
+        maxWidth: "85%",  // ✅ จำกัดความกว้างเพื่อให้เหลือพื้นที่สำหรับปุ่ม
+        flexGrow: 1, // ✅ บังคับให้ title ใช้พื้นที่ที่เหลือ
+        display: "-webkit-box",
+        WebkitBoxOrient: "vertical",
+        WebkitLineClamp: 2, // ✅ จำกัดให้แสดงสูงสุด 2 บรรทัด
+        overflow: "hidden", // ✅ ซ่อนข้อความที่เกิน 2 บรรทัด
+        alignItems: "center"
     },
     taskRow: {
         display: "flex",
@@ -83,6 +94,18 @@ const styles = {
         WebkitLineClamp: 3, // แสดงสูงสุด 3 บรรทัด
         WebkitBoxOrient: "vertical",
     },
+    menuItem: {
+        display: "flex",
+        alignItems: "center",
+        gap: "10px", // เพิ่มระยะห่างระหว่างไอคอนและข้อความ
+        fontFamily: "Inter, sans-serif",
+        fontSize: "14px",
+        fontWeight: "500",
+        color: "#374151",
+    },
+    menuItemDelete: {
+        color: "#EF4444", // เปลี่ยนสีสำหรับ Delete ให้ดูชัดเจน
+    },
 };
 
 const ProjectCard = ({ title, description, tasksCompleted, totalTasks, onEdit, onDelete }) => {
@@ -104,7 +127,7 @@ const ProjectCard = ({ title, description, tasksCompleted, totalTasks, onEdit, o
             {/* ส่วนหัวของการ์ด (Header + ปุ่มไข่ปลา) */}
             <div style={styles.headerRow}>
                 <h3 style={styles.cardHeader}>{title || "Untitled Project"}</h3>
-                <IconButton onClick={handleMenuOpen}>
+                <IconButton onClick={handleMenuOpen} sx={{ flexShrink: 0, alignSelf: "flex-start" }}>
                     <MoreVertIcon />
                 </IconButton>
             </div>
@@ -120,7 +143,9 @@ const ProjectCard = ({ title, description, tasksCompleted, totalTasks, onEdit, o
                         onEdit && onEdit();
                     }}
                 >
-                    Edit
+                    <div style={styles.menuItem}>
+                        <EditIcon /> Edit
+                    </div>
                 </MenuItem>
                 <MenuItem
                     onClick={() => {
@@ -128,7 +153,9 @@ const ProjectCard = ({ title, description, tasksCompleted, totalTasks, onEdit, o
                         onDelete && onDelete();
                     }}
                 >
-                    Delete
+                    <div style={{ ...styles.menuItem, ...styles.menuItemDelete }}>
+                        <DeleteIcon /> Delete
+                    </div>
                 </MenuItem>
             </Menu>
 

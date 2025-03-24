@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { supabase } from "../../../utils/supabaseClient";
+import { FaGoogle, FaMicrosoft } from "react-icons/fa";
+
 
 const url = import.meta.env.VITE_BACKEND_URL;
 
@@ -45,13 +48,75 @@ const LoginPage = () => {
     return Object.keys(newErrors).length === 0;
   }
 
+  const handleGoogleLogin = async () => {
+    await supabase.auth.signOut();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        scopes: 'https://www.googleapis.com/auth/calendar',
+        redirectTo: "https://klauwpmsqqkxfjyxfpbx.supabase.co/auth/v1/callback",
+      },
+    });
+  
+    if (data?.url) {
+      console.log("✅ Redirecting to Google OAuth...");
+      window.location.href = data.url; // ✅ Redirect ไปยัง Google OAuth
+    }
+  
+    if (error) console.error("❌ Login error:", error);
+  };
+  
+  const handleAzureLogin = async () => {
+    await supabase.auth.signOut();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        scopes: "openid email profile offline_access",
+        redirectTo: "http://localhost:5173/", // ✅ ต้องตรงกับที่ตั้งไว้ใน Supabase
+      },
+    });
+  
+    if (data?.url) {
+      console.log("✅ Redirecting to Azure OAuth...");
+      window.location.href = data.url;
+    }
+  
+    if (error) {
+      console.error("❌ Azure Login error:", error);
+    }
+  };
+
+  useEffect(() => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("🔄 Auth State Changed:", event, session);
+  
+      if (session?.provider_token) {
+        const provider = session.user?.app_metadata?.provider;
+        console.log("✅ Logged in via:", provider);
+        localStorage.setItem(`${provider}Token`, session.provider_token);
+        navigate("/dashboard");
+      } else {
+        console.log("❌ No session available.");
+      }
+    });
+  
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+  
+
   function login(event) {
     event.preventDefault();
     if (!validateForm()) return;
-
+  
+    console.log("Attempting to login with:", values);
+  
     axios.post(`${url}/api/login`, values)
       .then((res) => {
-        if (res.data.Status === "Success") {
+        console.log("Login response received:", res.data);
+  
+        if (res.data.success) {
           if (rememberMe) {
             localStorage.setItem("rememberedEmail", values.email);
           } else {
@@ -59,10 +124,13 @@ const LoginPage = () => {
           }
           navigate("/dashboard");
         } else {
-          setErrors({ general: res.data.Error });
+          setErrors({ general: res.data.error || "Login failed" });
         }
       })
-      .catch((err) => console.log(err));
+      .catch((err) => {
+        console.error("API Error:", err.response?.data || err.message);
+        setErrors({ general: err.response?.data?.error || "Something went wrong" });
+      });
   }
 
   const styles = {
@@ -260,10 +328,13 @@ const LoginPage = () => {
           </div>
 
           <div style={styles.socialButtons}>
-            <button style={styles.socialBtn}>G</button>
-            <button style={styles.socialBtn}>🔗</button>
-            <button style={styles.socialBtn}>📁</button>
-          </div>
+  <button onClick={handleGoogleLogin} style={styles.socialBtn}>
+    <FaGoogle color="#DB4437" />
+  </button>
+  <button onClick={handleAzureLogin} style={styles.socialBtn}>
+    <FaMicrosoft color="#0078D4" />
+  </button>
+</div>
 
           <p style={styles.signup}>
             Don't have an account? <a href="/register" style={styles.signupLink}>Sign up</a>
