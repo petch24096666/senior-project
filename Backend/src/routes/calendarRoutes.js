@@ -34,42 +34,36 @@ router.get("/google-events", async (req, res) => {
   }
 });
 
+// PUT /api/update-google-event/:eventId
 router.put("/update-google-event/:eventId", async (req, res) => {
-    try {
-        const { eventId } = req.params;
-        const updatedEvent = req.body.updatedEvent;
-        const googleToken = req.headers.authorization?.split("Bearer ")[1];
+  const { eventId } = req.params;
+  const { updatedEvent } = req.body;
+  const authHeader = req.headers.authorization;
 
-        console.log("🔍 Received Google Token:", googleToken);
-        console.log("📌 Updating Event ID:", eventId);
-        console.log("📄 Event Data to Update:", updatedEvent);
+  if (!authHeader) return res.status(401).json({ error: "Missing Authorization Header" });
 
-        if (!googleToken) {
-            return res.status(401).json({ error: "Unauthorized: Missing Google Token" });
-        }
+  const accessToken = authHeader.split(" ")[1];
 
-        const googleApiUrl = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`;
+  try {
+    const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(updatedEvent),
+    });
 
-        const response = await fetch(googleApiUrl, {
-            method: "PUT",
-            headers: {
-                "Authorization": `Bearer ${googleToken}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(updatedEvent),
-        });
+    if (!response.ok) throw new Error(`Google API error: ${response.status}`);
 
-        if (!response.ok) {
-            throw new Error(`Google API Error: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        res.json(data);
-    } catch (error) {
-        console.error("❌ Google Calendar Update Error:", error);
-        res.status(500).json({ error: error.message });
-    }
+    const updated = await response.json();
+    res.json(updated);
+  } catch (error) {
+    console.error("❌ Error updating event:", error.message);
+    res.status(500).json({ error: "Failed to update event" });
+  }
 });
+
 
 router.delete("/delete-google-event/:eventId", async (req, res) => {
     try {

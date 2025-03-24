@@ -66,6 +66,7 @@ const styles = {
 const CalendarDashboard = () => {
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(null);
   const [openModal, setOpenModal] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: "", start: "", color: "#3788d8" });
   const [view, setView] = useState("timeGridDay"); // Default เป็น Today
@@ -73,6 +74,12 @@ const CalendarDashboard = () => {
   const calendarRef = useRef(null);
   const [googleToken, setGoogleToken] = useState(localStorage.getItem("googleToken") || null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+
+
 
   // 📌 เมื่อคลิกที่ปฏิทินซ้าย, Timeline จะเปลี่ยนไปวันที่นั้น
   const handleDateClick = (info) => {
@@ -84,9 +91,17 @@ const CalendarDashboard = () => {
   };
 
   const handleEventClick = (clickInfo) => {
-    setSelectedEvent(clickInfo.event);
-    setDeleteModalOpen(true);
+    const event = clickInfo.event;
+    setSelectedEvent({
+      id: event.id,
+      title: event.title,
+      start: event.startStr,
+      end: event.endStr,
+      color: event.backgroundColor || "#4285F4",
+    });
+    setDetailModalOpen(true); // ➕ ใช้ modal สำหรับดูรายละเอียด
   };
+
 
 
   const handleAddEvent = async () => {
@@ -259,42 +274,81 @@ const CalendarDashboard = () => {
     }
   };
 
+  const handleEditClick = () => {
+    setNewEvent({
+      id: selectedEvent.id,
+      title: selectedEvent.title,
+      start: selectedEvent.start,
+      end: selectedEvent.end,
+      color: selectedEvent.color || "#3788d8",
+    });
+    setEditMode(true);
+    setOpenModal(true);
+    setDetailModalOpen(false);
+  };
+  
 
-  const handleEventDelete = async (eventId) => {
+  const handleUpdateEvent = async () => {
     try {
-      let googleToken = localStorage.getItem("googleToken");
-
+      const googleToken = localStorage.getItem("googleToken");
       if (!googleToken) {
-        console.warn("⚠️ No Google Token found, fetching new one...");
-        googleToken = await getGoogleAccessToken();
-        if (!googleToken) {
-          console.error("❌ Unable to obtain new Google Token!");
-          return;
-        }
+        console.error("❌ Google Token not found.");
+        return;
       }
-
-      console.log("🗑️ Deleting Event ID:", eventId);
-
-      const response = await fetch(`http://localhost:8081/api/delete-google-event/${eventId}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${googleToken}`, // ✅ ส่ง Token ไป
+  
+      const updatedEvent = {
+        summary: newEvent.title,
+        start: {
+          dateTime: newEvent.start,
+          timeZone: "Asia/Bangkok",
         },
+        end: {
+          dateTime: newEvent.end || newEvent.start,
+          timeZone: "Asia/Bangkok",
+        },
+      };
+  
+      const response = await fetch(`http://localhost:8081/api/update-google-event/${newEvent.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${googleToken}`,
+        },
+        body: JSON.stringify({ updatedEvent }),
       });
-
+  
       if (!response.ok) {
-        throw new Error(`Google Calendar API error: ${response.status}`);
+        throw new Error(`Update failed with status: ${response.status}`);
       }
-
-      console.log("✅ Event deleted successfully in Google Calendar");
-
-      // ✅ อัปเดต UI โดยลบ Event ออกจาก State
-      setEvents((prevEvents) => prevEvents.filter(event => event.id !== eventId));
-
+  
+      const data = await response.json();
+  
+      // ✅ อัปเดต event บนหน้าจอ
+      setEvents((prevEvents) =>
+        prevEvents.map((event) =>
+          event.id === newEvent.id
+            ? {
+                ...event,
+                title: newEvent.title,
+                start: newEvent.start,
+                end: newEvent.end,
+                color: newEvent.color,
+              }
+            : event
+        )
+      );
+  
+      setOpenModal(false);      // ปิด modal
+      setEditMode(false);       // ย้อนกลับเป็นโหมดเพิ่ม
+      setNewEvent({ title: "", start: "", color: "#3788d8" }); // เคลียร์ข้อมูล
+  
+      console.log("✅ Event updated.");
     } catch (error) {
-      console.error("❌ Error deleting event:", error);
+      console.error("❌ Error updating event:", error);
     }
   };
+  
+
 
   const handleSelect = (info) => {
     setNewEvent({
@@ -394,6 +448,17 @@ const CalendarDashboard = () => {
     console.log("📌 Updated Events:", events);
   }, [events]);
 
+  const renderEventSymbol = (eventInfo) => {
+    const dot = document.createElement("span");
+    dot.innerHTML = "●"; // ใช้สัญลักษณ์กลม ● หรือเปลี่ยนเป็นอะไรก็ได้
+    dot.style.color = eventInfo.event.backgroundColor || eventInfo.event.extendedProps.color || "#4285F4";
+    dot.style.fontSize = "14px";
+    dot.style.display = "block";
+    dot.style.textAlign = "center";
+
+    return { domNodes: [dot] };
+  };
+
 
   return (
     <div style={styles.container}>
@@ -407,7 +472,9 @@ const CalendarDashboard = () => {
             initialView="dayGridMonth"
             height="auto"
             selectable={true}
-            dateClick={handleDateClick} // ✅ กดวันที่ -> เปลี่ยน Timeline
+            dateClick={handleDateClick}// ✅ กดวันที่ -> เปลี่ยน Timeline
+            events={events}
+            eventContent={renderEventSymbol}
           />
         </div>
         <div style={styles.upcomingTasks}>
@@ -481,7 +548,10 @@ const CalendarDashboard = () => {
       </div>
 
       {/* Modal for Creating Event */}
-      <Modal open={openModal} onClose={() => setOpenModal(false)}>
+      <Modal open={openModal} onClose={() => {
+        setOpenModal(false);
+        setEditMode(false); // ✅ reset editMode
+      }}>
         <div style={styles.modalContent}>
           <h2 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>Add Task / Meeting</h2>
           <TextField
@@ -506,28 +576,62 @@ const CalendarDashboard = () => {
             <MenuItem value="#800080">🟣 Purple</MenuItem>
             <MenuItem value="#ff6600">🟠 Orange</MenuItem>
           </TextField>
-          <Button variant="contained" color="primary" fullWidth onClick={handleAddEvent}>
-            Save
+          <Button
+            variant="contained"
+            color="primary"
+            fullWidth
+            onClick={editMode ? handleUpdateEvent : handleAddEvent}
+          >
+            {editMode ? "Update" : "Save"}
           </Button>
+
         </div>
       </Modal>
-      <Modal open={deleteModalOpen} onClose={() => setDeleteModalOpen(false)}>
+      <Modal open={detailModalOpen} onClose={() => setDetailModalOpen(false)}>
         <div style={styles.modalContent}>
-          <h2 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
-            Confirm Delete
-          </h2>
-          <p>Are you sure you want to delete this event?</p>
-          <h3 style={{ color: "red", fontWeight: "bold" }}>{selectedEvent?.title}</h3>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "20px" }}>
-            <Button variant="contained" color="secondary" onClick={() => setDeleteModalOpen(false)}>
-              Cancel
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}>
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={() => {
+                setEditingEvent(selectedEvent);
+                setEditModalOpen(true);
+                setDetailModalOpen(false);
+                handleEditClick();
+              }}
+            >
+              ✏️ Edit
             </Button>
-            <Button variant="contained" color="error" onClick={handleConfirmDelete}>
-              Delete
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={() => {
+                handleConfirmDelete();          // ✅ เรียกลบทันที
+                setDetailModalOpen(false);     // ✅ ปิด modal รายละเอียด
+              }}
+            >
+              🗑 Delete
             </Button>
+
+          </div>
+
+          <h2 style={{ marginBottom: "10px" }}>{selectedEvent?.title}</h2>
+          <p><strong>Start:</strong> {new Date(selectedEvent?.start).toLocaleString()}</p>
+          <p><strong>End:</strong> {new Date(selectedEvent?.end).toLocaleString()}</p>
+          <div style={{ marginTop: "10px" }}>
+            <span style={{
+              backgroundColor: selectedEvent?.color || "#4285F4",
+              padding: "6px 12px",
+              borderRadius: "8px",
+              color: "#fff",
+              fontWeight: "bold"
+            }}>
+              Event Color
+            </span>
           </div>
         </div>
       </Modal>
+
     </div>
 
   );

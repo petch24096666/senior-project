@@ -49,11 +49,12 @@ const LoginPage = () => {
   }
 
   const handleGoogleLogin = async () => {
+    await supabase.auth.signOut();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         scopes: 'https://www.googleapis.com/auth/calendar',
-        redirectTo: "https://klauwpmsqqkfjyxfpbx.supabase.co/auth/v1/callback",
+        redirectTo: "https://klauwpmsqqkxfjyxfpbx.supabase.co/auth/v1/callback",
       },
     });
   
@@ -65,12 +66,37 @@ const LoginPage = () => {
     if (error) console.error("❌ Login error:", error);
   };
   
+  const handleAzureLogin = async () => {
+    await supabase.auth.signOut();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        scopes: "openid email profile offline_access",
+        redirectTo: "http://localhost:5173/", // ✅ ต้องตรงกับที่ตั้งไว้ใน Supabase
+      },
+    });
+  
+    if (data?.url) {
+      console.log("✅ Redirecting to Azure OAuth...");
+      window.location.href = data.url;
+    }
+  
+    if (error) {
+      console.error("❌ Azure Login error:", error);
+    }
+  };
+
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session) {
-        console.log("✅ User Logged In:", session);
-        localStorage.setItem("googleToken", session.provider_token);
-        navigate("/dashboard"); // ✅ Redirect ไป Dashboard
+      console.log("🔄 Auth State Changed:", event, session);
+  
+      if (session?.provider_token) {
+        const provider = session.user?.app_metadata?.provider;
+        console.log("✅ Logged in via:", provider);
+        localStorage.setItem(`${provider}Token`, session.provider_token);
+        navigate("/dashboard");
+      } else {
+        console.log("❌ No session available.");
       }
     });
   
@@ -78,34 +104,6 @@ const LoginPage = () => {
       authListener.subscription.unsubscribe();
     };
   }, []);
-  
-
-  const handleMicrosoftLogin = async () => {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "microsoft", // 🔥 ลองเปลี่ยนจาก 'azure' เป็น 'microsoft'
-      options: {
-        redirectTo: "http://localhost:5173/dashboard", 
-      },
-    });
-  
-    if (error) console.error("❌ Microsoft Login Error:", error);
-  };
-  
-  
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (data.session?.provider_token) {
-        console.log("✅ User Logged In:", data.session);
-        localStorage.setItem("googleToken", data.session.provider_token); // ✅ เก็บ Token ไว้ใช้เรียก Google API
-      } else {
-        console.error("Not logged in:", error);
-      }
-    };
-  
-    checkAuth();
-  }, []);
-  
   
 
   function login(event) {
@@ -333,7 +331,7 @@ const LoginPage = () => {
   <button onClick={handleGoogleLogin} style={styles.socialBtn}>
     <FaGoogle color="#DB4437" />
   </button>
-  <button onClick={handleMicrosoftLogin} style={styles.socialBtn}>
+  <button onClick={handleAzureLogin} style={styles.socialBtn}>
     <FaMicrosoft color="#0078D4" />
   </button>
 </div>
