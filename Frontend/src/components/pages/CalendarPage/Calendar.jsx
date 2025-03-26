@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { DateTime } from "luxon";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -80,63 +81,83 @@ const CalendarDashboard = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [microsoftToken, setMicrosoftToken] = useState(localStorage.getItem("microsoftToken") || null);
 
-const fetchEvents = async () => {
-  const provider = localStorage.getItem("authProvider");
-  console.log("Petch Provider:" , provider)
-  if (provider === "google") {
-    const googleToken = localStorage.getItem("googleToken");
-    if (!googleToken) {
-      console.warn("❌ No Google token found.");
-      return;
-    }
-
-    const response = await fetch("http://localhost:8081/api/google-events", {
-      headers: { Authorization: `Bearer ${googleToken}` },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Received Google events data:", data);
-
-      // ตรวจสอบว่า data.items มีข้อมูลหรือไม่
-      if (data.items && Array.isArray(data.items)) {
-        console.log("Google events items:", data.items);
-
-        // แปลงข้อมูลให้เหมาะสมกับ FullCalendar
-        const events = data.items.map(item => ({
-          id: item.id,
-          title: item.summary,
-          start: new Date(item.start.dateTime || item.start.date),  // แปลง start ให้เป็น Date
-          end: new Date(item.end.dateTime || item.end.date),        // แปลง end ให้เป็น Date
-          color: "#4285F4",  // กำหนดสีให้กับเหตุการณ์
-        }));
-
-        setEvents(events);  // อัปเดต state ด้วย events ที่แปลงแล้ว
-      } else {
-        console.error("❌ Google events data.items is not an array or is empty");
+  const fetchEvents = async () => {
+    const provider = localStorage.getItem("authProvider");
+    console.log("Fetch Provider:", provider);
+    
+    if (provider === "google") {
+      const googleToken = localStorage.getItem("googleToken");
+      if (!googleToken) {
+        console.warn("❌ No Google token found.");
+        return;
       }
-    } else {
-      console.error("❌ Error fetching Google events:", response.status);
+  
+      const response = await fetch("http://localhost:8081/api/google-events", {
+        headers: { Authorization: `Bearer ${googleToken}` },
+      });
+  
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Received Google events data:", data);
+  
+        if (data.items && Array.isArray(data.items)) {
+          console.log("Google events items:", data.items);
+  
+          const events = data.items.map(item => ({
+            id: item.id,
+            title: item.summary,
+            start: new Date(item.start.dateTime || item.start.date),
+            end: new Date(item.end.dateTime || item.end.date),
+            color: "#4285F4",
+          }));
+  
+          setEvents(events);
+        } else {
+          console.error("❌ Google events data.items is not an array or is empty");
+        }
+      } else {
+        console.error("❌ Error fetching Google events:", response.status);
+      }
+    } else if (provider === "microsoft") {
+      const microsoftToken = localStorage.getItem("microsoftToken");
+      if (!microsoftToken) {
+        console.warn("❌ No Microsoft token found.");
+        return;
+      }
+    
+      const response = await fetch("http://localhost:8081/api/microsoft-events", {
+        headers: { Authorization: `Bearer ${microsoftToken}` },
+      });
+    
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Microsoft events raw:", data);
+    
+        if (data.value && Array.isArray(data.value)) {
+          const events = data.value.map(item => {
+            // Fix: Parse Microsoft dates correctly with proper timezone handling
+            // Microsoft returns UTC dates, so we need to convert them to local time
+            const startDateTime = new Date(item.start.dateTime + 'Z'); // Add 'Z' to specify UTC
+            const endDateTime = new Date(item.end.dateTime + 'Z');
+            
+            return {
+              id: item.id,
+              title: item.subject,
+              start: startDateTime,
+              end: endDateTime,
+              color: "#0078D4",
+            };
+          });
+    
+          setEvents(events);
+        } else {
+          console.error("❌ Microsoft events data.value is not an array or is empty");
+        }
+      } else {
+        console.error("❌ Error fetching Microsoft events:", response.status);
+      }
     }
-  } else if (provider === "microsoft") {
-    const microsoftToken = localStorage.getItem("microsoftToken");
-    if (!microsoftToken) {
-      console.warn("❌ No Microsoft token found.");
-      return;
-    }
-
-    const response = await fetch("http://localhost:8081/api/microsoft-events", {
-      headers: { Authorization: `Bearer ${microsoftToken}` },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      setEvents(data.value); // สำหรับ Microsoft ให้ใช้ data.value
-    } else {
-      console.error("❌ Error fetching Microsoft events:", response.status);
-    }
-  }
-};
+  };
   
   useEffect(() => {
     fetchEvents();
@@ -164,52 +185,59 @@ const fetchEvents = async () => {
   };
 
   const handleAddEvent = async () => {
-    if (!newEvent.title || !newEvent.start) {
-      alert("Please enter event details.");
-      return;
-    }
-    const provider = localStorage.getItem("authProvider");
-    const token = localStorage.getItem(
-      provider === "google" ? "googleToken" : "microsoftToken"
-    );
-  
-    if (!provider || !token) {
-      console.error("❌ Missing authProvider or token");
-      return;
-    }
-  
-    const eventDetails = {
-      title: newEvent.title,
-      start: newEvent.start,
-      end: newEvent.end || newEvent.start,
-    };
-  
-    let addedEvent = null;
-  
-    if (provider === "google") {
-      addedEvent = await addEventToGoogleCalendar(eventDetails, token);
-    } else if (provider === "microsoft") {
-      addedEvent = await addEventToMicrosoftCalendar(eventDetails, token);
-    } else {
-      console.warn("⚠️ Unsupported provider:", provider);
-      return;
-    }
-  
-    if (addedEvent) {
-      setEvents((prevEvents) => [
-        ...prevEvents,
-        {
-          id: addedEvent.id,
-          title: addedEvent.summary || addedEvent.subject,
-          start: addedEvent.start.dateTime || addedEvent.start,
-          end: addedEvent.end.dateTime || addedEvent.end,
-          color: provider === "google" ? "#4285F4" : "#0078D4",
-        },
-      ]);
-    }
-  
-    setOpenModal(false);
+  if (!newEvent.title || !newEvent.start) {
+    alert("Please enter event details.");
+    return;
+  }
+
+  const provider = localStorage.getItem("authProvider");
+  const token = localStorage.getItem(
+    provider === "google" ? "googleToken" : "microsoftToken"
+  );
+
+  if (!provider || !token) {
+    console.error("❌ Missing authProvider or token");
+    return;
+  }
+  // ✅ ดึง timezone จากเครื่องผู้ใช้อัตโนมัติ
+  const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // 🕐 แปลงเป็น ISO format ด้วย timezone Asia/Bangkok
+  const start = DateTime.fromISO(newEvent.start).setZone("Asia/Bangkok").toISO();
+  const end = newEvent.end
+    ? DateTime.fromISO(newEvent.end).setZone("Asia/Bangkok").toISO()
+    : start;
+
+  const eventDetails = {
+    title: newEvent.title,
+    start,
+    end,
+    timeZone: userTimeZone, // ✅ ใส่ timezone ที่ดึงมา
   };
+
+  let addedEvent = null;
+
+  if (provider === "google") {
+    addedEvent = await addEventToGoogleCalendar(eventDetails, token);
+  } else if (provider === "microsoft") {
+    addedEvent = await addEventToMicrosoftCalendar(eventDetails, token);
+  }
+
+  if (addedEvent) {
+    setEvents((prevEvents) => [
+      ...prevEvents,
+      {
+        id: addedEvent.id,
+        title: addedEvent.summary || addedEvent.subject,
+        start: addedEvent.start.dateTime || addedEvent.start,
+        end: addedEvent.end.dateTime || addedEvent.end,
+        color: provider === "google" ? "#4285F4" : "#0078D4",
+      },
+    ]);
+  }
+
+  setOpenModal(false);
+};
   
   // ✅ Add Event to Google Calendar
   const addEventToGoogleCalendar = async (event, token) => {
@@ -258,11 +286,11 @@ const fetchEvents = async () => {
           subject: event.title,
           start: {
             dateTime: event.start,
-            timeZone: "Asia/Bangkok",
+            timeZone: event.timeZone, // ✅ เปลี่ยนจาก fix เป็น dynamic
           },
           end: {
             dateTime: event.end,
-            timeZone: "Asia/Bangkok",
+            timeZone: event.timeZone,
           },
           body: {
             contentType: "HTML",
