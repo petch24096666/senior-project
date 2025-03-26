@@ -80,63 +80,80 @@ const CalendarDashboard = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [microsoftToken, setMicrosoftToken] = useState(localStorage.getItem("microsoftToken") || null);
 
-const fetchEvents = async () => {
-  const provider = localStorage.getItem("authProvider");
-  console.log("Petch Provider:" , provider)
-  if (provider === "google") {
-    const googleToken = localStorage.getItem("googleToken");
-    if (!googleToken) {
-      console.warn("❌ No Google token found.");
-      return;
-    }
-
-    const response = await fetch("http://localhost:8081/api/google-events", {
-      headers: { Authorization: `Bearer ${googleToken}` },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log("Received Google events data:", data);
-
-      // ตรวจสอบว่า data.items มีข้อมูลหรือไม่
-      if (data.items && Array.isArray(data.items)) {
-        console.log("Google events items:", data.items);
-
-        // แปลงข้อมูลให้เหมาะสมกับ FullCalendar
-        const events = data.items.map(item => ({
-          id: item.id,
-          title: item.summary,
-          start: new Date(item.start.dateTime || item.start.date),  // แปลง start ให้เป็น Date
-          end: new Date(item.end.dateTime || item.end.date),        // แปลง end ให้เป็น Date
-          color: "#4285F4",  // กำหนดสีให้กับเหตุการณ์
-        }));
-
-        setEvents(events);  // อัปเดต state ด้วย events ที่แปลงแล้ว
-      } else {
-        console.error("❌ Google events data.items is not an array or is empty");
+  const fetchEvents = async () => {
+    const provider = localStorage.getItem("authProvider");
+    console.log("Petch Provider:", provider);
+    
+    if (provider === "google") {
+      const googleToken = localStorage.getItem("googleToken");
+      if (!googleToken) {
+        console.warn("❌ No Google token found.");
+        return;
       }
-    } else {
-      console.error("❌ Error fetching Google events:", response.status);
+  
+      const response = await fetch("http://localhost:8081/api/google-events", {
+        headers: { Authorization: `Bearer ${googleToken}` },
+      });
+  
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Received Google events data:", data);
+  
+        // ตรวจสอบว่า data.items มีข้อมูลหรือไม่
+        if (data.items && Array.isArray(data.items)) {
+          console.log("Google events items:", data.items);
+  
+          // แปลงข้อมูลให้เหมาะสมกับ FullCalendar
+          const events = data.items.map(item => ({
+            id: item.id,
+            title: item.summary,
+            start: new Date(item.start.dateTime || item.start.date),  // แปลง start ให้เป็น Date
+            end: new Date(item.end.dateTime || item.end.date),        // แปลง end ให้เป็น Date
+            color: "#4285F4",  // กำหนดสีให้กับเหตุการณ์
+          }));
+  
+          setEvents(events);  // อัปเดต state ด้วย events ที่แปลงแล้ว
+        } else {
+          console.error("❌ Google events data.items is not an array or is empty");
+        }
+      } else {
+        console.error("❌ Error fetching Google events:", response.status);
+      }
+    } else if (provider === "microsoft") {
+      const microsoftToken = localStorage.getItem("microsoftToken");
+      if (!microsoftToken) {
+        console.warn("❌ No Microsoft token found.");
+        return;
+      }
+  
+      const response = await fetch("http://localhost:8081/api/microsoft-events", {
+        headers: { Authorization: `Bearer ${microsoftToken}` },
+      });
+  
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Received Microsoft events data:", data);
+  
+        // ตรวจสอบว่า data.value มีข้อมูลหรือไม่
+        if (data.value && Array.isArray(data.value)) {
+          const events = data.value.map(event => ({
+            id: event.id,
+            title: event.subject,
+            start: new Date(event.start.dateTime || event.start.date), // แปลง start ให้เป็น Date
+            end: new Date(event.end.dateTime || event.end.date),       // แปลง end ให้เป็น Date
+            color: "#0078D4", // กำหนดสีให้กับเหตุการณ์
+          }));
+  
+          setEvents(events);  // อัปเดต state ด้วย events ที่แปลงแล้ว
+        } else {
+          console.error("❌ Microsoft events data.value is not an array or is empty");
+        }
+      } else {
+        console.error("❌ Error fetching Microsoft events:", response.status);
+      }
     }
-  } else if (provider === "microsoft") {
-    const microsoftToken = localStorage.getItem("microsoftToken");
-    if (!microsoftToken) {
-      console.warn("❌ No Microsoft token found.");
-      return;
-    }
-
-    const response = await fetch("http://localhost:8081/api/microsoft-events", {
-      headers: { Authorization: `Bearer ${microsoftToken}` },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      setEvents(data.value); // สำหรับ Microsoft ให้ใช้ data.value
-    } else {
-      console.error("❌ Error fetching Microsoft events:", response.status);
-    }
-  }
-};
+  };
+  
   
   useEffect(() => {
     fetchEvents();
