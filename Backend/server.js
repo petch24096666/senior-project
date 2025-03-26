@@ -16,20 +16,9 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(cors());
-
-const verifyToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized - No token provided" });
-  }
-
-  req.token = authHeader.split(" ")[1]; // ตัด "Bearer " ออก
-  next();
-};
-
 app.use(userRoutes);
 app.use(projectRoutes);
-app.use("/api", verifyToken, calendarRoutes);
+app.use("/api",calendarRoutes);
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
 (async () => {
