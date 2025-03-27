@@ -26,10 +26,11 @@ const Sidebar = () => {
   return (
     <Box
       sx={{
-        width: 240,
+        width: 240  ,
         backgroundColor: "#fff",
         height: "100vh",
         p: 2,
+        zoom: "0.85"
       }}
     >
       <Typography

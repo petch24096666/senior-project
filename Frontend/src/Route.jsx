@@ -1,12 +1,13 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import KanbanBoard from "./components/pages/KanbanBoard/KanbanBoard";
+import Task from "./components/pages/KanbanBoard/Task";
 import MainLayout from "./components/layouts/MainLayout";
 import ProjectPage from "./components/pages/ProjectPage/ProjectPage"; 
 import DashboardPage from "./components/pages/Dashboard/Dashboard";
 import LoginPage from "./components/pages/SignUpSignInPage/Login";
 import RegisterPage from "./components/pages/SignUpSignInPage/Register";
 import ForgotpasswordPage from "./components/pages/SignUpSignInPage/ForgotPassword";
+import CreateProjectModal from "./components/pages/KanbanBoard/AddTask";
 import CalendarDashboard from "./components/pages/CalendarPage/Calendar";
 
 function App() {
@@ -29,7 +30,7 @@ function App() {
                     <Route path="calendar" element={<CalendarDashboard />} />
                     <Route path="messages" element={<h1>Messages</h1>} />
                     <Route path="documents" element={<h1>Documents</h1>} />
-                    <Route path="kanban" element={<KanbanBoard />} />
+                    <Route path="task" element={<Task />} />
                   </Routes>
                 </MainLayout>
               }

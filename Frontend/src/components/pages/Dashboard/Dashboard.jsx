@@ -14,6 +14,7 @@ const styles = {
         gap: '32px',
         overflowY: 'auto',
         overflowX: 'hidden',
+        zoom: "0.85"
     },
     header: {
         alignSelf: 'stretch',

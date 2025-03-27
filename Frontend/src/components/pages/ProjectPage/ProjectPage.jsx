@@ -14,6 +14,7 @@ const styles = {
     padding: "32px 22px",
     maxWidth: "calc(100% - 44px)",
     margin: "0 auto",
+    zoom: "0.85"
   },
   headerContainer: {
     display: "flex",
@@ -128,7 +129,6 @@ const fetchProjects = async () => {
     // Fetch updated projects here
     console.log("Project updated!");
   };
-
 
   return (
     <div style={styles.projectList}>
