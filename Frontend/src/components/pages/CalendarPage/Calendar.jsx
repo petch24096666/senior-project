@@ -82,7 +82,7 @@ const CalendarDashboard = () => {
   const [microsoftToken, setMicrosoftToken] = useState(localStorage.getItem("microsoftToken") || null);
 
   const fetchEvents = async () => {
-    const provider = localStorage.getItem("authProvider");
+    const provider = localStorage.getItem("authProvider")
     console.log("Fetch Provider:", provider);
     
     if (provider === "google") {
@@ -99,7 +99,7 @@ const CalendarDashboard = () => {
       if (response.ok) {
         const data = await response.json();
         console.log("Received Google events data:", data);
-  
+
         if (data.items && Array.isArray(data.items)) {
           console.log("Google events items:", data.items);
   
@@ -124,7 +124,6 @@ const CalendarDashboard = () => {
         console.warn("❌ No Microsoft token found.");
         return;
       }
-    
       const response = await fetch("http://localhost:8081/api/microsoft-events", {
         headers: { Authorization: `Bearer ${microsoftToken}` },
       });
@@ -149,7 +148,7 @@ const CalendarDashboard = () => {
             };
           });
     
-          setEvents(events);
+          setEvents(events); // อัปเดต state ด้วย events ที่แปลงแล้ว
         } else {
           console.error("❌ Microsoft events data.value is not an array or is empty");
         }
@@ -158,7 +157,6 @@ const CalendarDashboard = () => {
       }
     }
   };
-  
   useEffect(() => {
     fetchEvents();
   }, []);
