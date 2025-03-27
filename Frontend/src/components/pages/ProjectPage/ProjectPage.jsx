@@ -1,7 +1,13 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import PlaylistAddCheckIcon from "@mui/icons-material/PlaylistAddCheck";
-import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import { MoreOptionsButton, AddProjectButton } from "../../common/button"
+import SearchBar from "../../common/searchbar";
+import CreateProjectModal from "./AddProject";
+import ProjectCard from "../../common/projectcard"
+import ConfirmationPopup from "../../common/ConfirmationPopup";
+import EditProjectModal from "./EditProject";
+const url = import.meta.env.VITE_BACKEND_URL;
+
 
 const styles = {
   projectList: {
@@ -35,129 +41,94 @@ const styles = {
     alignItems: "center",
     gap: "10px",
   },
-  button: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: "8px",
-    backgroundColor: "#4F46E5",
-    color: "#fff",
-    padding: "10px 16px",
-    border: "none",
-    cursor: "pointer",
-    fontFamily: "Inter, sans-serif",
-    fontSize: "14px",
-    fontWeight: "500",
-  },
-  secondaryButton: {
-    backgroundColor: "#E5E7EB",
-    color: "#111827",
-  },
   projectGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(4, 1fr)",
     columnGap: "24px",
     rowGap: "32px",
   },
-  cardContainer: {
-    width: "262px",
-    height: "223px",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "space-between",
-    padding: "25px",
-    border: "1px solid #E5E7EB",
-    borderRadius: "12px",
-    backgroundColor: "white",
-    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-  },
-  cardHeader: {
-    fontFamily: "Inter, sans-serif",
-    fontSize: "24px",
-    fontWeight: "600",
-    lineHeight: "29.05px",
-    color: "#111827",
-  },
-  taskRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: "10px",
-  },
-  taskLabel: {
-    fontFamily: "Inter, sans-serif",
-    fontSize: "16px",
-    fontWeight: "400",
-    lineHeight: "16px",
-    color: "#6B7280",
-  },
-  taskIcon: {
-    fontSize: "16px",
-    color: "#6366F1",
-  },
-  cardTaskNumber: {
-    fontFamily: "Inter, sans-serif",
-    fontSize: "24px",
-    fontWeight: "600",
-    lineHeight: "29.05px",
-    color: "#111827",
-    marginTop: "8px",
-  },
-  progressBarContainer: {
-    width: "100%",
-    height: "6px",
-    backgroundColor: "#E5E7EB",
-    borderRadius: "3px",
-    overflow: "hidden",
-    marginTop: "10px",
-  },
-  progressBar: (progress) => ({
-    width: `${progress}%`,
-    height: "100%",
-    backgroundColor: "#6366F1",
-  }),
 };
 
-const ProjectCard = ({ title, tasksCompleted, totalTasks }) => {
-  const progress = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
 
-  return (
-    <div style={styles.cardContainer}>
-      <h3 style={styles.cardHeader}>{title || "Untitled Project"}</h3>
-      <div style={styles.taskRow}>
-        <span style={styles.taskLabel}>Tasks</span>
-        <span style={styles.taskIcon}>
-          <PlaylistAddCheckIcon />
-        </span>
-      </div>
-      <div>
-        <span style={styles.cardTaskNumber}>
-          {`${tasksCompleted || 0}/${totalTasks || 0}`}
-        </span>
-      </div>
-      <div style={styles.progressBarContainer}>
-        <div style={styles.progressBar(progress)}></div>
-      </div>
-    </div>
-  );
-};
+
 
 const ProjectPage = () => {
   const [projects, setProjects] = useState([]);
+  const [filteredProjects, setFilteredProjects] = useState([]);
+  const [searchQuery, setSearchQuery] = useState(""); // เพิ่ม state สำหรับเก็บค่าค้นหา
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState(null); // เก็บ ID ของโปรเจ็กต์ที่เลือก
+  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  
+const fetchProjects = async () => {
+  try {
+    const response = await axios.get(`${url}/api/projects`);
+    console.log("Fetched projects:", response.data);
+    setProjects(response.data.data || []);
+    setFilteredProjects(response.data.data || []);
+  } catch (error) {
+    console.error("Error fetching projects:", error);
+  }
+};
 
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const response = await axios.get("http://localhost:5000/api/projects");
-        console.log("Response Data:", response.data);
-        setProjects(response.data.data || []);
-      } catch (error) {
-        console.error("Error fetching projects:", error);
-      }
-    };
-
-    fetchProjects(); // เรียก fetchProjects
+    fetchProjects();
   }, []);
+
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    const normalizedQuery = query.toLowerCase().replace(/\s+/g, "");
+
+    if (normalizedQuery === "") {
+      setFilteredProjects(projects);
+    } else {
+      const filtered = projects.filter((project) => {
+        const normalizedTitle = project.title.toLowerCase().replace(/\s+/g, "");
+        return normalizedTitle.includes(normalizedQuery);
+      });
+      setFilteredProjects(filtered);
+    }
+  };
+
+  const handleOpenPopup = (projectId) => {
+    setSelectedProjectId(projectId); // เก็บ ID ของโปรเจ็กต์ที่ต้องการลบ
+    setIsPopupOpen(true); // เปิด Popup
+  };
+
+  const handleClosePopup = () => {
+    setIsPopupOpen(false); // ปิด Popup
+    setSelectedProjectId(null); // ล้างค่า ID ที่เลือก
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!selectedProjectId) return; // ตรวจสอบว่า ID ไม่เป็น null
+    try {
+      await axios.delete(`${url}/api/projects/${selectedProjectId}`);
+      console.log(`Project with ID ${selectedProjectId} deleted.`);
+      fetchProjects(); // ดึงข้อมูลใหม่หลังจากลบ
+      handleClosePopup(); // ปิด Popup หลังลบสำเร็จ
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      alert("Failed to delete the project. Please try again.");
+    }
+  };
+
+  const handleEditProject = (projectId) => {
+    setSelectedProjectId(projectId);
+    setIsEditModalOpen(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setIsEditModalOpen(false);
+    setSelectedProjectId(null);
+  };
+
+  const handleProjectUpdated = () => {
+    // Fetch updated projects here
+    console.log("Project updated!");
+  };
+
 
   return (
     <div style={styles.projectList}>
@@ -169,26 +140,65 @@ const ProjectPage = () => {
           </p>
         </div>
         <div style={styles.buttonContainer}>
-          <button style={{ ...styles.button, ...styles.secondaryButton }}>
-            <MoreHorizIcon />
-          </button>
-          <button style={styles.button}>+ Add Project</button>
+          <SearchBar
+            placeholder="Search projects..."
+            value={searchQuery}
+            style={{
+              width: "250px",
+              borderRadius: "12px",
+              fontSize: "18px",
+            }}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+          <MoreOptionsButton
+          sx={{
+            backgroundColor: "#E5E7EB",
+            color: "#111827"}}
+          onClick={() => alert("More options clicked!")} 
+          />
+          <AddProjectButton
+            sx={{ backgroundColor: "#4F46E5" }}
+            onClick={() => setIsModalOpen(true)}
+          />
+          {isModalOpen && <CreateProjectModal onClose={() => setIsModalOpen(false)} onProjectCreated={fetchProjects} />}
         </div>
       </div>
       <div style={styles.projectGrid}>
-        {projects.length > 0 ? (
-          projects.map((project, index) => (
+        {/* แสดง Popup */}
+        {filteredProjects.length > 0 ? (
+          filteredProjects.map((project, index) => (
             <ProjectCard
               key={index}
+              id={project.id}
               title={project.title}
+              description={project.description}
               tasksCompleted={project.tasksCompleted}
               totalTasks={project.totalTasks}
+              onEdit={() => handleEditProject(project.id)}
+              onDelete={() => handleOpenPopup(project.id)}
             />
           ))
         ) : (
           <p>No projects available.</p>
         )}
       </div>
+      {/* Confirmation Popup */}
+      <ConfirmationPopup
+          open={isPopupOpen}
+          title="Confirm Deletion"
+          message="Are you sure you want to delete this project? This action cannot be undone."
+          onCancel={handleClosePopup}
+          onConfirm={handleConfirmDelete}
+        />
+
+        {/* Edit Modal */}
+      {isEditModalOpen && (
+        <EditProjectModal
+          projectId={selectedProjectId}
+          onClose={handleCloseEditModal}
+          onProjectUpdated={fetchProjects}
+        />
+      )}
     </div>
   );
 };
