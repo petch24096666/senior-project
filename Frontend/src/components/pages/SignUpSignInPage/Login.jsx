@@ -49,7 +49,9 @@ const LoginPage = () => {
   }
 
   const handleGoogleLogin = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut();  // ล้าง session เก่าทั้งหมด
+    localStorage.clear();  // ล้างข้อมูลทั้งหมดใน localStorage
+    sessionStorage.clear();  // ล้างข้อมูลใน sessionStorage              
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -67,12 +69,15 @@ const LoginPage = () => {
   };
   
   const handleAzureLogin = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut(); // ล้าง session เก่า
+    localStorage.clear(); // ล้างข้อมูลเก่า
+    sessionStorage.clear(); // ล้างข้อมูลใน session
+  
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
-        scopes: "openid email profile offline_access",
-        redirectTo: "http://localhost:5173/", // ✅ ต้องตรงกับที่ตั้งไว้ใน Supabase
+        scopes: "openid email profile offline_access Calendars.ReadWrite",
+        redirectTo: "https://klauwpmsqqkxfjyxfpbx.supabase.co/auth/v1/callback",
       },
     });
   
@@ -85,27 +90,41 @@ const LoginPage = () => {
       console.error("❌ Azure Login error:", error);
     }
   };
-
-  useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("🔄 Auth State Changed:", event, session);
   
-      if (session?.provider_token) {
-        const provider = session.user?.app_metadata?.provider;
-        console.log("✅ Logged in via:", provider);
-        localStorage.setItem(`${provider}Token`, session.provider_token);
-        navigate("/dashboard");
-      } else {
-        console.log("❌ No session available.");
+  useEffect(() => {
+    // ตรวจสอบค่าของ authProvider ใน localStorage ก่อนเริ่มกระบวนการล็อกอิน
+    console.log("Checking localStorage before login:");
+    console.log("authProvider:", localStorage.getItem("authProvider"));
+    console.log("googleToken:", localStorage.getItem("googleToken"));
+    console.log("microsoftToken:", localStorage.getItem("microsoftToken"));
+  
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        const provider = session.user?.identities?.[0]?.provider;
+  
+        // ลบข้อมูลใน localStorage และ sessionStorage ก่อนบันทึกข้อมูลใหม่
+        localStorage.removeItem("authProvider");
+        localStorage.removeItem("googleToken");
+        localStorage.removeItem("microsoftToken");
+  
+        // ตรวจสอบ provider และบันทึกข้อมูลลง localStorage ใหม่
+        if (provider === "google") {
+          localStorage.setItem("authProvider", "google");
+          localStorage.setItem("googleToken", session.provider_token);  // ใช้ token ของ Google
+        } else if (provider === "azure" || provider === "microsoft") {
+          localStorage.setItem("authProvider", "microsoft");
+          localStorage.setItem("microsoftToken", session.provider_token);  // ใช้ token ของ Microsoft
+        }
+  
+        console.log("✅ Logged in as:", provider);
+        navigate("/dashboard");  // เปลี่ยนเส้นทางหลังจากล็อกอิน
       }
     });
   
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    return () => authListener.subscription.unsubscribe();
   }, []);
   
-
+  
   function login(event) {
     event.preventDefault();
     if (!validateForm()) return;
