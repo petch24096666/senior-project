@@ -8,6 +8,7 @@ import LoginPage from "./components/pages/SignUpSignInPage/Login";
 import RegisterPage from "./components/pages/SignUpSignInPage/Register";
 import ForgotpasswordPage from "./components/pages/SignUpSignInPage/ForgotPassword";
 import CreateProjectModal from "./components/pages/KanbanBoard/AddTask";
+import CalendarDashboard from "./components/pages/CalendarPage/Calendar";
 
 function App() {
   return (
@@ -26,7 +27,7 @@ function App() {
                     <Route path="dashboard" element={<DashboardPage />} />
                     <Route path="mytasks" element={<h1>My Tasks</h1>} />
                     <Route path="projects" element={<ProjectPage />} />
-                    <Route path="calendar" element={<h1>Calendar</h1>} />
+                    <Route path="calendar" element={<CalendarDashboard />} />
                     <Route path="messages" element={<h1>Messages</h1>} />
                     <Route path="documents" element={<h1>Documents</h1>} />
                     <Route path="task" element={<Task />} />
