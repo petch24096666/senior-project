@@ -19,6 +19,7 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     zIndex: 1000,
+    zoom: "0.85"
   },
   modal: {
     backgroundColor: "#fff",
