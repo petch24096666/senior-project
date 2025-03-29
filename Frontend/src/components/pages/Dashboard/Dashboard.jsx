@@ -1,393 +1,760 @@
-import React, { useEffect, useState } from "react";
-import axios from "axios";
-
-const url = import.meta.env.VITE_BACKEND_URL;
-
-const styles = {
-    container: {
-        width: '100%',
-        height: '100vh',
-        padding: '32px',
-        background: '#F9FAFB',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '32px',
-        overflowY: 'auto',
-        overflowX: 'hidden',
-    },
-    header: {
-        alignSelf: 'stretch',
-    },
-    headerTitle: {
-        fontSize: '24px',
-        fontWeight: '700',
-        color: '#111827',
-        marginBottom: '4px',
-        fontFamily: "Inter, sans-serif"
-    },
-    headerText: {
-        fontSize: '16px',
-        color: '#4B5563',
-        fontFamily: "Inter, sans-serif"
-    },
-    cardContainer: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '32px',
-    },
-    card: {
-        padding: '24px',
-        background: 'white',
-        borderRadius: '12px',
-        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
-    },
-    cardHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    cardText: {
-        color: '#6B7280',
-        fontSize: '16px',
-        fontFamily: "Inter, sans-serif"
-    },
-    table: {
-        width: "100%",
-        borderCollapse: "collapse",
-        fontFamily: "Inter, sans-serif",
-    },
-    tableHeaderRow: {
-        backgroundColor: "#F3F4F6",
-    },
-    tableHeader: {
-        textAlign: "left",
-        fontWeight: "700",
-        padding: "12px",
-        fontFamily: "Inter, sans-serif",
-    },
-    tableRow: {
-        borderBottom: "1px solid #E5E7EB",
-        height: "50px",
-    },
-    tableCell: {
-        textAlign: "left",
-        padding: "12px",
-        fontFamily: "Inter, sans-serif",
-    },
-    section: {
-        display: 'flex',
-        gap: '32px',
-        flexWrap: 'wrap',
-    },
-    activityCard: {
-        flex: 1,
-        background: 'white',
-        borderRadius: '12px',
-        padding: '24px',
-        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
-    },
-    calendarContainer: {
-        padding: '16px',
-        borderRadius: '12px',
-        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
-        background: 'white',
-        textAlign: 'center',
-    },
-    calendarHeader: {
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: '12px',
-    },
-    calendarButton: {
-        width: '32px',
-        height: '32px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderRadius: '8px',
-        background: '#F9FAFB',
-        border: 'none',
-        color: '#6B7280',
-        cursor: 'pointer',
-    },
-    calendarTitle: {
-        fontSize: '14px',
-        fontWeight: '600',
-        color: '#111827',
-        fontFamily: "Inter, sans-serif"
-    },
-    calendarGrid: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(7, 1fr)',
-        gap: '2px',
-        marginBottom: '4px',
-    },
-    dayName: {
-        textAlign: 'center',
-        padding: '2px 0',
-        fontSize: '10px',
-        fontWeight: '500',
-        color: '#6B7280',
-        fontFamily: "Inter, sans-serif"
-    },
-    emptyDay: {
-        height: '28px',
-    },
-    day: {
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '28px',
-        fontSize: '10px',
-        cursor: 'pointer',
-        borderRadius: '8px',
-        color: '#6B7280',
-        fontFamily: "Inter, sans-serif"
-    },
-    todayDay: {
-        backgroundColor: '#EEF2FF',
-        color: '#4F46E5',
-        fontWeight: '600',
-    },
-    selectedDay: {
-        backgroundColor: '#4F46E5',
-        color: 'white',
-        fontWeight: '600',
-    }
-};
+import React, { useState } from 'react';
 
 const Dashboard = () => {
-    const [projects, setProjects] = useState([]);
-    const [totalTasks, setTotalTasks] = useState(0);
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [selectedDate, setSelectedDate] = useState(new Date());
+  // State for active date in calendar
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [projects, setProjects] = useState([
+    { 
+      id: 1, 
+      name: 'Website Redesign', 
+      status: 'In Progress', 
+      progress: 65, 
+      dueDate: '2025-04-15',
+      team: [
+        { id: 1, name: 'Sarah Miller', avatar: '/api/placeholder/30/30' },
+        { id: 2, name: 'John Cooper', avatar: '/api/placeholder/30/30' },
+        { id: 3, name: 'Alex Wong', avatar: '/api/placeholder/30/30' }
+      ]
+    },
+    { 
+      id: 2, 
+      name: 'Mobile App Design', 
+      status: 'Planning', 
+      progress: 25, 
+      dueDate: '2025-05-10',
+      team: [
+        { id: 2, name: 'John Cooper', avatar: '/api/placeholder/30/30' },
+        { id: 4, name: 'Maria Garcia', avatar: '/api/placeholder/30/30' }
+      ]
+    },
+    { 
+      id: 3, 
+      name: 'API Integration', 
+      status: 'Completed', 
+      progress: 100, 
+      dueDate: '2025-03-22',
+      team: [
+        { id: 5, name: 'David Kim', avatar: '/api/placeholder/30/30' },
+        { id: 1, name: 'Sarah Miller', avatar: '/api/placeholder/30/30' }
+      ]
+    }
+  ]);
+  
+  const [activities, setActivities] = useState([
+    { id: 1, user: 'Sarah Miller', action: 'completed the task', subject: 'Update homepage hero section', time: '2 hours ago' },
+    { id: 2, user: 'John Cooper', action: 'added a comment on', subject: 'Mobile App Design', time: '4 hours ago' },
+    { id: 3, user: 'Alex Wong', action: 'created a new task', subject: 'API Documentation', time: '1 day ago' },
+    { id: 4, user: 'Maria Garcia', action: 'updated the status of', subject: 'User Testing', time: '2 days ago' }
+  ]);
+  
+  const [upcomingTasks, setUpcomingTasks] = useState([
+    { id: 1, title: 'Review design system documentation', priority: 'High', dueDate: '2025-03-31', completed: false },
+    { id: 2, title: 'Team meeting - Sprint planning', priority: 'Medium', dueDate: '2025-04-01', completed: false },
+    { id: 3, title: 'Complete user flow diagrams', priority: 'Medium', dueDate: '2025-04-02', completed: false },
+    { id: 4, title: 'Finalize API specifications', priority: 'High', dueDate: '2025-04-03', completed: false }
+  ]);
 
-    // Get current month and year
-    const currentMonth = currentDate.getMonth();
-    const currentYear = currentDate.getFullYear();
+  // State for hover effects
+  const [hoveredRow, setHoveredRow] = useState(null);
+  const [hoveredActivity, setHoveredActivity] = useState(null);
+  const [hoveredTask, setHoveredTask] = useState(null);
+  const [hoveredCard, setHoveredCard] = useState(null);
+  const [hoveredDay, setHoveredDay] = useState(null);
 
-    // Navigate to previous month
-    const prevMonth = () => {
-        setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
-    };
+  // Calendar navigation
+  const nextMonth = () => {
+    const date = new Date(currentMonth);
+    date.setMonth(date.getMonth() + 1);
+    setCurrentMonth(date);
+  };
 
-    // Navigate to next month
-    const nextMonth = () => {
-        setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
-    };
+  const prevMonth = () => {
+    const date = new Date(currentMonth);
+    date.setMonth(date.getMonth() - 1);
+    setCurrentMonth(date);
+  };
 
-    // Format the month name
-    const monthNames = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
-    ];
+  // Format month name and year
+  const formatMonthYear = (date) => {
+    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+  };
 
-    // Day names - short version to save space
-    const dayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  // Get days in month for calendar
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    
+    const daysArray = [];
+    
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      daysArray.push({ day: '', date: null });
+    }
+    
+    // Add days of the month
+    for (let i = 1; i <= daysInMonth; i++) {
+      const date = new Date(year, month, i);
+      daysArray.push({ 
+        day: i, 
+        date: date,
+        isToday: new Date().toDateString() === date.toDateString(),
+        hasEvent: i === 15 || i === 22 || i === 29 // Dummy event days
+      });
+    }
+    
+    return daysArray;
+  };
 
-    // Get days in month
-    const getDaysInMonth = (year, month) => {
-        return new Date(year, month + 1, 0).getDate();
-    };
-
-    // Get day of week the month starts on (0 = Sunday, 1 = Monday, etc.)
-    const getFirstDayOfMonth = (year, month) => {
-        return new Date(year, month, 1).getDay();
-    };
-
-    const today = new Date();
-    useEffect(() => {
-        fetchProjects();
-    }, []);
-
-    const fetchProjects = async () => {
-        try {
-            const response = await axios.get(`${url}/api/projects`);
-            const projectData = response.data.data || [];
-
-            setProjects(projectData);
-
-            // Calculate total tasks
-            const taskCount = projectData.reduce((acc, project) => acc + (project.totalTasks || 0), 0);
-            setTotalTasks(taskCount || 0);
-
-        } catch (error) {
-            console.error("Error fetching projects:", error);
-        }
-    };
-
-    // Render day cells for the calendar
-    const renderCalendarDays = () => {
-        const days = [];
-        
-        // Add empty cells for days before the first day of the month
-        for (let i = 0; i < getFirstDayOfMonth(currentYear, currentMonth); i++) {
-            days.push(<div key={`empty-${i}`} style={styles.emptyDay}></div>);
-        }
-        
-        // Add cells for each day of the month
-        for (let day = 1; day <= getDaysInMonth(currentYear, currentMonth); day++) {
-            const isToday = day === today.getDate() && 
-                            currentMonth === today.getMonth() && 
-                            currentYear === today.getFullYear();
-            
-            const isSelected = selectedDate && 
-                              day === selectedDate.getDate() && 
-                              currentMonth === selectedDate.getMonth() && 
-                              currentYear === selectedDate.getFullYear();
-            
-            const dayStyle = {
-                ...styles.day,
-                ...(isToday ? styles.todayDay : {}),
-                ...(isSelected ? styles.selectedDay : {})
-            };
-            
-            days.push(
-                <div 
-                    key={day} 
-                    onClick={() => setSelectedDate(new Date(currentYear, currentMonth, day))}
-                    style={dayStyle}
-                >
-                    {day}
-                </div>
-            );
-        }
-        
-        return days;
-    };
-
-    return (
-        <div style={styles.container}>
-            <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                width: '100%'
-            }}>
-                <div style={styles.header}>
-                    <h1 style={styles.headerTitle}>Welcome back!</h1>
-                    <p style={styles.headerText}>Here's what's happening with your projects today.</p>
-                </div>
-            </div>
-
-            {/* 📌 Overview Cards */}
-            <div style={styles.cardContainer}>
-                <div style={styles.card}>
-                    <div style={styles.cardHeader}>
-                        <span style={styles.cardText}>Total Projects</span>
-                        <div style={{ background: '#EEF2FF', padding: '10px', borderRadius: '8px' }}>📁</div>
-                    </div>
-                    <h2 style={{ fontSize: '32px', fontWeight: '700', color: '#111827' }}>{projects.length}</h2>
-                    <p style={{ color: '#10B981', fontSize: '14px' }}>⬆ 12% from last month</p>
-                </div>
-                <div style={styles.card}>
-                    <div style={styles.cardHeader}>
-                        <span style={styles.cardText}>Active Tasks</span>
-                        <div style={{ background: '#FEF3C7', padding: '10px', borderRadius: '8px' }}>📝</div>
-                    </div>
-                    <h2 style={{ fontSize: '32px', fontWeight: '700', color: '#111827' }}>{totalTasks}</h2>
-                    <p style={{ color: '#10B981', fontSize: '14px' }}>⬆ 8% from last week</p>
-                </div>
-                {/* Mini Calendar */}
-                <div style={styles.calendarContainer}>
-                    <div style={styles.calendarHeader}>
-                        <button onClick={prevMonth} style={styles.calendarButton}>←</button>
-                        <div style={styles.calendarTitle}>
-                            {monthNames[currentMonth].substring(0, 3)} {currentYear}
-                        </div>
-                        <button onClick={nextMonth} style={styles.calendarButton}>→</button>
-                    </div>
-                    
-                    <div style={styles.calendarGrid}>
-                        {dayNames.map(day => (
-                            <div key={day} style={styles.dayName}>{day}</div>
-                        ))}
-                        {renderCalendarDays()}
-                    </div>
-                </div>
-            </div> 
-
-            {/* 📌 Recent Projects Table */}
-            <div style={{
-                background: 'white',
-                borderRadius: '12px',
-                padding: '24px',
-                boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.05)',
-                fontFamily: "Inter, sans-serif"
-            }}>
-                <h3 style={{
-                    fontSize: '18px',
-                    fontWeight: '700',
-                    color: '#111827',
-                    marginBottom: '16px',
-                    fontFamily: "Inter, sans-serif"
-                }}>
-                    Recent Projects
-                </h3>
-                <table style={styles.table}>
-                    <thead>
-                        <tr style={styles.tableHeaderRow}>
-                            <th style={styles.tableHeader}>Project Name</th>
-                            <th style={styles.tableHeader}>Status</th>
-                            <th style={styles.tableHeader}>Progress</th>
-                            <th style={styles.tableHeader}>Due Date</th>
-                            <th style={styles.tableHeader}>Team</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {projects.length > 0 ? (
-                            projects.slice(0, 5).map((project, index) => (
-                                <tr key={index} style={styles.tableRow}>
-                                    <td style={styles.tableCell}>{project.title}</td>
-                                    <td style={styles.tableCell}>
-                                        <span style={{
-                                            background: project.status === "Completed" ? '#D1FAE5' : '#FEF3C7',
-                                            borderRadius: '16px',
-                                            padding: '4px 12px',
-                                            color: project.status === "Completed" ? '#065F46' : '#92400E',
-                                            fontFamily: "Inter, sans-serif",
-                                            fontWeight: "600"
-                                        }}>
-                                            {project.status || "In Progress"}
-                                        </span>
-                                    </td>
-                                    <td style={styles.tableCell}>{`${project.tasksCompleted || 0}/${project.totalTasks || 0}`}</td>
-                                    <td style={styles.tableCell}>{project.dueDate || "N/A"}</td>
-                                    <td style={styles.tableCell}>👩‍💻👨‍💻</td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan="5" style={{ textAlign: "center", fontFamily: "Inter, sans-serif" }}>
-                                    No projects available
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* 📌 Activity Section */}
-            <div style={styles.section}>
-                <div style={styles.activityCard}>
-                    <h3>Recent Activity</h3>
-                    <p>Sarah Miller completed the task "Update homepage hero section" 2 hours ago</p>
-                    <p>John Cooper added a comment on "Mobile App Design" 4 hours ago</p>
-                </div>
-                <div style={styles.activityCard}>
-                    <h3>Upcoming Tasks</h3>
-                    <p>☐ Review design system documentation <span style={{ background: '#FEE2E2', borderRadius: '4px', padding: '4px 8px', color: '#B91C1C' }}>High</span></p>
-                    <p>☐ Team meeting - Sprint planning <span style={{ background: '#FEF9C3', borderRadius: '4px', padding: '4px 8px', color: '#B45309' }}>Medium</span></p>
-                </div>
-            </div>
-        </div>
+  // Toggle task completion
+  const toggleTaskCompletion = (taskId) => {
+    setUpcomingTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId ? { ...task, completed: !task.completed } : task
+      )
     );
+  };
+
+  return (
+    <div style={{
+      padding: '24px',
+      backgroundColor: '#f9fafb',
+      minHeight: '100vh',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+    }}>
+      <header style={{ marginBottom: '24px' }}>
+        <h1 style={{ 
+          fontSize: '24px', 
+          fontWeight: 700, 
+          marginBottom: '8px',
+          color: '#111827'
+        }}>Welcome back!</h1>
+        <p style={{ 
+          color: '#6b7280', 
+          margin: 0 
+        }}>Here's what's happening with your projects today.</p>
+      </header>
+      
+      <div style={{ 
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+        gap: '16px',
+        marginBottom: '24px'
+      }}>
+        {/* Project Stats */}
+        <div style={{ 
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: hoveredCard === 'projects' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)',
+          padding: '16px',
+          transition: 'box-shadow 0.3s ease-in-out'
+        }}
+        onMouseEnter={() => setHoveredCard('projects')}
+        onMouseLeave={() => setHoveredCard(null)}>
+          <div style={{ 
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '16px',
+            color: '#4b5563',
+            fontWeight: 500
+          }}>
+            <span>Total Projects</span>
+            <div style={{ 
+              width: '40px',
+              height: '40px',
+              backgroundColor: '#e6f7ff',
+              color: '#0072e5',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <span role="img" aria-label="folder">📁</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline' }}>
+            <h2 style={{ 
+              fontSize: '28px',
+              fontWeight: 700,
+              margin: 0,
+              marginRight: '12px'
+            }}>{projects.length}</h2>
+            <span style={{ 
+              fontSize: '12px',
+              padding: '4px 8px',
+              borderRadius: '16px',
+              backgroundColor: '#dcfce7',
+              color: '#16a34a'
+            }}>↑ 12% from last month</span>
+          </div>
+        </div>
+        
+        <div style={{ 
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: hoveredCard === 'tasks' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)',
+          padding: '16px',
+          transition: 'box-shadow 0.3s ease-in-out'
+        }}
+        onMouseEnter={() => setHoveredCard('tasks')}
+        onMouseLeave={() => setHoveredCard(null)}>
+          <div style={{ 
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '16px',
+            color: '#4b5563',
+            fontWeight: 500
+          }}>
+            <span>Active Tasks</span>
+            <div style={{ 
+              width: '40px',
+              height: '40px',
+              backgroundColor: '#f3e8ff',
+              color: '#9333ea',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <span role="img" aria-label="clock">⏰</span>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline' }}>
+            <h2 style={{ 
+              fontSize: '28px',
+              fontWeight: 700,
+              margin: 0,
+              marginRight: '12px'
+            }}>{upcomingTasks.length}</h2>
+            <span style={{ 
+              fontSize: '12px',
+              padding: '4px 8px',
+              borderRadius: '16px',
+              backgroundColor: '#dcfce7',
+              color: '#16a34a'
+            }}>↑ 8% from last week</span>
+          </div>
+        </div>
+        
+        <div style={{ 
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: hoveredCard === 'calendar' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)',
+          padding: '16px',
+          transition: 'box-shadow 0.3s ease-in-out'
+        }}
+        onMouseEnter={() => setHoveredCard('calendar')}
+        onMouseLeave={() => setHoveredCard(null)}>
+          <div style={{ 
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '16px',
+            color: '#4b5563',
+            fontWeight: 500
+          }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span role="img" aria-label="calendar">📅</span>
+              {formatMonthYear(currentMonth)}
+            </span>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button 
+                onClick={prevMonth} 
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: hoveredDay === 'prev' ? '#f3f4f6' : 'transparent'
+                }}
+                onMouseEnter={() => setHoveredDay('prev')}
+                onMouseLeave={() => setHoveredDay(null)}
+              >◀</button>
+              <button 
+                onClick={nextMonth} 
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: hoveredDay === 'next' ? '#f3f4f6' : 'transparent'
+                }}
+                onMouseEnter={() => setHoveredDay('next')}
+                onMouseLeave={() => setHoveredDay(null)}
+              >▶</button>
+            </div>
+          </div>
+          
+          <div style={{ marginTop: '8px' }}>
+            <div style={{ 
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: '4px'
+            }}>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
+                <div key={i} style={{ 
+                  textAlign: 'center',
+                  padding: '6px',
+                  fontSize: '12px',
+                  fontWeight: 500,
+                  color: '#6b7280'
+                }}>
+                  {day}
+                </div>
+              ))}
+            </div>
+            
+            <div style={{ 
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, 1fr)',
+              gap: '4px'
+            }}>
+              {getDaysInMonth(currentMonth).map((day, i) => (
+                <div 
+                  key={i} 
+                  style={{ 
+                    textAlign: 'center',
+                    padding: '6px',
+                    position: 'relative',
+                    backgroundColor: day.isToday ? '#2563eb' : (hoveredDay === i && day.day) ? '#f3f4f6' : 'transparent',
+                    color: day.isToday ? 'white' : 'inherit',
+                    borderRadius: (day.isToday || (hoveredDay === i && day.day)) ? '50%' : 'none',
+                    fontWeight: day.hasEvent ? 500 : 400,
+                    cursor: day.day ? 'pointer' : 'default',
+                    visibility: day.day ? 'visible' : 'hidden'
+                  }}
+                  onMouseEnter={() => setHoveredDay(i)}
+                  onMouseLeave={() => setHoveredDay(null)}
+                >
+                  {day.day}
+                  {day.hasEvent && <div style={{ 
+                    position: 'absolute',
+                    width: '4px',
+                    height: '4px',
+                    backgroundColor: '#2563eb',
+                    borderRadius: '50%',
+                    bottom: '2px',
+                    left: '50%',
+                    transform: 'translateX(-50%)'
+                  }}></div>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Projects Table */}
+      <div style={{ 
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        marginBottom: '24px'
+      }}>
+        <div style={{ 
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          padding: '16px',
+          borderBottom: '1px solid #e5e7eb'
+        }}>
+          <h2 style={{ 
+            fontSize: '18px',
+            fontWeight: 700,
+            margin: 0
+          }}>Recent Projects</h2>
+          <button style={{ 
+            backgroundColor: '#eff6ff',
+            color: '#3b82f6',
+            border: 'none',
+            padding: '4px 12px',
+            borderRadius: '16px',
+            fontSize: '12px',
+            cursor: 'pointer',
+            transition: 'background-color 0.2s'
+          }}>View All</button>
+        </div>
+        
+        {projects.length > 0 ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ 
+              width: '100%',
+              borderCollapse: 'collapse'
+            }}>
+              <thead>
+                <tr>
+                  <th style={{ 
+                    textAlign: 'left',
+                    padding: '12px 16px',
+                    fontWeight: 500,
+                    color: '#4b5563',
+                    backgroundColor: '#f9fafb',
+                    borderBottom: '1px solid #e5e7eb'
+                  }}>Project Name</th>
+                  <th style={{ 
+                    textAlign: 'left',
+                    padding: '12px 16px',
+                    fontWeight: 500,
+                    color: '#4b5563',
+                    backgroundColor: '#f9fafb',
+                    borderBottom: '1px solid #e5e7eb'
+                  }}>Status</th>
+                  <th style={{ 
+                    textAlign: 'left',
+                    padding: '12px 16px',
+                    fontWeight: 500,
+                    color: '#4b5563',
+                    backgroundColor: '#f9fafb',
+                    borderBottom: '1px solid #e5e7eb'
+                  }}>Progress</th>
+                  <th style={{ 
+                    textAlign: 'left',
+                    padding: '12px 16px',
+                    fontWeight: 500,
+                    color: '#4b5563',
+                    backgroundColor: '#f9fafb',
+                    borderBottom: '1px solid #e5e7eb'
+                  }}>Due Date</th>
+                  <th style={{ 
+                    textAlign: 'left',
+                    padding: '12px 16px',
+                    fontWeight: 500,
+                    color: '#4b5563',
+                    backgroundColor: '#f9fafb',
+                    borderBottom: '1px solid #e5e7eb'
+                  }}>Team</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map((project) => (
+                  <tr 
+                    key={project.id} 
+                    style={{
+                      transition: 'background-color 0.2s',
+                      backgroundColor: hoveredRow === project.id ? '#f9fafb' : 'transparent',
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={() => setHoveredRow(project.id)}
+                    onMouseLeave={() => setHoveredRow(null)}
+                  >
+                    <td style={{ 
+                      padding: '16px',
+                      borderBottom: '1px solid #e5e7eb',
+                      fontWeight: 500
+                    }}>{project.name}</td>
+                    <td style={{ 
+                      padding: '16px',
+                      borderBottom: '1px solid #e5e7eb'
+                    }}>
+                      <span style={{ 
+                        display: 'inline-block',
+                        padding: '4px 8px',
+                        borderRadius: '16px',
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        backgroundColor: project.status === 'In Progress' ? '#e6f7ff' : 
+                                        project.status === 'Planning' ? '#f3e8ff' : 
+                                        project.status === 'Completed' ? '#dcfce7' : 
+                                        project.status === 'On Hold' ? '#fef9c3' : '#f3f4f6',
+                        color: project.status === 'In Progress' ? '#0072e5' : 
+                              project.status === 'Planning' ? '#9333ea' : 
+                              project.status === 'Completed' ? '#16a34a' : 
+                              project.status === 'On Hold' ? '#ca8a04' : '#4b5563'
+                      }}>
+                        {project.status}
+                      </span>
+                    </td>
+                    <td style={{ 
+                      padding: '16px',
+                      borderBottom: '1px solid #e5e7eb'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <div style={{ 
+                          height: '6px',
+                          width: '100%',
+                          backgroundColor: '#e5e7eb',
+                          borderRadius: '3px',
+                          marginRight: '8px',
+                          overflow: 'hidden'
+                        }}>
+                          <div style={{ 
+                            height: '100%',
+                            width: `${project.progress}%`,
+                            borderRadius: '3px',
+                            backgroundColor: project.progress < 30 ? '#ef4444' : 
+                                            project.progress < 70 ? '#f59e0b' : '#10b981'
+                          }}></div>
+                        </div>
+                        <span style={{ 
+                          fontSize: '14px',
+                          color: '#4b5563'
+                        }}>{project.progress}%</span>
+                      </div>
+                    </td>
+                    <td style={{ 
+                      padding: '16px',
+                      borderBottom: '1px solid #e5e7eb'
+                    }}>
+                      {new Date(project.dueDate).toLocaleDateString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </td>
+                    <td style={{ 
+                      padding: '16px',
+                      borderBottom: '1px solid #e5e7eb'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        {project.team.slice(0, 3).map((member, index) => (
+                          <div 
+                            key={member.id} 
+                            style={{ 
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '50%',
+                              backgroundColor: '#e5e7eb',
+                              border: '2px solid white',
+                              overflow: 'hidden',
+                              position: 'relative',
+                              zIndex: project.team.length - index,
+                              marginLeft: index > 0 ? '-8px' : '0'
+                            }}
+                          >
+                            <img 
+                              src={member.avatar} 
+                              alt={member.name} 
+                              style={{ 
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover'
+                              }} 
+                            />
+                          </div>
+                        ))}
+                        {project.team.length > 3 && (
+                          <div style={{ 
+                            width: '32px',
+                            height: '32px',
+                            borderRadius: '50%',
+                            backgroundColor: '#e5e7eb',
+                            border: '2px solid white',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#4b5563',
+                            fontSize: '12px',
+                            fontWeight: 500,
+                            marginLeft: '-8px'
+                          }}>
+                            +{project.team.length - 3}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ 
+            padding: '32px',
+            textAlign: 'center',
+            color: '#6b7280'
+          }}>
+            <p>No projects available</p>
+          </div>
+        )}
+      </div>
+      
+      <div style={{ 
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))',
+        gap: '16px'
+      }}>
+        {/* Activity Feed */}
+        <div style={{ 
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+          height: '100%'
+        }}>
+          <div style={{ 
+            padding: '16px',
+            borderBottom: '1px solid #e5e7eb'
+          }}>
+            <h2 style={{ 
+              fontSize: '18px',
+              fontWeight: 700,
+              margin: 0
+            }}>Recent Activity</h2>
+          </div>
+          
+          <ul style={{ 
+            listStyle: 'none',
+            padding: 0,
+            margin: 0
+          }}>
+            {activities.map((activity, index) => (
+              <li 
+                key={activity.id} 
+                style={{ 
+                  padding: '12px 16px',
+                  transition: 'background-color 0.2s',
+                  backgroundColor: hoveredActivity === activity.id ? '#f9fafb' : 'transparent'
+                }}
+                onMouseEnter={() => setHoveredActivity(activity.id)}
+                onMouseLeave={() => setHoveredActivity(null)}
+              >
+                <div style={{ 
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}>
+                  <div style={{ 
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '4px'
+                  }}>
+                    <span style={{ fontWeight: 500 }}>{activity.user}</span>
+                    <span style={{ color: '#6b7280' }}>{activity.action}</span>
+                    <span style={{ 
+                      fontWeight: 500,
+                      color: '#2563eb',
+                      cursor: 'pointer',
+                      textDecoration: hoveredActivity === activity.id ? 'underline' : 'none'
+                    }}>{activity.subject}</span>
+                  </div>
+                  <div style={{ 
+                    fontSize: '12px',
+                    color: '#9ca3af'
+                  }}>{activity.time}</div>
+                </div>
+                {index < activities.length - 1 && (
+                  <div style={{ 
+                    marginTop: '12px',
+                    borderBottom: '1px solid #e5e7eb'
+                  }}></div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+        
+        {/* Upcoming Tasks */}
+        <div style={{ 
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+          height: '100%'
+        }}>
+          <div style={{ 
+            padding: '16px',
+            borderBottom: '1px solid #e5e7eb'
+          }}>
+            <h2 style={{ 
+              fontSize: '18px',
+              fontWeight: 700,
+              margin: 0
+            }}>Upcoming Tasks</h2>
+          </div>
+          
+          <ul style={{ 
+            listStyle: 'none',
+            padding: 0,
+            margin: 0
+          }}>
+            {upcomingTasks.map((task, index) => (
+              <li 
+                key={task.id} 
+                style={{ 
+                  padding: '12px 16px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  transition: 'background-color 0.2s',
+                  backgroundColor: hoveredTask === task.id ? '#f9fafb' : 'transparent'
+                }}
+                onMouseEnter={() => setHoveredTask(task.id)}
+                onMouseLeave={() => setHoveredTask(null)}
+              >
+                <input 
+                  type="checkbox" 
+                  checked={task.completed}
+                  onChange={() => toggleTaskCompletion(task.id)}
+                  style={{ 
+                    marginTop: '3px',
+                    marginRight: '12px'
+                  }}
+                />
+                
+                <div style={{ flex: 1 }}>
+                  <div style={{ 
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '4px'
+                  }}>
+                    <span style={{ 
+                      fontWeight: 500,
+                      textDecoration: task.completed ? 'line-through' : 'none',
+                      color: task.completed ? '#9ca3af' : 'inherit'
+                    }}>
+                      {task.title}
+                    </span>
+                    <span style={{ 
+                      display: 'inline-block',
+                      padding: '4px 8px',
+                      borderRadius: '16px',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      backgroundColor: task.priority === 'High' ? '#fee2e2' : 
+                                      task.priority === 'Medium' ? '#fef9c3' : 
+                                      task.priority === 'Low' ? '#dcfce7' : '#f3f4f6',
+                      color: task.priority === 'High' ? '#dc2626' : 
+                            task.priority === 'Medium' ? '#ca8a04' : 
+                            task.priority === 'Low' ? '#16a34a' : '#4b5563'
+                    }}>
+                      {task.priority}
+                    </span>
+                  </div>
+                  
+                  <div style={{ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    color: '#9ca3af',
+                    marginTop: '4px'
+                  }}>
+                    <span role="img" aria-label="calendar" style={{ fontSize: '16px' }}>📅</span>
+                    Due {new Date(task.dueDate).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric'
+                    })}
+                  </div>
+                </div>
+                
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export default Dashboard;

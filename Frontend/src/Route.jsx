@@ -8,6 +8,11 @@ import LoginPage from "./components/pages/SignUpSignInPage/Login";
 import RegisterPage from "./components/pages/SignUpSignInPage/Register";
 import ForgotpasswordPage from "./components/pages/SignUpSignInPage/ForgotPassword";
 import CalendarDashboard from "./components/pages/CalendarPage/Calendar";
+import ProfilePage from "./components/pages/EditProfilePage/EditProfilePage";
+import BookingPage from "./components/pages/BookingPage/BookingPage";
+import MessagePage from "./components/pages/MessagePage/MessagePage";
+import MeetingApp from "./components/pages/MeetingPage/MeetingPage";
+import TaskPage from "./components/pages/TaskPage/TaskPage";
 
 function App() {
   return (
@@ -24,11 +29,13 @@ function App() {
                 <MainLayout>
                   <Routes>
                     <Route path="dashboard" element={<DashboardPage />} />
-                    <Route path="mytasks" element={<h1>My Tasks</h1>} />
+                    <Route path="mytasks" element={<TaskPage />} />
                     <Route path="projects" element={<ProjectPage />} />
+                    <Route path="meeting" element={<MeetingApp />} />
                     <Route path="calendar" element={<CalendarDashboard />} />
-                    <Route path="messages" element={<h1>Messages</h1>} />
-                    <Route path="documents" element={<h1>Documents</h1>} />
+                    <Route path="profile" element={<ProfilePage />} />
+                    <Route path="messages" element={<MessagePage />} />
+                    <Route path="booking" element={<BookingPage />} />
                     <Route path="kanban" element={<KanbanBoard />} />
                   </Routes>
                 </MainLayout>
