@@ -1,11 +1,7 @@
-import React, { useState, useEffect } from "react";
-import {
-  Box,
-  Typography,
-  Button as MuiButton,
-} from "@mui/material";
+import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 
-// CSS Styles as a string variable for injection
+// CSS Styles
 const styles = `
 :root {
   --primary-color: #4a6fa5;
@@ -133,7 +129,7 @@ button:hover {
   background-color: rgba(74, 111, 165, 0.1);
 }
 
-.kanban-card {
+.card {
   background-color: var(--card-bg);
   border-radius: 6px;
   padding: 16px;
@@ -144,12 +140,12 @@ button:hover {
   position: relative;
 }
 
-.kanban-card:hover {
+.card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(0,0,0,0.1);
 }
 
-.kanban-card:active {
+.card:active {
   cursor: grabbing;
 }
 
@@ -230,7 +226,7 @@ button:hover {
   transition: opacity 0.2s;
 }
 
-.kanban-card:hover .edit-btn {
+.card:hover .edit-btn {
   opacity: 0.7;
 }
 
@@ -247,7 +243,7 @@ button:hover {
   width: 100%;
   height: 100%;
   background-color: rgba(0,0,0,0.5);
-  z-index: 1000;
+  z-index: 100;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -326,8 +322,8 @@ textarea {
 }
 `;
 
-// Task Card Component - renamed to avoid conflicts with MUI Card
-const TaskCard = ({ task, onDragStart, onEditTask, isDone }) => {
+// Card Component
+const Card = ({ task, onDragStart, onEditTask, isDone }) => {
   // Format date
   const formatDate = (dateString) => {
     if (!dateString) return '';
@@ -347,7 +343,7 @@ const TaskCard = ({ task, onDragStart, onEditTask, isDone }) => {
 
   return (
     <div 
-      className="kanban-card"
+      className="card"
       draggable
       onDragStart={(e) => onDragStart(e, task.id)}
       data-id={task.id}
@@ -417,7 +413,7 @@ const Column = ({
         onDrop={handleDrop}
       >
         {tasks.map((task) => (
-          <TaskCard 
+          <Card 
             key={task.id} 
             task={task} 
             onDragStart={onDragStart}
@@ -553,8 +549,8 @@ const TaskModal = ({ onClose, onSave, task, isEdit }) => {
   );
 };
 
-// KanbanBoardView Component
-const KanbanBoardView = ({ tasks, onEditTask, onMoveTask, onAddCard }) => {
+// KanbanBoard Component
+const Kanban = ({ tasks, onEditTask, onMoveTask, onAddCard }) => {
   // Group tasks by column
   const todoTasks = tasks.filter(task => task.column === 'todo');
   const inProgressTasks = tasks.filter(task => task.column === 'inprogress');
@@ -623,7 +619,7 @@ const KanbanBoardView = ({ tasks, onEditTask, onMoveTask, onAddCard }) => {
   );
 };
 
-// Main KanbanBoard Component
+// Main App Component
 const KanbanBoard = () => {
   const [showModal, setShowModal] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState(null);
@@ -778,7 +774,7 @@ const KanbanBoard = () => {
   };
 
   return (
-    <Box className="app">
+    <div className="app">
       {/* Embed CSS */}
       <style>{styles}</style>
       
@@ -793,7 +789,7 @@ const KanbanBoard = () => {
         </div>
       </header>
       
-      <KanbanBoardView 
+      <KanbanBoard 
         tasks={tasksData} 
         onEditTask={editTask} 
         onMoveTask={moveTask} 
@@ -811,7 +807,7 @@ const KanbanBoard = () => {
           isEdit={!!currentTaskId}
         />
       )}
-    </Box>
+    </div>
   );
 };
 
