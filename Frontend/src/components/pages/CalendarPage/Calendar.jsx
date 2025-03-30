@@ -1,36 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from "react";
+import { DateTime } from "luxon";
+import FullCalendar from "@fullcalendar/react";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import timeGridPlugin from "@fullcalendar/timegrid";
+import interactionPlugin from "@fullcalendar/interaction";
 import { supabase } from "../../../utils/supabaseClient";
+import { Button, Modal, TextField, MenuItem, ToggleButtonGroup, ToggleButton } from "@mui/material";
 
-const API_URL = 'http://localhost:8081';
-
-const ModernCalendar = () => {
-  // State for dates and views
+const CalendarDashboard = () => {
+  const [events, setEvents] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState('month'); // 'day', 'week', 'month'
-
-  // State for event management
-  const [showEventModal, setShowEventModal] = useState(false);
-  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [viewMode, setViewMode] = useState('month'); 
+  const [openModal, setOpenModal] = useState(false);
+  const [newEvent, setNewEvent] = useState({ title: "", start: "", color: "#3788d8" });
+  const [view, setView] = useState("timeGridDay"); // Default เป็น Today
+  const timelineRef = useRef(null);
+  const [googleToken, setGoogleToken] = useState(localStorage.getItem("googleToken") || null);
   const [editingEvent, setEditingEvent] = useState(null);
-  const [editingCategory, setEditingCategory] = useState(null);
-  const [eventForm, setEventForm] = useState({
-    id: null,
-    title: '',
-    start: '',
-    end: '',
-    allDay: false,
-    description: '',
-    location: '',
-    color: '#3366FF'
-  });
-  const [categoryForm, setCategoryForm] = useState({
-    id: '',
-    name: '',
-    color: '#3366FF'
-  });
+  const [microsoftToken, setMicrosoftToken] = useState(localStorage.getItem("microsoftToken") || null);
 
-  // Categories for events
+   // State for event management
+   const [showEventModal, setShowEventModal] = useState(false);
+   const [showCategoryModal, setShowCategoryModal] = useState(false);
+   const [editingCategory, setEditingCategory] = useState(null);
+   const [eventForm, setEventForm] = useState({
+     id: null,
+     title: '',
+     start: '',
+     end: '',
+     allDay: false,
+     description: '',
+     location: '',
+     color: '#3366FF'
+   });
+   const [categoryForm, setCategoryForm] = useState({
+     id: '',
+     name: '',
+     color: '#3366FF'
+   });
+     // Categories for events
   const [categories, setCategories] = useState([
     { id: 'work', name: 'Work', color: '#3366FF' },
     { id: 'personal', name: 'Personal', color: '#33CC66' },
@@ -40,44 +50,86 @@ const ModernCalendar = () => {
     { id: 'other', name: 'Other', color: '#999999' }
   ]);
 
-  // Sample events
-  const [events, setEvents] = useState([
-    {
-      id: 1,
-      title: 'Team Meeting',
-      start: new Date(2025, 2, 29, 10, 0),
-      end: new Date(2025, 2, 29, 11, 30),
-      allDay: false,
-      description: 'Weekly team sync meeting',
-      location: 'Conference Room A',
-      category: 'work',
-      color: '#3366FF'
-    },
-    {
-      id: 2,
-      title: 'Doctor Appointment',
-      start: new Date(2025, 2, 30, 14, 0),
-      end: new Date(2025, 2, 30, 15, 0),
-      allDay: false,
-      description: 'Annual checkup',
-      location: 'Medical Center',
-      category: 'health',
-      color: '#9966FF'
-    },
-    {
-      id: 3,
-      title: 'Birthday Party',
-      start: new Date(2025, 3, 5, 0, 0),
-      end: new Date(2025, 3, 5, 23, 59),
-      allDay: true,
-      description: 'Sarah\'s birthday celebration',
-      location: 'Home',
-      category: 'family',
-      color: '#FF6633'
-    }
-  ]);
+  const fetchEvents = async () => {
+    const provider = localStorage.getItem("authProvider")
+    console.log("Fetch Provider:", provider);
+    
+    if (provider === "google") {
+      const googleToken = localStorage.getItem("googleToken");
+      if (!googleToken) {
+        console.warn("❌ No Google token found.");
+        return;
+      }
+  
+      const response = await fetch("http://localhost:8081/api/google-events", {
+        headers: { Authorization: `Bearer ${googleToken}` },
+      });
+  
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Received Google events data:", data);
 
-  // Initialize a new event form when modal is opened
+        if (data.items && Array.isArray(data.items)) {
+          console.log("Google events items:", data.items);
+  
+          const events = data.items.map(item => ({
+            id: item.id,
+            title: item.summary,
+            start: new Date(item.start.dateTime || item.start.date),
+            end: new Date(item.end.dateTime || item.end.date),
+            color: "#4285F4",
+          }));
+  
+          setEvents(events);
+        } else {
+          console.error("❌ Google events data.items is not an array or is empty");
+        }
+      } else {
+        console.error("❌ Error fetching Google events:", response.status);
+      }
+    } else if (provider === "microsoft") {
+      const microsoftToken = localStorage.getItem("microsoftToken");
+      if (!microsoftToken) {
+        console.warn("❌ No Microsoft token found.");
+        return;
+      }
+      const response = await fetch("http://localhost:8081/api/microsoft-events", {
+        headers: { Authorization: `Bearer ${microsoftToken}` },
+      });
+    
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Microsoft events raw:", data);
+    
+        if (data.value && Array.isArray(data.value)) {
+          const events = data.value.map(item => {
+            // Fix: Parse Microsoft dates correctly with proper timezone handling
+            // Microsoft returns UTC dates, so we need to convert them to local time
+            const startDateTime = new Date(item.start.dateTime + 'Z'); // Add 'Z' to specify UTC
+            const endDateTime = new Date(item.end.dateTime + 'Z');
+            
+            return {
+              id: item.id,
+              title: item.subject,
+              start: startDateTime,
+              end: endDateTime,
+              color: "#0078D4",
+            };
+          });
+    
+          setEvents(events); // อัปเดต state ด้วย events ที่แปลงแล้ว
+        } else {
+          console.error("❌ Microsoft events data.value is not an array or is empty");
+        }
+      } else {
+        console.error("❌ Error fetching Microsoft events:", response.status);
+      }
+    }
+  };
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
   useEffect(() => {
     if (showEventModal && !editingEvent) {
       const now = new Date();
@@ -101,7 +153,6 @@ const ModernCalendar = () => {
     }
   }, [showEventModal, editingEvent, selectedDate]);
 
-  // Initialize event form with existing event data when editing
   useEffect(() => {
     if (editingEvent) {
       setEventForm({
@@ -118,81 +169,7 @@ const ModernCalendar = () => {
     }
   }, [editingEvent]);
 
-  const refreshAccessToken = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-  
-    if (session) {
-      const newToken = session.provider_token;
-      localStorage.setItem("googleToken", newToken);
-      console.log("✅ Token refreshed");
-    } else {
-      console.warn("❌ No active session. Please login again");
-    }
-  };
 
-  const fetchEvents = async () => {
-    const provider = localStorage.getItem("authProvider");
-  
-    if (provider === "google") {
-      let googleToken = localStorage.getItem("googleToken");
-  
-      let response = await fetch("http://localhost:8081/api/google-events", {
-        headers: { Authorization: `Bearer ${googleToken}` },
-      });
-  
-      // 🔥 ถ้า token หมดอายุ
-      if (response.status === 401) {
-        console.warn("⚠️ Token expired, refreshing...");
-  
-        // ขอ session ใหม่จาก Supabase
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.provider_token) {
-          // เก็บ token ใหม่
-          googleToken = session.provider_token;
-          localStorage.setItem("googleToken", googleToken);
-          console.log("✅ Token refreshed");
-  
-          // ยิง request ใหม่ด้วย token ใหม่
-          response = await fetch("http://localhost:8081/api/google-events", {
-            headers: { Authorization: `Bearer ${googleToken}` },
-          });
-        } else {
-          console.error("❌ Unable to refresh token");
-          return;
-        }
-      }
-  
-      // ✅ ถ้า fetch สำเร็จ
-      if (response.ok) {
-        const data = await response.json();
-        console.log("📥 Events:", data.items);
-        const formattedEvents = data.items.map((item) => ({
-          id: item.id,
-          title: item.summary,
-          start: new Date(item.start.dateTime || item.start.date),
-          end: new Date(item.end.dateTime || item.end.date),
-          color: "#4285F4",
-        }));
-        setEvents(formattedEvents);
-      } else {
-        console.error("❌ Error fetching Google events:", response.status);
-      }
-    }
-  };
-  
-  useEffect(() => {
-    fetchEvents();
-  }, []);
-  
-
-  useEffect(() => {
-    fetchEvents();
-  }, []);
-
-
-  // Category management functions
   const handleCategoryFormChange = (e) => {
     const { name, value } = e.target;
     setCategoryForm(prev => ({
@@ -369,6 +346,145 @@ const ModernCalendar = () => {
     setSelectedDate(new Date());
   };
 
+  const handleEventSubmit = async (e) => {
+    e.preventDefault();
+  
+    const eventData = {
+      title: eventForm.title,
+      start: eventForm.start,
+      end: eventForm.end || eventForm.start,
+    };
+  
+    await handleAddEvent(eventData); // ✅ เรียกฟังก์ชันที่คุณเขียนไว้
+    setShowEventModal(false);
+    setEditingEvent(null);
+  };
+  
+  // ✅ ฟังก์ชันหลัก
+  const handleAddEvent = async (newEvent) => {
+    if (!newEvent.title || !newEvent.start) {
+      alert("Please enter event details.");
+      return;
+    }
+  
+    const provider = localStorage.getItem("authProvider");
+    const token = localStorage.getItem(
+      provider === "google" ? "googleToken" : "microsoftToken"
+    );
+  
+    if (!provider || !token) {
+      console.error("❌ Missing authProvider or token");
+      return;
+    }
+  
+    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  
+    const start = DateTime.fromISO(newEvent.start).setZone("Asia/Bangkok").toISO();
+    const end = newEvent.end
+      ? DateTime.fromISO(newEvent.end).setZone("Asia/Bangkok").toISO()
+      : start;
+  
+      const eventDetails = {
+        title: eventForm.title,
+        start,
+        end,
+        timeZone: userTimeZone,
+        allDay: eventForm.allDay,
+        location: eventForm.location || "",
+        description: eventForm.description || "",
+      };
+  
+    let addedEvent = null;
+  
+    if (provider === "google") {
+      addedEvent = await addEventToGoogleCalendar(eventDetails, token);
+    } else if (provider === "microsoft") {
+      addedEvent = await addEventToMicrosoftCalendar(eventDetails, token);
+    }
+  
+    if (addedEvent) {
+      setEvents((prevEvents) => [
+        ...prevEvents,
+        {
+          id: addedEvent.id,
+          title: addedEvent.summary || addedEvent.subject,
+          start: addedEvent.start.dateTime || addedEvent.start,
+          end: addedEvent.end.dateTime || addedEvent.end,
+          color: provider === "google" ? "#4285F4" : "#0078D4",
+        },
+      ]);
+    }
+  };
+  
+  // ✅ เพิ่ม Google API Call
+  const addEventToGoogleCalendar = async (event, token) => {
+    try {
+      const response = await fetch(
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            summary: event.title,
+            location: event.location,
+            description: event.description,
+            start: {
+              dateTime: event.start,
+              timeZone: "Asia/Bangkok",
+            },
+            end: {
+              dateTime: event.end,
+              timeZone: "Asia/Bangkok",
+            },
+          }),
+        }
+      );
+  
+      if (!response.ok) throw new Error(`Google error: ${response.status}`);
+      return await response.json();
+    } catch (err) {
+      console.error("❌ Error adding to Google Calendar:", err);
+      return null;
+    }
+  };
+  
+  // ✅ เพิ่ม Microsoft API Call
+  const addEventToMicrosoftCalendar = async (event, token) => {
+    try {
+      const response = await fetch("https://graph.microsoft.com/v1.0/me/events", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: event.title,
+          start: {
+            dateTime: event.start,
+            timeZone: "Asia/Bangkok",
+          },
+          end: {
+            dateTime: event.end,
+            timeZone: "Asia/Bangkok",
+          },
+          body: {
+            contentType: "HTML",
+            content: "Created",
+          },
+        }),
+      });
+  
+      if (!response.ok) throw new Error(`Microsoft error: ${response.status}`);
+      return await response.json();
+    } catch (err) {
+      console.error("❌ Error adding to Microsoft Calendar:", err);
+      return null;
+    }
+  };
+
   // Event handling functions
   const handleDateClick = (date) => {
     setSelectedDate(date);
@@ -385,90 +501,51 @@ const ModernCalendar = () => {
       [name]: type === 'checkbox' ? checked : value
     }));
   };
-
-  const handleEventSubmit = async (e) => {
-    e.preventDefault();
-
-    const provider = localStorage.getItem("authProvider");
-
-    const newEvent = {
-      id: Date.now(),
-      title: eventForm.title,
-      start: new Date(eventForm.start),
-      end: new Date(eventForm.end),
-      allDay: eventForm.allDay,
-      description: eventForm.description,
-      location: eventForm.location,
-      color: eventForm.color,
-    };
-
-    if (provider === "google" || provider === "microsoft") {
-      const token = localStorage.getItem(provider === "google" ? "googleToken" : "microsoftToken");
-      let addedEvent;
-      if (provider === "google") {
-        const res = await fetch("http://localhost:8081/api/create-google-event", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(newEvent),
-        });
-        addedEvent = await res.json();
+  
+  useEffect(() => {
+    const initialize = async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+  
+      if (session) {
+        const identities = session.user?.identities || [];
+        const provider = identities[0]?.provider;
+        const token = session.provider_token;
+  
+        // ✅ normalize
+        let normalizedProvider = "unknown";
+  
+        if (provider === "google" || token.startsWith("ya29")) {
+          normalizedProvider = "google";
+          localStorage.setItem("googleToken", token);
+          setGoogleToken(token);
+          localStorage.removeItem("microsoftToken");
+        } else if (provider === "azure" || provider === "microsoft") {
+          normalizedProvider = "microsoft";
+          localStorage.setItem("microsoftToken", token);
+          setMicrosoftToken(token);
+          localStorage.removeItem("googleToken");
+        }
+  
+        // ✅ Save provider
+        localStorage.setItem("authProvider", normalizedProvider);
+  
+        console.log("✅ Logged in as:", normalizedProvider);
+        console.log("🪪 AccessToken:", token);
+  
+        await fetchEvents();
       } else {
-        const res = await fetch("http://localhost:8081/api/create-microsoft-event", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(newEvent),
-        });
-        addedEvent = await res.json();
+        console.warn("⚠️ No active session");
       }
-
-      if (addedEvent) {
-        setEvents((prev) => [...prev, {
-          ...newEvent,
-          id: addedEvent.id,
-          color: provider === "google" ? "#4285F4" : "#0078D4",
-        }]);
-      }
-    } else {
-      // 👉 ถ้าไม่ได้ login ด้วย Google/Microsoft → บันทึก Local State ธรรมดา
-      setEvents((prev) => [...prev, newEvent]);
-    }
-
-    setShowEventModal(false);
-    setEditingEvent(null);
-  };
+    };
+  
+    initialize();
+  }, []);
 
 
-  const handleDeleteEvent = async () => {
-    const provider = localStorage.getItem("authProvider");
-
-    if (!editingEvent) return;
-
-    if (provider === "google" || provider === "microsoft") {
-      const token = localStorage.getItem(provider === "google" ? "googleToken" : "microsoftToken");
-      const url = provider === "google"
-        ? `http://localhost:8081/api/delete-google-event/${editingEvent.id}`
-        : `http://localhost:8081/api/delete-microsoft-event/${editingEvent.id}`;
-
-      await fetch(url, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-    }
-
-    // ✅ ลบจาก local state ทุกกรณี
-    setEvents(events.filter(event => event.id !== editingEvent.id));
-    setShowEventModal(false);
-    setEditingEvent(null);
-  };
-
-
-  // Get events for a specific date
+  useEffect(() => {
+    console.log("📌 Updated Events:", events);
+  }, [events]);
   const getEventsForDate = (date) => {
     return events.filter(event =>
       isSameDay(event.start, date) ||
@@ -505,6 +582,8 @@ const ModernCalendar = () => {
   // Days of week for headers
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const daysOfWeekShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+
 
   return (
     <div style={{
@@ -1557,6 +1636,7 @@ const ModernCalendar = () => {
 
                   <button
                     type="submit"
+                    onClick={handleAddEvent}
                     style={{
                       padding: '10px 16px',
                       backgroundColor: '#2563EB',
@@ -1747,4 +1827,5 @@ const ModernCalendar = () => {
   );
 };
 
-export default ModernCalendar;
+
+export default CalendarDashboard;
