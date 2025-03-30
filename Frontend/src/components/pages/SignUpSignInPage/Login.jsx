@@ -91,13 +91,7 @@ const LoginPage = () => {
     }
   };
   
-  useEffect(() => {
-    // ตรวจสอบค่าของ authProvider ใน localStorage ก่อนเริ่มกระบวนการล็อกอิน
-    console.log("Checking localStorage before login:");
-    console.log("authProvider:", localStorage.getItem("authProvider"));
-    console.log("googleToken:", localStorage.getItem("googleToken"));
-    console.log("microsoftToken:", localStorage.getItem("microsoftToken"));
-  
+  useEffect(() => {  
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         const provider = session.user?.identities?.[0]?.provider;

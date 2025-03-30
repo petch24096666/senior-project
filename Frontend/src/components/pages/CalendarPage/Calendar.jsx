@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from "../../../utils/supabaseClient";
+
+const API_URL = 'http://localhost:8081';
 
 const ModernCalendar = () => {
   // State for dates and views
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('month'); // 'day', 'week', 'month'
-  
+
   // State for event management
   const [showEventModal, setShowEventModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -36,7 +39,7 @@ const ModernCalendar = () => {
     { id: 'meeting', name: 'Meeting', color: '#FF3366' },
     { id: 'other', name: 'Other', color: '#999999' }
   ]);
-  
+
   // Sample events
   const [events, setEvents] = useState([
     {
@@ -81,10 +84,10 @@ const ModernCalendar = () => {
       const startTime = new Date(selectedDate);
       startTime.setHours(now.getHours());
       startTime.setMinutes(0);
-      
+
       const endTime = new Date(startTime);
       endTime.setHours(startTime.getHours() + 1);
-      
+
       setEventForm({
         id: Date.now(), // Temp ID
         title: '',
@@ -97,7 +100,7 @@ const ModernCalendar = () => {
       });
     }
   }, [showEventModal, editingEvent, selectedDate]);
-  
+
   // Initialize event form with existing event data when editing
   useEffect(() => {
     if (editingEvent) {
@@ -114,7 +117,81 @@ const ModernCalendar = () => {
       setShowEventModal(true);
     }
   }, [editingEvent]);
+
+  const refreshAccessToken = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
   
+    if (session) {
+      const newToken = session.provider_token;
+      localStorage.setItem("googleToken", newToken);
+      console.log("✅ Token refreshed");
+    } else {
+      console.warn("❌ No active session. Please login again");
+    }
+  };
+
+  const fetchEvents = async () => {
+    const provider = localStorage.getItem("authProvider");
+  
+    if (provider === "google") {
+      let googleToken = localStorage.getItem("googleToken");
+  
+      let response = await fetch("http://localhost:8081/api/google-events", {
+        headers: { Authorization: `Bearer ${googleToken}` },
+      });
+  
+      // 🔥 ถ้า token หมดอายุ
+      if (response.status === 401) {
+        console.warn("⚠️ Token expired, refreshing...");
+  
+        // ขอ session ใหม่จาก Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.provider_token) {
+          // เก็บ token ใหม่
+          googleToken = session.provider_token;
+          localStorage.setItem("googleToken", googleToken);
+          console.log("✅ Token refreshed");
+  
+          // ยิง request ใหม่ด้วย token ใหม่
+          response = await fetch("http://localhost:8081/api/google-events", {
+            headers: { Authorization: `Bearer ${googleToken}` },
+          });
+        } else {
+          console.error("❌ Unable to refresh token");
+          return;
+        }
+      }
+  
+      // ✅ ถ้า fetch สำเร็จ
+      if (response.ok) {
+        const data = await response.json();
+        console.log("📥 Events:", data.items);
+        const formattedEvents = data.items.map((item) => ({
+          id: item.id,
+          title: item.summary,
+          start: new Date(item.start.dateTime || item.start.date),
+          end: new Date(item.end.dateTime || item.end.date),
+          color: "#4285F4",
+        }));
+        setEvents(formattedEvents);
+      } else {
+        console.error("❌ Error fetching Google events:", response.status);
+      }
+    }
+  };
+  
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+  
+
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
+
   // Category management functions
   const handleCategoryFormChange = (e) => {
     const { name, value } = e.target;
@@ -123,38 +200,37 @@ const ModernCalendar = () => {
       [name]: value
     }));
   };
-  
+
   const handleCategorySubmit = (e) => {
     e.preventDefault();
-    
+
     const newCategory = {
       id: editingCategory ? categoryForm.id : `category-${Date.now()}`,
       name: categoryForm.name,
       color: categoryForm.color
     };
-    
+
     if (editingCategory) {
-      setCategories(prev => prev.map(cat => 
+      setCategories(prev => prev.map(cat =>
         cat.id === editingCategory.id ? newCategory : cat
       ));
     } else {
       setCategories(prev => [...prev, newCategory]);
     }
-    
     setShowCategoryModal(false);
     setEditingCategory(null);
   };
-  
+
   const handleDeleteCategory = () => {
     if (editingCategory) {
       // Don't delete if there are events using this category
       const eventsUsingCategory = events.some(event => event.color === editingCategory.color);
-      
+
       if (eventsUsingCategory) {
         alert("Cannot delete this category as it's being used by one or more events");
         return;
       }
-      
+
       setCategories(prev => prev.filter(cat => cat.id !== editingCategory.id));
       setShowCategoryModal(false);
       setEditingCategory(null);
@@ -165,15 +241,15 @@ const ModernCalendar = () => {
   const formatDateTimeForInput = (date) => {
     return date.toISOString().slice(0, 16);
   };
-  
+
   // Helper to format date for display
   const formatDate = (date, format = 'full') => {
     if (format === 'full') {
-      return date.toLocaleDateString('en-US', { 
-        weekday: 'long', 
-        month: 'long', 
-        day: 'numeric', 
-        year: 'numeric' 
+      return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
       });
     } else if (format === 'monthYear') {
       return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -181,23 +257,23 @@ const ModernCalendar = () => {
       return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     }
   };
-  
+
   // Get days for the month view
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    
+
     // First day of the month
     const firstDay = new Date(year, month, 1);
     // Last day of the month
     const lastDay = new Date(year, month + 1, 0);
-    
+
     // Day of the week for the first day (0 = Sunday, 1 = Monday, etc.)
     const firstDayIndex = firstDay.getDay();
-    
+
     // Array to hold all days to display
     const days = [];
-    
+
     // Add days from previous month to fill in the first week
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = firstDayIndex - 1; i >= 0; i--) {
@@ -207,7 +283,7 @@ const ModernCalendar = () => {
         currentMonth: false
       });
     }
-    
+
     // Add days from current month
     for (let day = 1; day <= lastDay.getDate(); day++) {
       days.push({
@@ -215,7 +291,7 @@ const ModernCalendar = () => {
         currentMonth: true
       });
     }
-    
+
     // Add days from next month to fill out the last week
     const nextDays = 42 - days.length; // 6 rows of 7 days
     for (let day = 1; day <= nextDays; day++) {
@@ -224,41 +300,41 @@ const ModernCalendar = () => {
         currentMonth: false
       });
     }
-    
+
     return days;
   };
-  
+
   // Get days for the week view
   const getDaysInWeek = () => {
     const days = [];
     // Get the first day of the week (Sunday) for the current date
     const weekStart = new Date(currentDate);
     weekStart.setDate(currentDate.getDate() - currentDate.getDay());
-    
+
     // Add 7 days starting from the week start
     for (let i = 0; i < 7; i++) {
       const day = new Date(weekStart);
       day.setDate(weekStart.getDate() + i);
       days.push(day);
     }
-    
+
     return days;
   };
-  
+
   // Utility functions for date manipulation
   const isToday = (date) => {
     const today = new Date();
-    return date.getDate() === today.getDate() && 
-           date.getMonth() === today.getMonth() &&
-           date.getFullYear() === today.getFullYear();
+    return date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
   };
-  
+
   const isSameDay = (date1, date2) => {
-    return date1.getDate() === date2.getDate() && 
-           date1.getMonth() === date2.getMonth() &&
-           date1.getFullYear() === date2.getFullYear();
+    return date1.getDate() === date2.getDate() &&
+      date1.getMonth() === date2.getMonth() &&
+      date1.getFullYear() === date2.getFullYear();
   };
-  
+
   // Navigation functions
   const goToPrevious = () => {
     setCurrentDate(prevDate => {
@@ -273,7 +349,7 @@ const ModernCalendar = () => {
       return newDate;
     });
   };
-  
+
   const goToNext = () => {
     setCurrentDate(prevDate => {
       const newDate = new Date(prevDate);
@@ -287,12 +363,12 @@ const ModernCalendar = () => {
       return newDate;
     });
   };
-  
+
   const goToToday = () => {
     setCurrentDate(new Date());
     setSelectedDate(new Date());
   };
-  
+
   // Event handling functions
   const handleDateClick = (date) => {
     setSelectedDate(date);
@@ -301,7 +377,7 @@ const ModernCalendar = () => {
       setCurrentDate(date);
     }
   };
-  
+
   const handleEventFormChange = (e) => {
     const { name, value, type, checked } = e.target;
     setEventForm(prev => ({
@@ -309,81 +385,127 @@ const ModernCalendar = () => {
       [name]: type === 'checkbox' ? checked : value
     }));
   };
-  
-  const handleEventSubmit = (e) => {
+
+  const handleEventSubmit = async (e) => {
     e.preventDefault();
-    
+
+    const provider = localStorage.getItem("authProvider");
+
     const newEvent = {
-      id: eventForm.id,
+      id: Date.now(),
       title: eventForm.title,
       start: new Date(eventForm.start),
       end: new Date(eventForm.end),
       allDay: eventForm.allDay,
       description: eventForm.description,
       location: eventForm.location,
-      color: eventForm.color
+      color: eventForm.color,
     };
-    
-    if (editingEvent) {
-      // Update existing event
-      setEvents(events.map(event => 
-        event.id === editingEvent.id ? newEvent : event
-      ));
+
+    if (provider === "google" || provider === "microsoft") {
+      const token = localStorage.getItem(provider === "google" ? "googleToken" : "microsoftToken");
+      let addedEvent;
+      if (provider === "google") {
+        const res = await fetch("http://localhost:8081/api/create-google-event", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(newEvent),
+        });
+        addedEvent = await res.json();
+      } else {
+        const res = await fetch("http://localhost:8081/api/create-microsoft-event", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(newEvent),
+        });
+        addedEvent = await res.json();
+      }
+
+      if (addedEvent) {
+        setEvents((prev) => [...prev, {
+          ...newEvent,
+          id: addedEvent.id,
+          color: provider === "google" ? "#4285F4" : "#0078D4",
+        }]);
+      }
     } else {
-      // Add new event
-      setEvents([...events, newEvent]);
+      // 👉 ถ้าไม่ได้ login ด้วย Google/Microsoft → บันทึก Local State ธรรมดา
+      setEvents((prev) => [...prev, newEvent]);
     }
-    
+
     setShowEventModal(false);
     setEditingEvent(null);
   };
-  
-  const handleDeleteEvent = () => {
-    if (editingEvent) {
-      setEvents(events.filter(event => event.id !== editingEvent.id));
-      setShowEventModal(false);
-      setEditingEvent(null);
+
+
+  const handleDeleteEvent = async () => {
+    const provider = localStorage.getItem("authProvider");
+
+    if (!editingEvent) return;
+
+    if (provider === "google" || provider === "microsoft") {
+      const token = localStorage.getItem(provider === "google" ? "googleToken" : "microsoftToken");
+      const url = provider === "google"
+        ? `http://localhost:8081/api/delete-google-event/${editingEvent.id}`
+        : `http://localhost:8081/api/delete-microsoft-event/${editingEvent.id}`;
+
+      await fetch(url, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
     }
+
+    // ✅ ลบจาก local state ทุกกรณี
+    setEvents(events.filter(event => event.id !== editingEvent.id));
+    setShowEventModal(false);
+    setEditingEvent(null);
   };
-  
+
+
   // Get events for a specific date
   const getEventsForDate = (date) => {
-    return events.filter(event => 
-      isSameDay(event.start, date) || 
+    return events.filter(event =>
+      isSameDay(event.start, date) ||
       (event.allDay && isSameDay(event.end, date))
     );
   };
-  
+
   // Get all-day events for a date
   const getAllDayEvents = (date) => {
-    return events.filter(event => 
+    return events.filter(event =>
       event.allDay && isSameDay(event.start, date)
     );
   };
-  
+
   // Get non-all-day events for an hour
   const getEventsForHour = (date, hour) => {
-    return events.filter(event => 
-      !event.allDay && 
-      isSameDay(event.start, date) && 
+    return events.filter(event =>
+      !event.allDay &&
+      isSameDay(event.start, date) &&
       event.start.getHours() === hour
     );
   };
-  
+
   // Generate time slots for day view
   const timeSlots = Array.from({ length: 24 }, (_, i) => i);
-  
+
   // Get time label
   const getTimeLabel = (hour) => {
     if (hour === 0) return '12 AM';
     if (hour === 12) return '12 PM';
     return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
   };
-  
+
   // Days of week for headers
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const daysOfWeekShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  
+
   return (
     <div style={{
       fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
@@ -412,14 +534,14 @@ const ModernCalendar = () => {
           borderBottom: '1px solid #E5E7EB'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <h1 style={{ 
-              fontSize: '24px', 
-              fontWeight: '600', 
-              margin: 0 
+            <h1 style={{
+              fontSize: '24px',
+              fontWeight: '600',
+              margin: 0
             }}>
               Calendar
             </h1>
-            
+
             <div style={{ display: 'flex', gap: '2px' }}>
               <button
                 style={{
@@ -437,7 +559,7 @@ const ModernCalendar = () => {
               >
                 Day
               </button>
-              
+
               <button
                 style={{
                   padding: '8px 12px',
@@ -454,7 +576,7 @@ const ModernCalendar = () => {
               >
                 Week
               </button>
-              
+
               <button
                 style={{
                   padding: '8px 12px',
@@ -473,7 +595,7 @@ const ModernCalendar = () => {
               </button>
             </div>
           </div>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               style={{
@@ -490,7 +612,7 @@ const ModernCalendar = () => {
             >
               Today
             </button>
-            
+
             <div style={{ display: 'flex', gap: '4px' }}>
               <button
                 style={{
@@ -510,7 +632,7 @@ const ModernCalendar = () => {
                   <path fillRule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clipRule="evenodd" />
                 </svg>
               </button>
-              
+
               <button
                 style={{
                   width: '32px',
@@ -530,17 +652,17 @@ const ModernCalendar = () => {
                 </svg>
               </button>
             </div>
-            
-            <h2 style={{ 
-              fontSize: '16px', 
-              fontWeight: '500', 
-              margin: 0 
+
+            <h2 style={{
+              fontSize: '16px',
+              fontWeight: '500',
+              margin: 0
             }}>
-              {viewMode === 'month' ? formatDate(currentDate, 'monthYear') : 
-               viewMode === 'week' ? `${formatDate(getDaysInWeek()[0], 'full')} - ${formatDate(getDaysInWeek()[6], 'full')}` :
-               formatDate(currentDate, 'full')}
+              {viewMode === 'month' ? formatDate(currentDate, 'monthYear') :
+                viewMode === 'week' ? `${formatDate(getDaysInWeek()[0], 'full')} - ${formatDate(getDaysInWeek()[6], 'full')}` :
+                  formatDate(currentDate, 'full')}
             </h2>
-            
+
             <button
               style={{
                 padding: '8px 16px',
@@ -568,11 +690,11 @@ const ModernCalendar = () => {
             </button>
           </div>
         </div>
-        
+
         {/* Calendar Main Content */}
-        <div style={{ 
-          flex: 1, 
-          display: 'flex', 
+        <div style={{
+          flex: 1,
+          display: 'flex',
           overflow: 'hidden'
         }}>
           {/* Sidebar (optional on smaller screens) */}
@@ -586,9 +708,9 @@ const ModernCalendar = () => {
           }}>
             {/* Categories */}
             <div>
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
                 alignItems: 'center',
                 marginBottom: '8px'
               }}>
@@ -623,10 +745,10 @@ const ModernCalendar = () => {
                   Add Category
                 </button>
               </div>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {categories.map(category => (
-                  <div 
+                  <div
                     key={category.id}
                     style={{
                       display: 'flex',
@@ -638,7 +760,7 @@ const ModernCalendar = () => {
                       transition: 'background-color 0.2s'
                     }}
                   >
-                    <span 
+                    <span
                       style={{
                         width: '12px',
                         height: '12px',
@@ -675,20 +797,20 @@ const ModernCalendar = () => {
                 ))}
               </div>
             </div>
-            
+
             {/* Upcoming Events */}
             <div>
               <h3 style={{ margin: '0 0 8px 0', fontSize: '14px', fontWeight: '500' }}>
                 Upcoming Events
               </h3>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {events
                   .filter(event => event.start >= new Date())
                   .sort((a, b) => a.start - b.start)
                   .slice(0, 3)
                   .map(event => (
-                    <div 
+                    <div
                       key={event.id}
                       style={{
                         padding: '8px',
@@ -707,7 +829,7 @@ const ModernCalendar = () => {
                       </div>
                     </div>
                   ))}
-                
+
                 {events.filter(event => event.start >= new Date()).length === 0 && (
                   <div style={{ fontSize: '14px', color: '#6B7280', padding: '8px' }}>
                     No upcoming events
@@ -716,7 +838,7 @@ const ModernCalendar = () => {
               </div>
             </div>
           </div>
-          
+
           {/* Main Calendar View */}
           <div style={{ flex: 1, overflow: 'auto' }}>
             {/* Day View */}
@@ -742,7 +864,7 @@ const ModernCalendar = () => {
                   }}>
                     All day
                   </div>
-                  
+
                   <div style={{
                     flex: 1,
                     padding: '8px',
@@ -768,7 +890,7 @@ const ModernCalendar = () => {
                         {event.title}
                       </div>
                     ))}
-                    
+
                     {getAllDayEvents(currentDate).length === 0 && (
                       <div
                         style={{
@@ -785,7 +907,7 @@ const ModernCalendar = () => {
                     )}
                   </div>
                 </div>
-                
+
                 {/* Time slots */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                   {timeSlots.map(hour => (
@@ -809,7 +931,7 @@ const ModernCalendar = () => {
                       }}>
                         {getTimeLabel(hour)}
                       </div>
-                      
+
                       <div
                         style={{
                           flex: 1,
@@ -857,7 +979,7 @@ const ModernCalendar = () => {
                 </div>
               </div>
             )}
-            
+
             {/* Week View */}
             {viewMode === 'week' && (
               <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -868,7 +990,7 @@ const ModernCalendar = () => {
                   borderBottom: '1px solid #E5E7EB'
                 }}>
                   <div style={{ padding: '12px', borderRight: '1px solid #E5E7EB' }}></div>
-                  
+
                   {getDaysInWeek().map((day, index) => (
                     <div
                       key={index}
@@ -899,7 +1021,7 @@ const ModernCalendar = () => {
                     </div>
                   ))}
                 </div>
-                
+
                 {/* All-day events */}
                 <div style={{
                   display: 'grid',
@@ -919,7 +1041,7 @@ const ModernCalendar = () => {
                   }}>
                     All day
                   </div>
-                  
+
                   {getDaysInWeek().map((day, index) => {
                     const dayEvents = getAllDayEvents(day);
                     return (
@@ -964,7 +1086,7 @@ const ModernCalendar = () => {
                     );
                   })}
                 </div>
-                
+
                 {/* Time slots */}
                 <div style={{ flex: 1, overflowY: 'auto' }}>
                   {timeSlots.map(hour => (
@@ -986,7 +1108,7 @@ const ModernCalendar = () => {
                       }}>
                         {getTimeLabel(hour)}
                       </div>
-                      
+
                       {getDaysInWeek().map((day, index) => {
                         const hourEvents = getEventsForHour(day, hour);
                         return (
@@ -1037,7 +1159,7 @@ const ModernCalendar = () => {
                 </div>
               </div>
             )}
-            
+
             {/* Month View */}
             {viewMode === 'month' && (
               <div style={{ height: '100%' }}>
@@ -1062,7 +1184,7 @@ const ModernCalendar = () => {
                     </div>
                   ))}
                 </div>
-                
+
                 {/* Calendar grid */}
                 <div style={{
                   display: 'grid',
@@ -1073,7 +1195,7 @@ const ModernCalendar = () => {
                 }}>
                   {getDaysInMonth().map((day, index) => {
                     const dayEvents = getEventsForDate(day.date);
-                    
+
                     return (
                       <div
                         key={index}
@@ -1108,7 +1230,7 @@ const ModernCalendar = () => {
                             {day.date.getDate()}
                           </div>
                         </div>
-                        
+
                         <div style={{
                           display: 'flex',
                           flexDirection: 'column',
@@ -1137,7 +1259,7 @@ const ModernCalendar = () => {
                               {event.title}
                             </div>
                           ))}
-                          
+
                           {dayEvents.length > 3 && (
                             <div style={{
                               fontSize: '11px',
@@ -1157,7 +1279,7 @@ const ModernCalendar = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Event Modal */}
       {showEventModal && (
         <div style={{
@@ -1189,7 +1311,7 @@ const ModernCalendar = () => {
               <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>
                 {editingEvent ? 'Edit Event' : 'Create Event'}
               </h2>
-              
+
               <button
                 style={{
                   background: 'none',
@@ -1206,7 +1328,7 @@ const ModernCalendar = () => {
                 &times;
               </button>
             </div>
-            
+
             <form onSubmit={handleEventSubmit}>
               <div style={{ marginBottom: '16px' }}>
                 <label
@@ -1235,10 +1357,10 @@ const ModernCalendar = () => {
                   placeholder="Add title"
                 />
               </div>
-              
-              <div style={{ 
-                display: 'flex', 
-                gap: '16px', 
+
+              <div style={{
+                display: 'flex',
+                gap: '16px',
                 marginBottom: '16px',
                 alignItems: 'flex-end'
               }}>
@@ -1266,7 +1388,7 @@ const ModernCalendar = () => {
                     }}
                   />
                 </div>
-                
+
                 <div style={{ flex: 1 }}>
                   <label style={{
                     display: 'block',
@@ -1292,7 +1414,7 @@ const ModernCalendar = () => {
                   />
                 </div>
               </div>
-              
+
               <div style={{ marginBottom: '16px' }}>
                 <label style={{
                   display: 'flex',
@@ -1313,7 +1435,7 @@ const ModernCalendar = () => {
                   <span style={{ fontSize: '14px' }}>All day</span>
                 </label>
               </div>
-              
+
               <div style={{ marginBottom: '16px' }}>
                 <label style={{
                   display: 'block',
@@ -1338,7 +1460,7 @@ const ModernCalendar = () => {
                   placeholder="Add location"
                 />
               </div>
-              
+
               <div style={{ marginBottom: '16px' }}>
                 <label style={{
                   display: 'block',
@@ -1364,7 +1486,7 @@ const ModernCalendar = () => {
                   placeholder="Add description"
                 />
               </div>
-              
+
               <div style={{ marginBottom: '24px' }}>
                 <label style={{
                   display: 'block',
@@ -1386,12 +1508,12 @@ const ModernCalendar = () => {
                         cursor: 'pointer',
                         border: eventForm.color === category.color ? '2px solid #1F2937' : '2px solid transparent'
                       }}
-                      onClick={() => setEventForm({...eventForm, color: category.color})}
+                      onClick={() => setEventForm({ ...eventForm, color: category.color })}
                     ></div>
                   ))}
                 </div>
               </div>
-              
+
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 {editingEvent && (
                   <button
@@ -1411,7 +1533,7 @@ const ModernCalendar = () => {
                     Delete
                   </button>
                 )}
-                
+
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>
                   <button
                     type="button"
@@ -1432,7 +1554,7 @@ const ModernCalendar = () => {
                   >
                     Cancel
                   </button>
-                  
+
                   <button
                     type="submit"
                     style={{
@@ -1454,7 +1576,7 @@ const ModernCalendar = () => {
           </div>
         </div>
       )}
-      
+
       {/* Category Modal */}
       {showCategoryModal && (
         <div style={{
@@ -1486,7 +1608,7 @@ const ModernCalendar = () => {
               <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '600' }}>
                 {editingCategory ? 'Edit Category' : 'New Category'}
               </h2>
-              
+
               <button
                 style={{
                   background: 'none',
@@ -1503,7 +1625,7 @@ const ModernCalendar = () => {
                 &times;
               </button>
             </div>
-            
+
             <form onSubmit={handleCategorySubmit}>
               <div style={{ marginBottom: '16px' }}>
                 <label
@@ -1532,7 +1654,7 @@ const ModernCalendar = () => {
                   placeholder="Category name"
                 />
               </div>
-              
+
               <div style={{ marginBottom: '24px' }}>
                 <label
                   style={{
@@ -1558,7 +1680,7 @@ const ModernCalendar = () => {
                   }}
                 />
               </div>
-              
+
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 {editingCategory && (
                   <button
@@ -1578,7 +1700,7 @@ const ModernCalendar = () => {
                     Delete
                   </button>
                 )}
-                
+
                 <div style={{ marginLeft: 'auto', display: 'flex', gap: '12px' }}>
                   <button
                     type="button"
@@ -1599,7 +1721,7 @@ const ModernCalendar = () => {
                   >
                     Cancel
                   </button>
-                  
+
                   <button
                     type="submit"
                     style={{

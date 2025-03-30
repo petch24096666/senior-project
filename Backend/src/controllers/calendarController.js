@@ -4,20 +4,19 @@ import axios from "axios";
 // ==============================
 // GOOGLE CALENDAR CONTROLLERS
 // ==============================
-
 export const getGoogleEvents = async (req, res) => {
-  const accessToken = req.headers.authorization?.split(" ")[1];
-  if (!accessToken) return res.status(401).json({ error: "Missing Google Token" });
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Missing Google Token' });
 
   try {
-    const response = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-      headers: { Authorization: `Bearer ${accessToken}` },
+    const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+      headers: { Authorization: `Bearer ${token}` },
     });
     const data = await response.json();
     res.json(data);
   } catch (err) {
-    console.error("❌ Google Events Error:", err);
-    res.status(500).json({ error: "Failed to fetch Google Calendar events" });
+    console.error('❌ Google Events Error:', err);
+    res.status(500).json({ error: 'Failed to fetch Google events' });
   }
 };
 
@@ -96,14 +95,17 @@ export const deleteGoogleEvent = async (req, res) => {
 // ==============================
 
 export const getMicrosoftEvents = async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Missing Microsoft Token' });
+
   try {
-    const result = await axios.get("https://graph.microsoft.com/v1.0/me/events", {
-      headers: { Authorization: `Bearer ${req.accessToken}` },
+    const response = await axios.get('https://graph.microsoft.com/v1.0/me/events', {
+      headers: { Authorization: `Bearer ${token}` },
     });
-    res.json(result.data);
+    res.json(response.data);
   } catch (err) {
-    console.error("❌ Microsoft Events Error:", err.response?.data || err);
-    res.status(500).json({ error: "Failed to fetch Microsoft events" });
+    console.error('❌ Microsoft Events Error:', err);
+    res.status(500).json({ error: 'Failed to fetch Microsoft events' });
   }
 };
 
