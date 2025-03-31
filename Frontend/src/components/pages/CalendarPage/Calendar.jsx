@@ -1,22 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { DateTime } from "luxon";
-import FullCalendar from "@fullcalendar/react";
-import dayGridPlugin from "@fullcalendar/daygrid";
-import timeGridPlugin from "@fullcalendar/timegrid";
-import interactionPlugin from "@fullcalendar/interaction";
 import { supabase } from "../../../utils/supabaseClient";
-import { Button, Modal, TextField, MenuItem, ToggleButtonGroup, ToggleButton } from "@mui/material";
 
 const CalendarDashboard = () => {
   const [events, setEvents] = useState([]);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedEvent, setSelectedEvent] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('month'); 
-  const [openModal, setOpenModal] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: "", start: "", color: "#3788d8" });
-  const [view, setView] = useState("timeGridDay"); // Default เป็น Today
-  const timelineRef = useRef(null);
   const [googleToken, setGoogleToken] = useState(localStorage.getItem("googleToken") || null);
   const [editingEvent, setEditingEvent] = useState(null);
   const [microsoftToken, setMicrosoftToken] = useState(localStorage.getItem("microsoftToken") || null);
@@ -132,14 +122,10 @@ const CalendarDashboard = () => {
 
   useEffect(() => {
     if (showEventModal && !editingEvent) {
-      const now = new Date();
       const startTime = new Date(selectedDate);
-      startTime.setHours(now.getHours());
-      startTime.setMinutes(0);
-
-      const endTime = new Date(startTime);
+      const endTime = new Date(selectedDate);
       endTime.setHours(startTime.getHours() + 1);
-
+  
       setEventForm({
         id: Date.now(), // Temp ID
         title: '',
@@ -152,7 +138,9 @@ const CalendarDashboard = () => {
       });
     }
   }, [showEventModal, editingEvent, selectedDate]);
-
+  
+  
+  
   useEffect(() => {
     if (editingEvent) {
       setEventForm({
@@ -213,6 +201,30 @@ const CalendarDashboard = () => {
       setEditingCategory(null);
     }
   };
+
+  const handleDeleteEvent = async () => {
+    const provider = localStorage.getItem("authProvider");
+
+    if (!editingEvent) return;
+
+    if (provider === "google" || provider === "microsoft") {
+      const token = localStorage.getItem(provider === "google" ? "googleToken" : "microsoftToken");
+      const url = provider === "google"
+        ? `http://localhost:8081/api/delete-google-event/${editingEvent.id}`
+        : `http://localhost:8081/api/delete-microsoft-event/${editingEvent.id}`;
+
+      await fetch(url, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
+
+    // ✅ ลบจาก local state ทุกกรณี
+    setEvents(events.filter(event => event.id !== editingEvent.id));
+    setShowEventModal(false);
+    setEditingEvent(null);
+  };
+
 
   // Helper to format date for input fields
   const formatDateTimeForInput = (date) => {
@@ -306,11 +318,26 @@ const CalendarDashboard = () => {
       date.getFullYear() === today.getFullYear();
   };
 
-  const isSameDay = (date1, date2) => {
+  function isSameDay(date1, date2) {
+    // ตรวจสอบและแปลง date1 หากเป็นสตริงหรือมีโครงสร้างพิเศษ
+    if (typeof date1 === 'string' || date1 instanceof Object) {
+        date1 = new Date(date1);
+    }
+    // ตรวจสอบและแปลง date2 หากเป็นสตริงหรือมีโครงสร้างพิเศษ
+    if (typeof date2 === 'string' || date2 instanceof Object) {
+        date2 = new Date(date2);
+    }
+
+    if (!(date1 instanceof Date && date2 instanceof Date)) {
+        console.error("Invalid date objects provided to isSameDay:", date1, date2);
+        return false;
+    }
+
     return date1.getDate() === date2.getDate() &&
-      date1.getMonth() === date2.getMonth() &&
-      date1.getFullYear() === date2.getFullYear();
-  };
+           date1.getMonth() === date2.getMonth() &&
+           date1.getFullYear() === date2.getFullYear();
+}
+
 
   // Navigation functions
   const goToPrevious = () => {
@@ -348,73 +375,103 @@ const CalendarDashboard = () => {
 
   const handleEventSubmit = async (e) => {
     e.preventDefault();
-  
+
+    const { title, start, end, allDay, location, description } = eventForm;
+    if (!title || !start || !end) {
+        alert("Please ensure all required fields are filled out.");
+        return;
+    }
+
+    // ตรวจสอบและแปลงเป็น Date object ถ้าจำเป็น
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        alert("Invalid dates. Please enter valid start and end dates.");
+        return;
+    }
+
     const eventData = {
-      title: eventForm.title,
-      start: eventForm.start,
-      end: eventForm.end || eventForm.start,
+        title: title,
+        start: startDate,
+        end: endDate,
+        allDay: allDay,
+        location: location,
+        description: description
     };
-  
-    await handleAddEvent(eventData); // ✅ เรียกฟังก์ชันที่คุณเขียนไว้
+
+    await handleAddEvent(eventData);
     setShowEventModal(false);
     setEditingEvent(null);
-  };
+};
+
+
   
   // ✅ ฟังก์ชันหลัก
-  const handleAddEvent = async (newEvent) => {
-    if (!newEvent.title || !newEvent.start) {
-      alert("Please enter event details.");
-      return;
+  // ฟังก์ชันหลักในการเพิ่มหรือแก้ไข event
+const handleAddEvent = async (newEvent) => {
+  if (!newEvent.title || !newEvent.start) {
+    alert("Please enter event details.");
+    return;
+  }
+
+  const provider = localStorage.getItem("authProvider");
+  const token = localStorage.getItem(
+    provider === "google" ? "googleToken" : "microsoftToken"
+  );
+
+  if (!provider || !token) {
+    console.error("❌ Missing authProvider or token");
+    return;
+  }
+
+  const startISO = newEvent.start.toISOString();
+  const endISO = newEvent.end.toISOString();
+
+  // ข้อมูล event ที่จะส่งไปยัง API
+  const eventDetails = {
+    title: newEvent.title,
+    start: startISO,
+    end: endISO,
+    allDay: eventForm.allDay,
+    location: eventForm.location || "",
+    description: eventForm.description || "",
+  };
+
+  let addedEvent = null;
+
+  // ตรวจสอบว่าเป็นการแก้ไขหรือสร้างใหม่
+  if (editingEvent) {
+    // ถ้าเป็นการแก้ไข (edit), ใช้ API สำหรับการอัปเดต
+    if (provider === "google") {
+      addedEvent = await updateEventInGoogleCalendar(eventDetails, token);
+    } else if (provider === "microsoft") {
+      addedEvent = await updateEventInMicrosoftCalendar(eventDetails, token);
     }
-  
-    const provider = localStorage.getItem("authProvider");
-    const token = localStorage.getItem(
-      provider === "google" ? "googleToken" : "microsoftToken"
-    );
-  
-    if (!provider || !token) {
-      console.error("❌ Missing authProvider or token");
-      return;
-    }
-  
-    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  
-    const start = DateTime.fromISO(newEvent.start).setZone("Asia/Bangkok").toISO();
-    const end = newEvent.end
-      ? DateTime.fromISO(newEvent.end).setZone("Asia/Bangkok").toISO()
-      : start;
-  
-      const eventDetails = {
-        title: eventForm.title,
-        start,
-        end,
-        timeZone: userTimeZone,
-        allDay: eventForm.allDay,
-        location: eventForm.location || "",
-        description: eventForm.description || "",
-      };
-  
-    let addedEvent = null;
-  
+  } else {
+    // ถ้าเป็นการสร้างใหม่ (create), ใช้ API สำหรับการสร้าง
     if (provider === "google") {
       addedEvent = await addEventToGoogleCalendar(eventDetails, token);
     } else if (provider === "microsoft") {
       addedEvent = await addEventToMicrosoftCalendar(eventDetails, token);
     }
-  
-    if (addedEvent) {
-      setEvents((prevEvents) => [
-        ...prevEvents,
-        {
-          id: addedEvent.id,
-          title: addedEvent.summary || addedEvent.subject,
-          start: addedEvent.start.dateTime || addedEvent.start,
-          end: addedEvent.end.dateTime || addedEvent.end,
-          color: provider === "google" ? "#4285F4" : "#0078D4",
-        },
-      ]);
-    }
-  };
+  }
+
+  if (addedEvent) {
+    // อัปเดตข้อมูล event ใน state
+    setEvents((prevEvents) => {
+      if (editingEvent) {
+        // ถ้าเป็นการแก้ไข, อัปเดต event ใน state
+        return prevEvents.map((event) =>
+          event.id === addedEvent.id ? addedEvent : event
+        );
+      } else {
+        // ถ้าเป็นการสร้างใหม่, เพิ่ม event ใหม่ลงใน state
+        return [...prevEvents, addedEvent];
+      }
+    });
+  }
+};
   
   // ✅ เพิ่ม Google API Call
   const addEventToGoogleCalendar = async (event, token) => {
@@ -485,6 +542,77 @@ const CalendarDashboard = () => {
     }
   };
 
+  const updateEventInGoogleCalendar = async (event, token) => {
+    try {
+      const response = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events/${editingEvent.id}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            summary: event.title,
+            location: event.location,
+            description: event.description,
+            start: {
+              dateTime: event.start,
+              timeZone: "Asia/Bangkok",
+            },
+            end: {
+              dateTime: event.end,
+              timeZone: "Asia/Bangkok",
+            },
+          }),
+        }
+      );
+  
+      if (!response.ok) throw new Error(`Google error: ${response.status}`);
+      return await response.json();
+    } catch (err) {
+      console.error("❌ Error updating to Google Calendar:", err);
+      return null;
+    }
+  };
+
+  // ฟังก์ชันสำหรับการอัปเดต event ใน Microsoft Calendar
+const updateEventInMicrosoftCalendar = async (event, token) => {
+  try {
+    const response = await fetch(
+      `https://graph.microsoft.com/v1.0/me/events/${editingEvent.id}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          subject: event.title,
+          start: {
+            dateTime: event.start,
+            timeZone: "Asia/Bangkok",
+          },
+          end: {
+            dateTime: event.end,
+            timeZone: "Asia/Bangkok",
+          },
+          body: {
+            contentType: "HTML",
+            content: event.description,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) throw new Error(`Microsoft error: ${response.status}`);
+    return await response.json();
+  } catch (err) {
+    console.error("❌ Error updating to Microsoft Calendar:", err);
+    return null;
+  }
+};
+
   // Event handling functions
   const handleDateClick = (date) => {
     setSelectedDate(date);
@@ -496,11 +624,32 @@ const CalendarDashboard = () => {
 
   const handleEventFormChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setEventForm(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
+  
+    // ตรวจสอบค่าของ start หรือ end ว่าเป็นค่าที่ถูกต้องหรือไม่
+    if (name === "start" || name === "end") {
+      const date = new Date(value);
+      // ตรวจสอบว่าค่า value ที่กรอกมาเป็นวันที่ที่ถูกต้อง
+      if (isNaN(date.getTime())) {
+        console.error("Invalid date:", value);
+        return;  // หยุดการทำงานหากวันที่ไม่ถูกต้อง
+      }
+  
+      // แปลงให้เป็นรูปแบบที่รองรับ datetime-local
+      const formattedDate = date.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
+      setEventForm((prev) => ({
+        ...prev,
+        [name]: formattedDate,
+      }));
+    } else {
+      // สำหรับกรณีอื่นๆ เช่น checkbox
+      setEventForm((prev) => ({
+        ...prev,
+        [name]: type === "checkbox" ? checked : value,
+      }));
+    }
   };
+  
+  
   
   useEffect(() => {
     const initialize = async () => {
@@ -546,6 +695,7 @@ const CalendarDashboard = () => {
   useEffect(() => {
     console.log("📌 Updated Events:", events);
   }, [events]);
+
   const getEventsForDate = (date) => {
     return events.filter(event =>
       isSameDay(event.start, date) ||
@@ -1636,7 +1786,6 @@ const CalendarDashboard = () => {
 
                   <button
                     type="submit"
-                    onClick={handleAddEvent}
                     style={{
                       padding: '10px 16px',
                       backgroundColor: '#2563EB',
