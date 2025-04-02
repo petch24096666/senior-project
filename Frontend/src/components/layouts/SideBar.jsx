@@ -139,20 +139,31 @@ const Sidebar = () => {
             />
           </ListItemButton>
         </ListItem>
-      </List>
 
-      <Typography
-        variant="subtitle2"
-        sx={{
-          color: "#6B7280",
-          fontSize: "12px",
-          mb: 1,
-          textTransform: "uppercase",
-        }}
-      >
-        Workspace
-      </Typography>
-      <List sx={{ p: 0 }}>
+
+        <ListItem disablePadding>
+          <ListItemButton
+            component={Link}
+            to="/Booking"
+            onClick={() => handleMenuClick("Booking")}
+            sx={{
+              color: activeMenu === "Booking" ? "#4F46E5" : "#374151",
+              "& .MuiListItemIcon-root": {
+                color: activeMenu === "Booking" ? "#4F46E5" : "#374151",
+              },
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: "40px" }}>
+              <InsertDriveFileIcon />
+            </ListItemIcon>
+            <ListItemText
+              primary="Booking"
+              primaryTypographyProps={{
+                sx: { fontSize: "16px" },
+              }}
+            />
+          </ListItemButton>
+        </ListItem>
         <ListItem disablePadding>
           <ListItemButton
             component={Link}
@@ -180,20 +191,20 @@ const Sidebar = () => {
         <ListItem disablePadding>
           <ListItemButton
             component={Link}
-            to="/documents"
-            onClick={() => handleMenuClick("Documents")}
+            to="/meeting"
+            onClick={() => handleMenuClick("Meeting")}
             sx={{
-              color: activeMenu === "Documents" ? "#4F46E5" : "#374151",
+              color: activeMenu === "Meeting" ? "#4F46E5" : "#374151",
               "& .MuiListItemIcon-root": {
-                color: activeMenu === "Documents" ? "#4F46E5" : "#374151",
+                color: activeMenu === "Meeting" ? "#4F46E5" : "#374151",
               },
             }}
           >
             <ListItemIcon sx={{ minWidth: "40px" }}>
-              <InsertDriveFileIcon />
+              <ChatBubbleIcon />
             </ListItemIcon>
             <ListItemText
-              primary="Documents"
+              primary="Meeting"
               primaryTypographyProps={{
                 sx: { fontSize: "16px" },
               }}
