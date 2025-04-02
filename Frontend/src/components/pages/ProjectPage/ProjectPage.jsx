@@ -1,4 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback ,useContext} from 'react';
+import { UserContext } from '../../../context/Usercontext';
+import { v4 as uuidv4 } from 'uuid';
 
 // Custom CSS keyframes for animations
 const fadeInKeyframes = `
@@ -9,66 +11,27 @@ const fadeInKeyframes = `
 `;
 
 const ProjectDashboard = () => {
+  // ดึงข้อมูลผู้ใช้จาก context
+  const { customUser } = useContext(UserContext);
+  if (!customUser) {
+    return <div>Please log in to view your projects.</div>;
+  }
+  const currentUserId = customUser.user_id; // ดึง user_id จากตาราง users
   // Project data
-  const [projects, setProjects] = useState([
-    { 
-      id: 1, 
-      title: 'Website Redesign', 
-      tasks: 24, 
-      totalTasks: 36, 
-      progress: 67, 
-      category: 'design',
-      dueDate: '2025-04-15',
-      team: ['Alex', 'Jamie', 'Taylor'],
-      priority: 'high',
-    },
-    { 
-      id: 2, 
-      title: 'Mobile App Development', 
-      tasks: 18, 
-      totalTasks: 42, 
-      progress: 43,
-      category: 'development',
-      dueDate: '2025-05-10',
-      team: ['Morgan', 'Casey'],
-      priority: 'medium',
-    },
-    { 
-      id: 3, 
-      title: 'Marketing Campaign', 
-      tasks: 15, 
-      totalTasks: 20, 
-      progress: 75,
-      category: 'marketing',
-      dueDate: '2025-04-02',
-      team: ['Jordan', 'Riley', 'Quinn'],
-      priority: 'high',
-    },
-    { 
-      id: 4, 
-      title: 'Client Onboarding', 
-      tasks: 8, 
-      totalTasks: 12, 
-      progress: 67,
-      category: 'operations',
-      dueDate: '2025-04-05',
-      team: ['Taylor', 'Alex'],
-      priority: 'medium',
-    }
-  ]);
-
+  const [projects, setProjects] = useState([]);
   // State variables
   const [viewMode, setViewMode] = useState('grid');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  // ปรับ state ใหม่ ไม่รวม tasks fields และ description
+  const project_uuid = uuidv4();
   const [newProject, setNewProject] = useState({
+    id: project_uuid,
     title: '',
     category: '',
-    dueDate: '',
-    totalTasks: '',
-    completedTasks: '',
+    duedate: '',
     priority: '',
     team: ''
   });
@@ -80,8 +43,31 @@ const ProjectDashboard = () => {
     highPriorityCount: 0,
     dueThisWeek: 0
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [hoveredCard, setHoveredCard] = useState(null);
 
-  // Memoized filter function to avoid unnecessary re-renders
+  // Fetch projects
+  useEffect(() => {
+    setLoading(true);
+    fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setProjects(data.data);
+        } else {
+          setProjects([]);
+          setError(data.error || "No projects found");
+        }
+        setLoading(false);
+      })
+      .catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+  }, [currentUserId]);
+
+  // Memoized filter function
   const filterProjects = useCallback(() => {
     let filtered = [...projects];
 
@@ -96,19 +82,19 @@ const ProjectDashboard = () => {
       filtered = filtered.filter(project => {
         return project.title.toLowerCase().includes(term) || 
                project.category.toLowerCase().includes(term) ||
-               project.team.some(member => member.toLowerCase().includes(term));
+               (project.team && project.team.some(member => member.toLowerCase().includes(term)));
       });
     }
 
     setFilteredProjects(filtered);
   }, [projects, searchTerm, selectedCategory]);
 
-  // Run filter when dependencies change
+  // Run filter and update stats when projects change
   useEffect(() => {
     filterProjects();
     updateStats();
   }, [filterProjects, projects]);
-  
+
   // Handle search input keypress
   const handleSearchKeyPress = (e) => {
     if (e.key === 'Enter') {
@@ -118,24 +104,19 @@ const ProjectDashboard = () => {
 
   // Update dashboard statistics
   const updateStats = useCallback(() => {
-    // Total projects
     const totalProjects = projects.length;
-
-    // Completed tasks
-    const totalTasks = projects.reduce((sum, project) => sum + project.totalTasks, 0);
-    const completedTasks = projects.reduce((sum, project) => sum + project.tasks, 0);
+    // เนื่องจาก tasks จะถูกรับค่ามาจาก Kanban ในอนาคต เราจึงใช้ค่า default 0
+    const completedTasks = projects.reduce((sum, project) => sum + (project.tasks || 0), 0);
+    const totalTasks = projects.reduce((sum, project) => sum + (project.totalTasks || 0), 0);
     const completedTasksString = `${completedTasks}/${totalTasks}`;
 
-    // High priority projects
     const highPriorityCount = projects.filter(project => project.priority === 'high').length;
 
-    // Due this week
     const today = new Date();
     const oneWeekLater = new Date(today);
     oneWeekLater.setDate(today.getDate() + 7);
-
     const dueThisWeek = projects.filter(project => {
-      const dueDate = new Date(project.dueDate);
+      const dueDate = new Date(project.duedate);
       return dueDate >= today && dueDate <= oneWeekLater;
     }).length;
 
@@ -284,7 +265,6 @@ const ProjectDashboard = () => {
       marketing: { bg: '#f3f0ff', text: '#8b5cf6', header: '#8b5cf6' },
       operations: { bg: '#fce7f3', text: '#ec4899', header: '#ec4899' }
     };
-
     return colors[category] ? colors[category][type] : '#cbd5e0';
   };
 
@@ -295,7 +275,6 @@ const ProjectDashboard = () => {
       medium: { bg: '#FEF3C7', text: '#D97706' },
       low: { bg: '#ECFDF5', text: '#059669' }
     };
-
     return styles[priority] || { bg: '#E5E7EB', text: '#4B5563' };
   };
 
@@ -303,16 +282,6 @@ const ProjectDashboard = () => {
   const handleInputChange = (e) => {
     const { id, value } = e.target;
     const fieldName = id.replace('project', '').toLowerCase();
-    
-    // Validate input for number fields
-    if (fieldName === 'totaltasks' || fieldName === 'completedtasks') {
-      // Ensure only positive numbers are entered
-      const numValue = parseInt(value);
-      if (value !== '' && (isNaN(numValue) || numValue < 0)) {
-        return;
-      }
-    }
-    
     setNewProject(prev => ({
       ...prev,
       [fieldName]: value
@@ -321,62 +290,71 @@ const ProjectDashboard = () => {
 
   // Validate form before saving
   const validateForm = () => {
-    const { title, category, duedate, totaltasks, completedtasks, priority } = newProject;
-    
-    if (!title || !category || !duedate || !totaltasks || completedtasks === '' || !priority) {
+    const { title, category, duedate, priority } = newProject;
+    if (!title || !category || duedate === '' || !priority) {
       alert('Please fill out all required fields');
       return false;
     }
-    
-    const totalTasksNumber = parseInt(totaltasks);
-    const completedTasksNumber = parseInt(completedtasks);
-    
-    if (completedTasksNumber > totalTasksNumber) {
-      alert('Completed tasks cannot exceed total tasks');
-      return false;
-    }
-    
     return true;
   };
 
   // Save new project
-  const saveProject = () => {
-    if (!validateForm()) return;
-    
-    const { title, category, duedate, totaltasks, completedtasks, priority, team } = newProject;
+  // ตัวอย่างส่วนของ saveProject ใน ProjectDashboard.jsx
+const saveProject = () => {
+  if (!validateForm()) return;
 
-    const totalTasksNumber = parseInt(totaltasks);
-    const completedTasksNumber = parseInt(completedtasks);
-
-    // Process team members
-    const teamMembers = team 
-      ? team.split(',').map(member => member.trim()).filter(member => member !== '')
-      : ['User'];
-
-    // Add new project
-    const newProjectObj = {
-      id: projects.length + 1,
-      title,
-      category,
-      dueDate: duedate,
-      totalTasks: totalTasksNumber,
-      tasks: completedTasksNumber,
-      progress: Math.round((completedTasksNumber / totalTasksNumber) * 100),
-      team: teamMembers,
-      priority
-    };
-
-    setProjects(prev => [...prev, newProjectObj]);
-    closeModal();
-    alert('Project added successfully!');
+  const projectData = {
+    id: newProject.project_uuid,
+    title: newProject.title,
+    category: newProject.category,
+    duedate: newProject.duedate,
+    priority: newProject.priority,
+    team: newProject.team
+      ? newProject.team.split(',').map(email => ({ email: email.trim(), role: 'member' }))
+      : [],
+    creatorId: currentUserId
   };
-  
+
+  fetch("http://localhost:8081/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(projectData)
+  })
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        // Refresh projects after creation
+        fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
+          .then(response => response.json())
+          .then(data => setProjects(data.data));
+        closeModal();
+        alert("Project added successfully!");
+      } else {
+        alert("Error creating project: " + result.error);
+      }
+    })
+    .catch(error => console.error("Error:", error));
+};
+
+
   // Delete project functionality
   const deleteProject = (id) => {
-    if (window.confirm('Are you sure you want to delete this project?')) {
-      setProjects(prev => prev.filter(project => project.id !== id));
+    if (window.confirm("Are you sure you want to delete this project?")) {
+      fetch(`http://localhost:8081/api/projects/${id}`, {
+        method: "DELETE"
+      })
+        .then(response => response.json())
+        .then(result => {
+          if (result.success) {
+            setProjects(prev => prev.filter(project => project.project_id !== id)); // ใช้ project_id ถูกต้องแล้ว
+          } else {
+            console.error("Delete error:", result.error);
+          }
+        })
+        .catch(error => console.error("Error deleting project:", error));
     }
   };
+
 
   // Open/close modal functions
   const openModal = () => {
@@ -388,17 +366,12 @@ const ProjectDashboard = () => {
     setNewProject({
       title: '',
       category: '',
-      dueDate: '',
-      totalTasks: '',
-      completedTasks: '',
+      duedate: '',
       priority: '',
       team: ''
     });
   };
 
-  // Handle card hover effects
-  const [hoveredCard, setHoveredCard] = useState(null);
-  
   // Render grid view
   const renderGridView = () => {
     if (filteredProjects.length === 0) {
@@ -440,8 +413,7 @@ const ProjectDashboard = () => {
 
     return filteredProjects.map(project => {
       const progress = Math.round((project.tasks / project.totalTasks) * 100);
-      const formattedDate = formatDate(project.dueDate);
-
+      const formattedDate = formatDate(project.duedate);
       return (
         <div 
           key={project.id}
@@ -497,11 +469,11 @@ const ProjectDashboard = () => {
                 {project.title}
               </h3>
               <div style={{ position: 'relative' }}>
-                <button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    deleteProject(project.id);
-                  }}
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteProject(project.project_id);
+                }}
                   style={{
                     width: '32px',
                     height: '32px',
@@ -572,80 +544,51 @@ const ProjectDashboard = () => {
                   fontSize: '14px'
                 }}
               >
-                <span 
-                  style={{
-                    color: '#718096',
-                    fontWeight: 500
-                  }}
-                >
+                <span style={{ color: '#718096', fontWeight: 500 }}>
                   Progress
                 </span>
-                <span 
-                  style={{
-                    fontWeight: 600,
-                    color: '#2d3748'
-                  }}
-                >
+                <span style={{ fontWeight: 600, color: '#2d3748' }}>
                   {project.tasks}/{project.totalTasks}
                 </span>
               </div>
-              <div 
-                style={{
-                  height: '8px',
-                  backgroundColor: '#edf2f7',
+              <div style={{ height: '8px', backgroundColor: '#edf2f7', borderRadius: '4px', overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
                   borderRadius: '4px',
-                  overflow: 'hidden'
-                }}
-              >
-                <div 
-                  style={{
-                    height: '100%',
-                    borderRadius: '4px',
-                    transition: 'width 0.5s ease',
-                    width: `${progress}%`,
-                    backgroundColor: getCategoryColor(project.category, 'header')
-                  }}
-                ></div>
+                  transition: 'width 0.5s ease',
+                  width: `${progress}%`,
+                  backgroundColor: getCategoryColor(project.category, 'header')
+                }}></div>
               </div>
             </div>
             
-            <div 
-              style={{
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginTop: '20px'
+            }}>
+              <span style={{
+                fontSize: '14px',
+                color: '#718096',
                 display: 'flex',
-                justifyContent: 'space-between',
                 alignItems: 'center',
-                marginTop: '20px'
-              }}
-            >
-              <span 
-                style={{
-                  fontSize: '14px',
-                  color: '#718096',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  fontWeight: 500
-                }}
-              >
-                <span 
-                  style={{
-                    width: '14px',
-                    height: '14px',
-                    display: 'inline-block',
-                    backgroundColor: '#718096',
-                    maskImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' /%3E%3C/svg%3E")`,
-                    maskSize: 'contain',
-                    maskRepeat: 'no-repeat',
-                    maskPosition: 'center'
-                  }}
-                ></span>
-                {formattedDate}
+                gap: '6px',
+                fontWeight: 500
+              }}>
+                <span style={{
+                  width: '14px',
+                  height: '14px',
+                  display: 'inline-block',
+                  backgroundColor: '#718096',
+                  maskImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' /%3E%3C/svg%3E")`,
+                  maskSize: 'contain',
+                  maskRepeat: 'no-repeat',
+                  maskPosition: 'center'
+                }}></span>
+                {formatDate(project.duedate)}
               </span>
-              <div 
-                style={{
-                  display: 'flex'
-                }}
-              >
+              <div style={{ display: 'flex' }}>
                 {generateAvatars(project.team, project.category)}
               </div>
             </div>
@@ -655,7 +598,7 @@ const ProjectDashboard = () => {
     });
   };
 
-  // Render list view
+  // Render list view (ไม่ซ้ำกับ grid มากนัก)
   const renderListView = () => {
     if (filteredProjects.length === 0) {
       return (
@@ -666,15 +609,8 @@ const ProjectDashboard = () => {
           borderRadius: '12px',
           boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
         }}>
-          <h3 style={{
-            color: '#4a5568',
-            fontSize: '18px',
-            marginBottom: '12px'
-          }}>No projects found</h3>
-          <p style={{
-            color: '#718096',
-            marginBottom: '24px'
-          }}>Try adjusting your search or filter criteria</p>
+          <h3 style={{ color: '#4a5568', fontSize: '18px', marginBottom: '12px' }}>No projects found</h3>
+          <p style={{ color: '#718096', marginBottom: '24px' }}>Try adjusting your search or filter criteria</p>
           <button 
             onClick={resetFilters}
             style={{
@@ -695,9 +631,8 @@ const ProjectDashboard = () => {
 
     return filteredProjects.map(project => {
       const progress = Math.round((project.tasks / project.totalTasks) * 100);
-      const formattedDate = formatDate(project.dueDate);
+      const formattedDate = formatDate(project.duedate);
       const priorityStyles = getPriorityStyles(project.priority);
-
       return (
         <div 
           key={project.id}
@@ -713,25 +648,17 @@ const ProjectDashboard = () => {
             animation: 'fadeIn 0.5s ease-out'
           }}
         >
-          <div 
-            style={{
+          <div style={{
               width: '12px',
               height: '30px',
               borderRadius: '6px',
               backgroundColor: getCategoryColor(project.category, 'header')
-            }}
-          ></div>
-          <h3 
-            style={{
-              fontWeight: 600,
-              fontSize: '16px',
-              flex: 1
-            }}
-          >
+            }}>
+          </div>
+          <h3 style={{ fontWeight: 600, fontSize: '16px', flex: 1 }}>
             {project.title}
           </h3>
-          <span 
-            style={{
+          <span style={{
               padding: '4px 12px',
               borderRadius: '50px',
               fontSize: '13px',
@@ -740,65 +667,42 @@ const ProjectDashboard = () => {
               textAlign: 'center',
               backgroundColor: getCategoryColor(project.category, 'bg'),
               color: getCategoryColor(project.category, 'text')
-            }}
-          >
+            }}>
             {capitalize(project.category)}
           </span>
-          <div 
-            style={{
+          <div style={{
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
               width: '180px'
-            }}
-          >
-            <div 
-              style={{
+            }}>
+            <div style={{
                 flex: 1,
                 height: '6px',
                 backgroundColor: '#edf2f7',
                 borderRadius: '3px',
                 overflow: 'hidden'
-              }}
-            >
-              <div 
-                style={{
+              }}>
+              <div style={{
                   height: '100%',
                   borderRadius: '3px',
+                  transition: 'width 0.5s ease',
                   width: `${progress}%`,
                   backgroundColor: getCategoryColor(project.category, 'header')
-                }}
-              ></div>
+                }}>
+              </div>
             </div>
-            <span 
-              style={{
-                fontSize: '13px',
-                fontWeight: 600,
-                whiteSpace: 'nowrap'
-              }}
-            >
+            <span style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>
               {progress}%
             </span>
           </div>
-          <span 
-            style={{
-              fontSize: '13px',
-              color: '#718096',
-              width: '100px'
-            }}
-          >
+          <span style={{ fontSize: '13px', color: '#718096', width: '100px' }}>
             {formattedDate}
           </span>
-          <div 
-            style={{
-              display: 'flex',
-              width: '100px'
-            }}
-          >
+          <div style={{ display: 'flex', width: '100px' }}>
             {generateListAvatars(project.team, project.category)}
           </div>
-          <span 
-            style={{
+          <span style={{
               display: 'inline-flex',
               padding: '4px 10px',
               borderRadius: '50px',
@@ -808,12 +712,10 @@ const ProjectDashboard = () => {
               justifyContent: 'center',
               backgroundColor: priorityStyles.bg,
               color: priorityStyles.text
-            }}
-          >
+            }}>
             {capitalize(project.priority)}
           </span>
-          <button 
-            style={{
+          <button style={{
               width: '28px',
               height: '28px',
               borderRadius: '50%',
@@ -824,18 +726,15 @@ const ProjectDashboard = () => {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '2px'
-            }}
-          >
+            }}>
             {[1, 2, 3].map(i => (
-              <span 
-                key={i}
-                style={{
+              <span key={i} style={{
                   width: '4px',
                   height: '4px',
                   backgroundColor: '#718096',
                   borderRadius: '50%'
-                }}
-              ></span>
+                }}>
+              </span>
             ))}
           </button>
         </div>
@@ -843,7 +742,6 @@ const ProjectDashboard = () => {
     });
   };
 
-  // Main component render
   return (
     <div style={{
       backgroundColor: '#f8f9fa',
@@ -852,13 +750,8 @@ const ProjectDashboard = () => {
       minHeight: '100vh',
       fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
     }}>
-      {/* Add style for animation */}
       <style>{fadeInKeyframes}</style>
-      
-      <div style={{
-        maxWidth: '1280px',
-        margin: '0 auto'
-      }}>
+      <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
         {/* Header */}
         <div style={{
           display: 'flex',
@@ -869,16 +762,10 @@ const ProjectDashboard = () => {
           borderBottom: '1px solid #eaeaea'
         }}>
           <div>
-            <h1 style={{
-              fontSize: '28px',
-              fontWeight: 700,
-              color: '#1a202c'
-            }}>Projects</h1>
-            <p style={{
-              color: '#718096',
-              marginTop: '5px',
-              fontSize: '16px'
-            }}>Get an overview of your projects and track progress.</p>
+            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>Projects</h1>
+            <p style={{ color: '#718096', marginTop: '5px', fontSize: '16px' }}>
+              Get an overview of your projects and track progress.
+            </p>
           </div>
           <button 
             onClick={openModal}
@@ -966,10 +853,7 @@ const ProjectDashboard = () => {
             </button>
           </div>
           
-          <div style={{
-            display: 'flex',
-            gap: '12px'
-          }}>
+          <div style={{ display: 'flex', gap: '12px' }}>
             <div style={{
               display: 'flex',
               border: '1px solid #e2e8f0',
@@ -990,14 +874,10 @@ const ProjectDashboard = () => {
                   transition: 'all 0.2s'
                 }}
                 onMouseOver={(e) => {
-                  if (viewMode !== 'grid') {
-                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                  }
+                  if (viewMode !== 'grid') { e.currentTarget.style.backgroundColor = '#f9fafb'; }
                 }}
                 onMouseOut={(e) => {
-                  if (viewMode !== 'grid') {
-                    e.currentTarget.style.backgroundColor = 'white';
-                  }
+                  if (viewMode !== 'grid') { e.currentTarget.style.backgroundColor = 'white'; }
                 }}
               >
                 Grid
@@ -1014,14 +894,10 @@ const ProjectDashboard = () => {
                   transition: 'all 0.2s'
                 }}
                 onMouseOver={(e) => {
-                  if (viewMode !== 'list') {
-                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                  }
+                  if (viewMode !== 'list') { e.currentTarget.style.backgroundColor = '#f9fafb'; }
                 }}
                 onMouseOut={(e) => {
-                  if (viewMode !== 'list') {
-                    e.currentTarget.style.backgroundColor = 'white';
-                  }
+                  if (viewMode !== 'list') { e.currentTarget.style.backgroundColor = 'white'; }
                 }}
               >
                 List
@@ -1064,11 +940,7 @@ const ProjectDashboard = () => {
             {renderGridView()}
           </div>
         ) : (
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px'
-          }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {renderListView()}
           </div>
         )}
@@ -1102,17 +974,8 @@ const ProjectDashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
-            <div style={{
-              fontSize: '15px',
-              color: '#718096',
-              marginBottom: '8px',
-              fontWeight: 500
-            }}>Total Projects</div>
-            <div style={{
-              fontSize: '28px',
-              fontWeight: 700,
-              color: '#1a202c'
-            }}>{stats.totalProjects}</div>
+            <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Total Projects</div>
+            <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.totalProjects}</div>
           </div>
           
           <div style={{
@@ -1137,17 +1000,8 @@ const ProjectDashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
-            <div style={{
-              fontSize: '15px',
-              color: '#718096',
-              marginBottom: '8px',
-              fontWeight: 500
-            }}>Completed Tasks</div>
-            <div style={{
-              fontSize: '28px',
-              fontWeight: 700,
-              color: '#1a202c'
-            }}>{stats.completedTasks}</div>
+            <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Completed Tasks</div>
+            <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.completedTasks}</div>
           </div>
           
           <div style={{
@@ -1172,17 +1026,8 @@ const ProjectDashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <div style={{
-              fontSize: '15px',
-              color: '#718096',
-              marginBottom: '8px',
-              fontWeight: 500
-            }}>High Priority</div>
-            <div style={{
-              fontSize: '28px',
-              fontWeight: 700,
-              color: '#1a202c'
-            }}>{stats.highPriorityCount}</div>
+            <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>High Priority</div>
+            <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.highPriorityCount}</div>
           </div>
           
           <div style={{
@@ -1207,17 +1052,8 @@ const ProjectDashboard = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
-            <div style={{
-              fontSize: '15px',
-              color: '#718096',
-              marginBottom: '8px',
-              fontWeight: 500
-            }}>Due This Week</div>
-            <div style={{
-              fontSize: '28px',
-              fontWeight: 700,
-              color: '#1a202c'
-            }}>{stats.dueThisWeek}</div>
+            <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Due This Week</div>
+            <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.dueThisWeek}</div>
           </div>
         </div>
       </div>
@@ -1251,11 +1087,7 @@ const ProjectDashboard = () => {
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <h2 style={{
-                fontSize: '20px',
-                fontWeight: 700,
-                color: '#1a202c'
-              }}>Add New Project</h2>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c' }}>Add New Project</h2>
               <button 
                 onClick={closeModal}
                 style={{
@@ -1269,19 +1101,10 @@ const ProjectDashboard = () => {
                 &times;
               </button>
             </div>
-            <div style={{
-              padding: '20px'
-            }}>
+            <div style={{ padding: '20px' }}>
               <form>
-                <div style={{
-                  marginBottom: '20px'
-                }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontWeight: 500,
-                    color: '#4a5568'
-                  }} htmlFor="projectTitle">
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectTitle">
                     Project Title
                   </label>
                   <input 
@@ -1300,15 +1123,8 @@ const ProjectDashboard = () => {
                     }}
                   />
                 </div>
-                <div style={{
-                  marginBottom: '20px'
-                }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontWeight: 500,
-                    color: '#4a5568'
-                  }} htmlFor="projectCategory">
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectCategory">
                     Category
                   </label>
                   <select 
@@ -1332,15 +1148,8 @@ const ProjectDashboard = () => {
                     <option value="operations">Operations</option>
                   </select>
                 </div>
-                <div style={{
-                  marginBottom: '20px'
-                }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontWeight: 500,
-                    color: '#4a5568'
-                  }} htmlFor="projectDueDate">
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectDueDate">
                     Due Date
                   </label>
                   <input 
@@ -1359,71 +1168,8 @@ const ProjectDashboard = () => {
                     }}
                   />
                 </div>
-                <div style={{
-                  marginBottom: '20px'
-                }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontWeight: 500,
-                    color: '#4a5568'
-                  }} htmlFor="projectTasks">
-                    Total Tasks
-                  </label>
-                  <input 
-                    type="number" 
-                    id="projectTasks" 
-                    min="1"
-                    value={newProject.totaltasks || ''}
-                    onChange={handleInputChange}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '6px',
-                      fontSize: '15px',
-                      transition: 'all 0.2s'
-                    }}
-                  />
-                </div>
-                <div style={{
-                  marginBottom: '20px'
-                }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontWeight: 500,
-                    color: '#4a5568'
-                  }} htmlFor="projectCompleted">
-                    Completed Tasks
-                  </label>
-                  <input 
-                    type="number" 
-                    id="projectCompleted" 
-                    min="0"
-                    value={newProject.completedtasks || ''}
-                    onChange={handleInputChange}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '6px',
-                      fontSize: '15px',
-                      transition: 'all 0.2s'
-                    }}
-                  />
-                </div>
-                <div style={{
-                  marginBottom: '20px'
-                }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontWeight: 500,
-                    color: '#4a5568'
-                  }} htmlFor="projectPriority">
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectPriority">
                     Priority
                   </label>
                   <select 
@@ -1446,15 +1192,8 @@ const ProjectDashboard = () => {
                     <option value="low">Low</option>
                   </select>
                 </div>
-                <div style={{
-                  marginBottom: '20px'
-                }}>
-                  <label style={{
-                    display: 'block',
-                    marginBottom: '8px',
-                    fontWeight: 500,
-                    color: '#4a5568'
-                  }} htmlFor="projectTeam">
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectTeam">
                     Team Members (comma separated)
                   </label>
                   <input 

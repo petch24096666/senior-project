@@ -1,5 +1,5 @@
 import express from "express";
-import { registerUser, loginUser, logoutUser, oauthLoginUser, updateUser} from "../controllers/userController.js"; // ✅ เพิ่ม oauthLoginUser
+import { registerUser, loginUser, logoutUser, oauthLoginUser, updateUser,getUserByEmail} from "../controllers/userController.js"; // ✅ เพิ่ม oauthLoginUser
 
 const router = express.Router();
 
@@ -16,5 +16,7 @@ router.post("/api/logout", logoutUser);
 router.post("/api/oauth-login", oauthLoginUser);
 
 router.put("/update-user", updateUser); // อัพเดตข้อมูลผู้ใช้
+router.get("/api/users", getUserByEmail);
+
 
 export default router;

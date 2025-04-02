@@ -1,82 +1,102 @@
 import db from "../config/database.js";
 import Project from "../models/projectModel.js";
 
-// ดึงข้อมูลโปรเจคทั้งหมด
+// ดึงข้อมูลโปรเจคทั้งหมดสำหรับ user ที่ล็อกอิน (ส่ง userId ผ่าน query)
 export const getAllProjects = async (req, res) => {
+  const userId = req.query.userId;
   try {
-    const [rows] = await db.query(Project.getAllProjects);
-    res.status(200).json({ success: true, data: rows });
+    let rows = [];
+    if (userId) {
+      const sql = `
+        SELECT DISTINCT p.*
+        FROM projects p
+        LEFT JOIN projectmembers pm ON p.project_id = pm.project_id
+        WHERE p.creator_id = ? OR pm.user_id = ?
+      `;
+      [rows] = await db.query(sql, [userId, userId]);
+    } else {
+      [rows] = await db.query(Project.getAllProjects);
+    }
+    // หากไม่พบให้ส่ง array ว่าง
+    if (rows.length === 0) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+    // map tasks_completed -> tasks และส่ง team เป็น [] (ปรับในอนาคตหาก join ทีม)
+    const projects = rows.map(project => ({
+      ...project,
+      tasks: project.tasks_completed,
+      team: []
+    }));
+    return res.status(200).json({ success: true, data: projects });
   } catch (error) {
     console.error("Error fetching projects:", error);
-    res.status(500).json({ success: false, error: "Database query error" });
+    return res.status(500).json({ success: false, error: "Database query error" });
   }
 };
-// ดึงข้อมูลโปรเจค by ID
+
+// ดึงโปรเจคตาม ID พร้อมสมาชิกทีม
 export const getProjectById = async (req, res) => {
   const { id } = req.params;
-
-  if (!id) {
-    return res.status(400).json({ success: false, error: "Project ID is required." });
-  }
-
+  if (!id) return res.status(400).json({ success: false, error: "Project ID is required." });
   try {
-    // ✅ ดึงข้อมูล Project
     const [projectResults] = await db.query(Project.getById, [id]);
     if (!projectResults.length) {
       return res.status(404).json({ success: false, error: "Project not found." });
     }
-
     const project = projectResults[0];
-
-    // ✅ ดึงข้อมูล Team Members ของโปรเจกต์
-    const [membersResults] = await db.query("SELECT email, role FROM project_members WHERE project_id = ?", [id]);
-
-    // ✅ รวมข้อมูลทั้งหมดเป็น JSON Response
-    res.status(200).json({
+    const [membersResults] = await db.query("SELECT email, role, user_id FROM projectmembers WHERE project_id = ?", [id]);
+    return res.status(200).json({
       success: true,
       data: {
-        id: project.id,
+        project_id: project.project_id,
         title: project.title,
-        description: project.description,
-        teamMembers: membersResults || [],
-      },
+        tasks: project.tasks_completed,
+        totalTasks: project.total_tasks,
+        due_date: project.due_date,
+        category: project.category,
+        priority: project.priority,
+        team: membersResults || []
+      }
     });
-
   } catch (error) {
     console.error("Database error:", error);
-    res.status(500).json({ success: false, error: "An error occurred while fetching the project." });
+    return res.status(500).json({ success: false, error: "An error occurred while fetching the project." });
   }
 };
 
-
-// เพิ่มโปรเจคใหม่
+// สร้างโปรเจคใหม่
 export const createProject = async (req, res) => {
-  const { title, description, tasksCompleted, totalTasks, teamMembers } = req.body;
-
-  if (!title || !description || totalTasks === undefined || !teamMembers || teamMembers.length === 0) {
+  const { id, title, category, duedate, priority, creatorId, team } = req.body;
+  const totalTasks = 0;
+  const tasksCompleted = 0;
+  
+  if (!title || !category || duedate === '' || !priority || !creatorId || !team || team.length === 0) {
     return res.status(400).json({ success: false, error: "Invalid input data" });
   }
-
+  
   try {
-    console.log("Inserting project into database...");
-
-    const [result] = await db.query(
-      "INSERT INTO projects (title, description, tasksCompleted, totalTasks) VALUES (?, ?, ?, ?)",
-      [title, description, tasksCompleted || 0, totalTasks]
-    );
-
-    const projectId = result.insertId;
-    console.log(`Project inserted with ID: ${projectId}`);
-
-    if (teamMembers.length > 0) {
-      const sqlMembers = "INSERT INTO project_members (project_id, email, role) VALUES ?";
-      const memberValues = teamMembers.map((member) => [projectId, member.email, member.role]);
-
-      await db.query(sqlMembers, [memberValues]);
-      console.log(`Inserted ${teamMembers.length} team members`);
+    // ตรวจสอบสมาชิกทีมในตาราง users
+    for (const member of team) {
+      const [userRows] = await db.query("SELECT user_id FROM users WHERE email = ?", [member.email]);
+      if (userRows.length === 0) {
+        return res.status(400).json({ success: false, error: `User not found: ${member.email}` });
+      }
+      // กำหนด user_id ที่ดึงมาจากฐานข้อมูลให้กับสมาชิกทีมนั้น
+      member.userId = userRows[0].user_id;
     }
-
-    console.log("Sending response...");
+  
+    const [result] = await db.query(
+      "INSERT INTO projects (title, category, due_date, priority, tasks_completed, total_tasks, creator_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [title, category, duedate, priority, tasksCompleted, totalTasks, creatorId]
+    );
+    const projectId = result.insertId;
+  
+    if (team.length > 0) {
+      const sqlMembers = "INSERT INTO projectmembers (project_id, email, role, user_id) VALUES ?";
+      const memberValues = team.map((member) => [projectId, member.email, member.role, member.userId]);
+      await db.query(sqlMembers, [memberValues]);
+    }
+  
     return res.status(201).json({ success: true, message: "Project created successfully" });
   } catch (error) {
     console.error("Error inserting project:", error);
@@ -85,59 +105,49 @@ export const createProject = async (req, res) => {
 };
 
 
-
-// อัปเดตข้อมูลโปรเจค
+// อัปเดตโปรเจค
 export const updateProject = async (req, res) => {
   const { id } = req.params;
-  const { title, description, teamMembers } = req.body;
-
-  console.log("Updating Project ID:", id);
-  console.log("Request Body:", req.body);
-
-  if (!id) {
-    return res.status(400).json({ success: false, error: "Project ID is required" });
-  }
-
+  const { title, team } = req.body;
+  if (!id) return res.status(400).json({ success: false, error: "Project ID is required" });
   try {
-    // อัปเดต Project Table
-    const updateProjectQuery = "UPDATE projects SET title = ?, description = ? WHERE id = ?";
-    await db.query(updateProjectQuery, [title, description, id]);
+    const updateProjectQuery = "UPDATE projects SET title = ? WHERE project_id = ?";
+    await db.query(updateProjectQuery, [title, id]);
 
-    // ลบ Team Members เดิมก่อน
-    const deleteMembersQuery = "DELETE FROM project_members WHERE project_id = ?";
+    const deleteMembersQuery = "DELETE FROM projectmembers WHERE project_id = ?";
     await db.query(deleteMembersQuery, [id]);
 
-    // เพิ่ม Team Members ใหม่
-    if (teamMembers.length > 0) {
-      const insertMembersQuery = "INSERT INTO project_members (project_id, email, role) VALUES ?";
-      const memberValues = teamMembers.map((member) => [id, member.email, member.role]);
+    if (team.length > 0) {
+      for (const member of team) {
+        const [userRows] = await db.query("SELECT user_id FROM users WHERE email = ?", [member.email]);
+        if (userRows.length === 0) {
+          return res.status(400).json({ success: false, error: `User not found: ${member.email}` });
+        }
+        member.userId = userRows[0].user_id;
+      }
+      const insertMembersQuery = "INSERT INTO projectmembers (project_id, email, role, user_id) VALUES ?";
+      const memberValues = team.map((member) => [id, member.email, member.role, member.userId]);
       await db.query(insertMembersQuery, [memberValues]);
     }
 
-    console.log("Project Updated Successfully");
-    res.status(200).json({ success: true, message: "Project updated successfully!" });
+    return res.status(200).json({ success: true, message: "Project updated successfully!" });
   } catch (error) {
     console.error("Database error:", error);
-    res.status(500).json({ success: false, error: "An error occurred while updating the project." });
+    return res.status(500).json({ success: false, error: "An error occurred while updating the project." });
   }
 };
-
 
 // ลบโปรเจค
 export const deleteProject = async (req, res) => {
   const { id } = req.params;
-
   try {
-    const [result] = await db.query(Project.deleteProject, [id]);
-
+    const [result] = await db.query("DELETE FROM projects WHERE project_id = ?", [id]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, error: "Project not found" });
     }
-
-    res.status(200).json({ success: true, message: "Project deleted successfully" });
+    return res.status(200).json({ success: true, message: "Project deleted successfully" });
   } catch (error) {
     console.error("Database delete error:", error);
-    res.status(500).json({ success: false, error: "Database delete error" });
+    return res.status(500).json({ success: false, error: "Database delete error" });
   }
 };
-

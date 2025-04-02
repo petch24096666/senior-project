@@ -173,3 +173,18 @@ export const updateUser = async (req, res) => {
     return res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
+
+export const getUserByEmail = async (req, res) => {
+  const { email } = req.query;
+  if (!email) return res.status(400).json({ success: false, error: "Email is required" });
+  try {
+    const [rows] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: "User not found" });
+    }
+    return res.status(200).json({ success: true, data: rows[0] });
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    return res.status(500).json({ success: false, error: "Database query error" });
+  }
+};
