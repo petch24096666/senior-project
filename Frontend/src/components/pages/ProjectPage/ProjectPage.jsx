@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback ,useContext} from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { UserContext } from '../../../context/Usercontext';
 import { v4 as uuidv4 } from 'uuid';
+import dayjs from 'dayjs';
 
 // Custom CSS keyframes for animations
 const fadeInKeyframes = `
@@ -26,11 +27,11 @@ const ProjectDashboard = () => {
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [showModal, setShowModal] = useState(false);
   // ปรับ state ใหม่ ไม่รวม tasks fields และ description
-  const project_uuid = uuidv4();
   const [newProject, setNewProject] = useState({
-    id: project_uuid,
+    project_id: uuidv4(),
     title: '',
     category: '',
+    startdate: '',
     duedate: '',
     priority: '',
     team: ''
@@ -54,7 +55,12 @@ const ProjectDashboard = () => {
       .then(response => response.json())
       .then(data => {
         if (data.success && Array.isArray(data.data)) {
-          setProjects(data.data);
+          const normalized = data.data.map(project => ({
+            ...project,
+            duedate: project.due_date // ✅ convert to camelCase
+          }));
+          setProjects(normalized);
+          console.log("📌 Projects Normalized:", normalized);
         } else {
           setProjects([]);
           setError(data.error || "No projects found");
@@ -66,6 +72,7 @@ const ProjectDashboard = () => {
         setLoading(false);
       });
   }, [currentUserId]);
+
 
   // Memoized filter function
   const filterProjects = useCallback(() => {
@@ -80,9 +87,9 @@ const ProjectDashboard = () => {
     if (searchTerm) {
       const term = searchTerm.toLowerCase().trim();
       filtered = filtered.filter(project => {
-        return project.title.toLowerCase().includes(term) || 
-               project.category.toLowerCase().includes(term) ||
-               (project.team && project.team.some(member => member.toLowerCase().includes(term)));
+        return project.title.toLowerCase().includes(term) ||
+          project.category.toLowerCase().includes(term) ||
+          (project.team && project.team.some(member => member.toLowerCase().includes(term)));
       });
     }
 
@@ -136,10 +143,12 @@ const ProjectDashboard = () => {
 
   // Format date for display
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    const options = { month: 'short', day: 'numeric', year: 'numeric' };
-    return date.toLocaleDateString('en-US', options);
+    if (!dateString) return 'No Due Date';
+    const date = dayjs(dateString);
+    if (!date.isValid()) return 'No Due Date';
+    return date.format('MMM D, YYYY'); // Apr 30, 2025
   };
+
 
   // Capitalize first letter
   const capitalize = (string) => {
@@ -155,7 +164,7 @@ const ProjectDashboard = () => {
     return (
       <>
         {displayedTeam.map((member, index) => (
-          <div 
+          <div
             key={index}
             style={{
               width: '30px',
@@ -178,7 +187,7 @@ const ProjectDashboard = () => {
           </div>
         ))}
         {extraMembers > 0 && (
-          <div 
+          <div
             style={{
               width: '30px',
               height: '30px',
@@ -281,12 +290,23 @@ const ProjectDashboard = () => {
   // Handle form input changes
   const handleInputChange = (e) => {
     const { id, value } = e.target;
-    const fieldName = id.replace('project', '').toLowerCase();
-    setNewProject(prev => ({
-      ...prev,
-      [fieldName]: value
-    }));
+    const mapping = {
+      projectTitle: 'title',
+      projectCategory: 'category',
+      projectStartDate: 'startdate',
+      projectDueDate: 'duedate',
+      projectPriority: 'priority',
+      projectTeam: 'team'
+    };
+    const field = mapping[id];
+    if (field) {
+      setNewProject(prev => ({
+        ...prev,
+        [field]: value
+      }));
+    }
   };
+
 
   // Validate form before saving
   const validateForm = () => {
@@ -300,41 +320,56 @@ const ProjectDashboard = () => {
 
   // Save new project
   // ตัวอย่างส่วนของ saveProject ใน ProjectDashboard.jsx
-const saveProject = () => {
-  if (!validateForm()) return;
+  const saveProject = () => {
+    if (!validateForm()) return;
 
-  const projectData = {
-    id: newProject.project_uuid,
-    title: newProject.title,
-    category: newProject.category,
-    duedate: newProject.duedate,
-    priority: newProject.priority,
-    team: newProject.team
-      ? newProject.team.split(',').map(email => ({ email: email.trim(), role: 'member' }))
-      : [],
-    creatorId: currentUserId
+    let teamMembers = [];
+    if (newProject.team) {
+      teamMembers = newProject.team
+        .split(',')
+        .map(email => ({ email: email.trim(), role: 'member' }));
+    }
+
+    const creatorEmail = customUser.email;
+    const isCreatorInTeam = teamMembers.some(member => member.email === creatorEmail);
+    if (!isCreatorInTeam) {
+      teamMembers.push({ email: creatorEmail, role: 'creator' });
+    }
+
+    const projectData = {
+      project_id: newProject.project_id,
+      title: newProject.title,
+      category: newProject.category,
+      startdate: newProject.startdate,
+      duedate: newProject.duedate,
+      priority: newProject.priority,
+      team: teamMembers, // ✅
+      creator_id: currentUserId
+    };
+
+    console.log("Sending project:", projectData); // ✅ เช็ก log
+
+    fetch("http://localhost:8081/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(projectData)
+    })
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
+          fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
+            .then(response => response.json())
+            .then(data => setProjects(data.data));
+          closeModal();
+          alert("Project added successfully!");
+        } else {
+          alert("Error creating project: " + result.error);
+        }
+      })
+      .catch(error => console.error("Error:", error));
   };
 
-  fetch("http://localhost:8081/api/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(projectData)
-  })
-    .then(response => response.json())
-    .then(result => {
-      if (result.success) {
-        // Refresh projects after creation
-        fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
-          .then(response => response.json())
-          .then(data => setProjects(data.data));
-        closeModal();
-        alert("Project added successfully!");
-      } else {
-        alert("Error creating project: " + result.error);
-      }
-    })
-    .catch(error => console.error("Error:", error));
-};
+
 
 
   // Delete project functionality
@@ -364,6 +399,7 @@ const saveProject = () => {
   const closeModal = () => {
     setShowModal(false);
     setNewProject({
+      project_id: uuidv4(), // ✅ reset ใหม่
       title: '',
       category: '',
       duedate: '',
@@ -371,6 +407,7 @@ const saveProject = () => {
       team: ''
     });
   };
+
 
   // Render grid view
   const renderGridView = () => {
@@ -393,7 +430,7 @@ const saveProject = () => {
             color: '#718096',
             marginBottom: '24px'
           }}>Try adjusting your search or filter criteria</p>
-          <button 
+          <button
             onClick={resetFilters}
             style={{
               backgroundColor: '#4f46e5',
@@ -415,13 +452,13 @@ const saveProject = () => {
       const progress = Math.round((project.tasks / project.totalTasks) * 100);
       const formattedDate = formatDate(project.duedate);
       return (
-        <div 
+        <div
           key={project.id}
           style={{
             backgroundColor: 'white',
             borderRadius: '12px',
-            boxShadow: hoveredCard === project.id 
-              ? '0 12px 20px rgba(0,0,0,0.1)' 
+            boxShadow: hoveredCard === project.id
+              ? '0 12px 20px rgba(0,0,0,0.1)'
               : '0 4px 12px rgba(0,0,0,0.05)',
             overflow: 'hidden',
             transition: 'transform 0.3s, box-shadow 0.3s',
@@ -436,13 +473,13 @@ const saveProject = () => {
           onMouseEnter={() => setHoveredCard(project.id)}
           onMouseLeave={() => setHoveredCard(null)}
         >
-          <div 
+          <div
             style={{
               height: '6px',
               backgroundColor: getCategoryColor(project.category, 'header')
             }}
           ></div>
-          <div 
+          <div
             style={{
               padding: '24px',
               flex: 1,
@@ -450,7 +487,7 @@ const saveProject = () => {
               flexDirection: 'column'
             }}
           >
-            <div 
+            <div
               style={{
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -458,7 +495,7 @@ const saveProject = () => {
                 marginBottom: '16px'
               }}
             >
-              <h3 
+              <h3
                 style={{
                   fontWeight: 700,
                   fontSize: '18px',
@@ -469,11 +506,11 @@ const saveProject = () => {
                 {project.title}
               </h3>
               <div style={{ position: 'relative' }}>
-              <button 
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteProject(project.project_id);
-                }}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteProject(project.project_id);
+                  }}
                   style={{
                     width: '32px',
                     height: '32px',
@@ -489,7 +526,7 @@ const saveProject = () => {
                   }}
                 >
                   {[1, 2, 3].map(i => (
-                    <span 
+                    <span
                       key={i}
                       style={{
                         width: '4px',
@@ -502,8 +539,8 @@ const saveProject = () => {
                 </button>
               </div>
             </div>
-            
-            <span 
+
+            <span
               style={{
                 display: 'inline-flex',
                 padding: '5px 12px',
@@ -517,7 +554,7 @@ const saveProject = () => {
                 color: getCategoryColor(project.category, 'text')
               }}
             >
-              <span 
+              <span
                 style={{
                   marginRight: '6px',
                   display: 'inline-block',
@@ -529,14 +566,14 @@ const saveProject = () => {
               ></span>
               {capitalize(project.category)}
             </span>
-            
-            <div 
+
+            <div
               style={{
                 marginBottom: '20px',
                 marginTop: 'auto'
               }}
             >
-              <div 
+              <div
                 style={{
                   display: 'flex',
                   justifyContent: 'space-between',
@@ -561,7 +598,7 @@ const saveProject = () => {
                 }}></div>
               </div>
             </div>
-            
+
             <div style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -611,7 +648,7 @@ const saveProject = () => {
         }}>
           <h3 style={{ color: '#4a5568', fontSize: '18px', marginBottom: '12px' }}>No projects found</h3>
           <p style={{ color: '#718096', marginBottom: '24px' }}>Try adjusting your search or filter criteria</p>
-          <button 
+          <button
             onClick={resetFilters}
             style={{
               backgroundColor: '#4f46e5',
@@ -634,7 +671,7 @@ const saveProject = () => {
       const formattedDate = formatDate(project.duedate);
       const priorityStyles = getPriorityStyles(project.priority);
       return (
-        <div 
+        <div
           key={project.id}
           style={{
             backgroundColor: 'white',
@@ -649,47 +686,47 @@ const saveProject = () => {
           }}
         >
           <div style={{
-              width: '12px',
-              height: '30px',
-              borderRadius: '6px',
-              backgroundColor: getCategoryColor(project.category, 'header')
-            }}>
+            width: '12px',
+            height: '30px',
+            borderRadius: '6px',
+            backgroundColor: getCategoryColor(project.category, 'header')
+          }}>
           </div>
           <h3 style={{ fontWeight: 600, fontSize: '16px', flex: 1 }}>
             {project.title}
           </h3>
           <span style={{
-              padding: '4px 12px',
-              borderRadius: '50px',
-              fontSize: '13px',
-              fontWeight: 500,
-              width: '120px',
-              textAlign: 'center',
-              backgroundColor: getCategoryColor(project.category, 'bg'),
-              color: getCategoryColor(project.category, 'text')
-            }}>
+            padding: '4px 12px',
+            borderRadius: '50px',
+            fontSize: '13px',
+            fontWeight: 500,
+            width: '120px',
+            textAlign: 'center',
+            backgroundColor: getCategoryColor(project.category, 'bg'),
+            color: getCategoryColor(project.category, 'text')
+          }}>
             {capitalize(project.category)}
           </span>
           <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              width: '180px'
-            }}>
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            width: '180px'
+          }}>
             <div style={{
-                flex: 1,
-                height: '6px',
-                backgroundColor: '#edf2f7',
-                borderRadius: '3px',
-                overflow: 'hidden'
-              }}>
+              flex: 1,
+              height: '6px',
+              backgroundColor: '#edf2f7',
+              borderRadius: '3px',
+              overflow: 'hidden'
+            }}>
               <div style={{
-                  height: '100%',
-                  borderRadius: '3px',
-                  transition: 'width 0.5s ease',
-                  width: `${progress}%`,
-                  backgroundColor: getCategoryColor(project.category, 'header')
-                }}>
+                height: '100%',
+                borderRadius: '3px',
+                transition: 'width 0.5s ease',
+                width: `${progress}%`,
+                backgroundColor: getCategoryColor(project.category, 'header')
+              }}>
               </div>
             </div>
             <span style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -703,37 +740,37 @@ const saveProject = () => {
             {generateListAvatars(project.team, project.category)}
           </div>
           <span style={{
-              display: 'inline-flex',
-              padding: '4px 10px',
-              borderRadius: '50px',
-              fontSize: '12px',
-              fontWeight: 600,
-              width: '80px',
-              justifyContent: 'center',
-              backgroundColor: priorityStyles.bg,
-              color: priorityStyles.text
-            }}>
+            display: 'inline-flex',
+            padding: '4px 10px',
+            borderRadius: '50px',
+            fontSize: '12px',
+            fontWeight: 600,
+            width: '80px',
+            justifyContent: 'center',
+            backgroundColor: priorityStyles.bg,
+            color: priorityStyles.text
+          }}>
             {capitalize(project.priority)}
           </span>
           <button style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              border: 'none',
-              backgroundColor: 'transparent',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '2px'
-            }}>
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            border: 'none',
+            backgroundColor: 'transparent',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '2px'
+          }}>
             {[1, 2, 3].map(i => (
               <span key={i} style={{
-                  width: '4px',
-                  height: '4px',
-                  backgroundColor: '#718096',
-                  borderRadius: '50%'
-                }}>
+                width: '4px',
+                height: '4px',
+                backgroundColor: '#718096',
+                borderRadius: '50%'
+              }}>
               </span>
             ))}
           </button>
@@ -767,7 +804,7 @@ const saveProject = () => {
               Get an overview of your projects and track progress.
             </p>
           </div>
-          <button 
+          <button
             onClick={openModal}
             style={{
               backgroundColor: '#4f46e5',
@@ -800,7 +837,7 @@ const saveProject = () => {
             + Add Project
           </button>
         </div>
-        
+
         {/* Search and Filters */}
         <div style={{
           display: 'flex',
@@ -819,9 +856,9 @@ const saveProject = () => {
             borderRadius: '8px',
             overflow: 'hidden'
           }}>
-            <input 
-              type="text" 
-              placeholder="Search projects..." 
+            <input
+              type="text"
+              placeholder="Search projects..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               onKeyPress={handleSearchKeyPress}
@@ -836,7 +873,7 @@ const saveProject = () => {
                 transition: 'all 0.2s'
               }}
             />
-            <button 
+            <button
               onClick={filterProjects}
               style={{
                 backgroundColor: '#4f46e5',
@@ -852,7 +889,7 @@ const saveProject = () => {
               Search
             </button>
           </div>
-          
+
           <div style={{ display: 'flex', gap: '12px' }}>
             <div style={{
               display: 'flex',
@@ -862,7 +899,7 @@ const saveProject = () => {
               backgroundColor: 'white',
               boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
             }}>
-              <button 
+              <button
                 onClick={() => setViewMode('grid')}
                 style={{
                   backgroundColor: viewMode === 'grid' ? '#f0f0ff' : 'white',
@@ -882,7 +919,7 @@ const saveProject = () => {
               >
                 Grid
               </button>
-              <button 
+              <button
                 onClick={() => setViewMode('list')}
                 style={{
                   backgroundColor: viewMode === 'list' ? '#f0f0ff' : 'white',
@@ -903,8 +940,8 @@ const saveProject = () => {
                 List
               </button>
             </div>
-            
-            <select 
+
+            <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
               style={{
@@ -929,7 +966,7 @@ const saveProject = () => {
             </select>
           </div>
         </div>
-        
+
         {/* Projects View (Grid or List) */}
         {viewMode === 'grid' ? (
           <div style={{
@@ -944,7 +981,7 @@ const saveProject = () => {
             {renderListView()}
           </div>
         )}
-        
+
         {/* Stats Section */}
         <div style={{
           display: 'grid',
@@ -970,14 +1007,14 @@ const saveProject = () => {
               justifyContent: 'center',
               backgroundColor: '#4f46e5'
             }}>
-              <svg style={{width: '20px', height: '20px', color: 'white'}} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
             <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Total Projects</div>
             <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.totalProjects}</div>
           </div>
-          
+
           <div style={{
             backgroundColor: 'white',
             padding: '20px',
@@ -996,14 +1033,14 @@ const saveProject = () => {
               justifyContent: 'center',
               backgroundColor: '#0ea5e9'
             }}>
-              <svg style={{width: '20px', height: '20px', color: 'white'}} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
             <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Completed Tasks</div>
             <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.completedTasks}</div>
           </div>
-          
+
           <div style={{
             backgroundColor: 'white',
             padding: '20px',
@@ -1022,14 +1059,14 @@ const saveProject = () => {
               justifyContent: 'center',
               backgroundColor: '#8b5cf6'
             }}>
-              <svg style={{width: '20px', height: '20px', color: 'white'}} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
             <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>High Priority</div>
             <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.highPriorityCount}</div>
           </div>
-          
+
           <div style={{
             backgroundColor: 'white',
             padding: '20px',
@@ -1048,7 +1085,7 @@ const saveProject = () => {
               justifyContent: 'center',
               backgroundColor: '#ec4899'
             }}>
-              <svg style={{width: '20px', height: '20px', color: 'white'}} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
@@ -1057,7 +1094,7 @@ const saveProject = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Add Project Modal */}
       {showModal && (
         <div style={{
@@ -1088,7 +1125,7 @@ const saveProject = () => {
               alignItems: 'center'
             }}>
               <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c' }}>Add New Project</h2>
-              <button 
+              <button
                 onClick={closeModal}
                 style={{
                   background: 'none',
@@ -1107,9 +1144,9 @@ const saveProject = () => {
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectTitle">
                     Project Title
                   </label>
-                  <input 
-                    type="text" 
-                    id="projectTitle" 
+                  <input
+                    type="text"
+                    id="projectTitle"
                     value={newProject.title || ''}
                     onChange={handleInputChange}
                     required
@@ -1127,8 +1164,8 @@ const saveProject = () => {
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectCategory">
                     Category
                   </label>
-                  <select 
-                    id="projectCategory" 
+                  <select
+                    id="projectCategory"
                     value={newProject.category || ''}
                     onChange={handleInputChange}
                     required
@@ -1149,12 +1186,33 @@ const saveProject = () => {
                   </select>
                 </div>
                 <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectStartDate">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    id="projectStartDate"
+                    value={newProject.startdate || ''}
+                    onChange={handleInputChange}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      fontSize: '15px',
+                      transition: 'all 0.2s'
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectDueDate">
                     Due Date
                   </label>
-                  <input 
-                    type="date" 
-                    id="projectDueDate" 
+                  <input
+                    type="date"
+                    id="projectDueDate"
                     value={newProject.duedate || ''}
                     onChange={handleInputChange}
                     required
@@ -1172,8 +1230,8 @@ const saveProject = () => {
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectPriority">
                     Priority
                   </label>
-                  <select 
-                    id="projectPriority" 
+                  <select
+                    id="projectPriority"
                     value={newProject.priority || ''}
                     onChange={handleInputChange}
                     required
@@ -1196,9 +1254,9 @@ const saveProject = () => {
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectTeam">
                     Team Members (comma separated)
                   </label>
-                  <input 
-                    type="text" 
-                    id="projectTeam" 
+                  <input
+                    type="text"
+                    id="projectTeam"
                     placeholder="e.g. Alex, Jamie, Taylor"
                     value={newProject.team || ''}
                     onChange={handleInputChange}
@@ -1221,7 +1279,7 @@ const saveProject = () => {
               justifyContent: 'flex-end',
               gap: '10px'
             }}>
-              <button 
+              <button
                 onClick={closeModal}
                 style={{
                   backgroundColor: '#f3f4f6',
@@ -1235,7 +1293,7 @@ const saveProject = () => {
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={saveProject}
                 style={{
                   backgroundColor: '#4f46e5',
