@@ -501,7 +501,7 @@ const handleAddEvent = async (newEvent) => {
       );
   
       if (!response.ok) throw new Error(`Google error: ${response.status}`);
-      return await response.json();
+      return await response.json(); 
     } catch (err) {
       console.error("❌ Error adding to Google Calendar:", err);
       return null;
@@ -611,6 +611,12 @@ const updateEventInMicrosoftCalendar = async (event, token) => {
     console.error("❌ Error updating to Microsoft Calendar:", err);
     return null;
   }
+};
+
+const formatDateTime = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  return d.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM"
 };
 
   // Event handling functions
@@ -1605,7 +1611,7 @@ const updateEventInMicrosoftCalendar = async (event, token) => {
                   <input
                     type="datetime-local"
                     name="start"
-                    value={eventForm.start}
+                    value={formatDateTime(eventForm.start)}
                     onChange={handleEventFormChange}
                     required
                     style={{
@@ -1630,7 +1636,7 @@ const updateEventInMicrosoftCalendar = async (event, token) => {
                   <input
                     type="datetime-local"
                     name="end"
-                    value={eventForm.end}
+                    value={formatDateTime(eventForm.end)}
                     onChange={handleEventFormChange}
                     required
                     style={{

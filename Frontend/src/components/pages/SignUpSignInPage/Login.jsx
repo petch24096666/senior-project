@@ -4,7 +4,6 @@ import axios from "axios";
 import { supabase } from "../../../utils/supabaseClient";
 import { FaGoogle, FaMicrosoft } from "react-icons/fa";
 
-
 const url = import.meta.env.VITE_BACKEND_URL;
 
 const LoginPage = () => {
@@ -59,20 +58,20 @@ const LoginPage = () => {
         redirectTo: "https://klauwpmsqqkxfjyxfpbx.supabase.co/auth/v1/callback",
       },
     });
-  
+
     if (data?.url) {
       console.log("✅ Redirecting to Google OAuth...");
       window.location.href = data.url; // ✅ Redirect ไปยัง Google OAuth
     }
-  
+
     if (error) console.error("❌ Login error:", error);
   };
-  
+
   const handleAzureLogin = async () => {
     await supabase.auth.signOut(); // ล้าง session เก่า
     localStorage.clear(); // ล้างข้อมูลเก่า
     sessionStorage.clear(); // ล้างข้อมูลใน session
-  
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
@@ -80,21 +79,22 @@ const LoginPage = () => {
         redirectTo: "https://klauwpmsqqkxfjyxfpbx.supabase.co/auth/v1/callback",
       },
     });
-  
+
     if (data?.url) {
       console.log("✅ Redirecting to Azure OAuth...");
       window.location.href = data.url;
     }
-  
+
     if (error) {
       console.error("❌ Azure Login error:", error);
     }
   };
-  
-  useEffect(() => {  
+
+  useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         const provider = session.user?.identities?.[0]?.provider;
+        const email = session.user?.email;
   
         // ลบข้อมูลใน localStorage และ sessionStorage ก่อนบันทึกข้อมูลใหม่
         localStorage.removeItem("authProvider");
@@ -110,25 +110,59 @@ const LoginPage = () => {
           localStorage.setItem("microsoftToken", session.provider_token);  // ใช้ token ของ Microsoft
         }
   
-        console.log("✅ Logged in as:", provider);
+        // ส่งข้อมูลผู้ใช้ไปยัง Backend หลังจากล็อกอินสำเร็จ
+        axios.post(`${url}/api/oauth-login`, {
+          email: email,
+          provider_token: session.provider_token,
+          provider: provider,
+        })
+        .then(response => {
+          // เช็คว่าผู้ใช้มีอยู่ในฐานข้อมูลแล้วหรือไม่
+          const user = response.data;
+  
+          if (user) {
+            // ถ้า user มีข้อมูลแล้วใน DB ให้ทำการอัพเดตข้อมูล provider และ token
+            if (provider === "google") {
+              axios.put(`${url}/api/update-user`, {
+                email: user.email,
+                google_token: session.provider_token,
+              });
+            } else if (provider === "microsoft") {
+              axios.put(`${url}/api/update-user`, {
+                email: user.email,
+                microsoft_token: session.provider_token,
+              });
+            }
+          } else {
+            // ถ้าผู้ใช้ไม่มีในฐานข้อมูล ให้ทำการสร้างใหม่
+            axios.post(`${url}/api/create-user`, {
+              email: session.user.email,
+              provider_token: session.provider_token,
+              provider: provider,
+            });
+          }
+        })
+        .catch(error => {
+          console.error("Error saving user data:", error);
+        });
+  
         navigate("/dashboard");  // เปลี่ยนเส้นทางหลังจากล็อกอิน
       }
     });
   
     return () => authListener.subscription.unsubscribe();
-  }, []);
-  
-  
+  }, []);  
+
   function login(event) {
     event.preventDefault();
     if (!validateForm()) return;
-  
+
     console.log("Attempting to login with:", values);
-  
+
     axios.post(`${url}/api/login`, values)
       .then((res) => {
         console.log("Login response received:", res.data);
-  
+
         if (res.data.success) {
           if (rememberMe) {
             localStorage.setItem("rememberedEmail", values.email);
@@ -341,13 +375,13 @@ const LoginPage = () => {
           </div>
 
           <div style={styles.socialButtons}>
-  <button onClick={handleGoogleLogin} style={styles.socialBtn}>
-    <FaGoogle color="#DB4437" />
-  </button>
-  <button onClick={handleAzureLogin} style={styles.socialBtn}>
-    <FaMicrosoft color="#0078D4" />
-  </button>
-</div>
+            <button onClick={handleGoogleLogin} style={styles.socialBtn}>
+              <FaGoogle color="#DB4437" />
+            </button>
+            <button onClick={handleAzureLogin} style={styles.socialBtn}>
+              <FaMicrosoft color="#0078D4" />
+            </button>
+          </div>
 
           <p style={styles.signup}>
             Don't have an account? <a href="/register" style={styles.signupLink}>Sign up</a>
