@@ -247,6 +247,34 @@ const CalendarDashboard = () => {
     }
   };
 
+  // Add a new function to get all events for the day
+const getEventsForDay = (date) => {
+  return events.filter(event =>
+    !event.allDay && isSameDay(event.start, date)
+  );
+};
+
+// Add a new function to calculate the position and height of an event
+const calculateEventDisplay = (event) => {
+  const startHour = event.start.getHours();
+  const startMinute = event.start.getMinutes();
+  const endHour = event.end.getHours();
+  const endMinute = event.end.getMinutes();
+  
+  // Calculate position from top (in %)
+  const startPercentage = (startHour + startMinute / 60) * (100 / 24);
+  
+  // Calculate height (in %)
+  const durationHours = (endHour + endMinute / 60) - (startHour + startMinute / 60);
+  const heightPercentage = durationHours * (100 / 24);
+  
+  return {
+    top: `${startPercentage}%`,
+    height: `${heightPercentage}%`,
+    minHeight: '25px', // Minimum height for very short events
+  };
+};
+
   // Get days for the month view
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear();
@@ -1143,47 +1171,64 @@ const formatDateTime = (date) => {
                   </div>
                 </div>
 
-                {/* Time slots */}
-                <div style={{ flex: 1, overflowY: 'auto' }}>
-                  {timeSlots.map(hour => (
-                    <div
-                      key={hour}
-                      style={{
-                        display: 'flex',
-                        borderBottom: '1px solid #E5E7EB',
-                        height: '60px'
-                      }}
-                    >
-                      <div style={{
-                        width: '60px',
-                        minWidth: '60px',
-                        padding: '8px',
-                        borderRight: '1px solid #E5E7EB',
-                        fontSize: '12px',
-                        color: '#6B7280',
-                        textAlign: 'center',
-                        position: 'relative'
-                      }}>
-                        {getTimeLabel(hour)}
-                      </div>
-
+                {/* Time slots for Day View */}
+                  <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+                    {/* Time slot lines */}
+                    {timeSlots.map(hour => (
                       <div
+                        key={hour}
                         style={{
-                          flex: 1,
-                          backgroundColor: '#FEFAF0',
-                          padding: '4px',
-                          position: 'relative',
-                          cursor: 'pointer'
-                        }}
-                        onClick={() => {
-                          const date = new Date(currentDate);
-                          date.setHours(hour, 0, 0, 0);
-                          setSelectedDate(date);
-                          setEditingEvent(null);
-                          setShowEventModal(true);
+                          display: 'flex',
+                          borderBottom: '1px solid #E5E7EB',
+                          height: '60px',
+                          position: 'relative'
                         }}
                       >
-                        {getEventsForHour(currentDate, hour).map(event => (
+                        <div style={{
+                          width: '60px',
+                          minWidth: '60px',
+                          padding: '8px',
+                          borderRight: '1px solid #E5E7EB',
+                          fontSize: '12px',
+                          color: '#6B7280',
+                          textAlign: 'center',
+                          position: 'relative'
+                        }}>
+                          {getTimeLabel(hour)}
+                        </div>
+
+                        <div
+                          style={{
+                            flex: 1,
+                            backgroundColor: '#FEFAF0',
+                            padding: '4px',
+                            position: 'relative',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            const date = new Date(currentDate);
+                            date.setHours(hour, 0, 0, 0);
+                            setSelectedDate(date);
+                            setEditingEvent(null);
+                            setShowEventModal(true);
+                          }}
+                        >
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Events as absolute positioned elements */}
+                    <div style={{ 
+                      position: 'absolute', 
+                      top: '0',
+                      right: '0',
+                      bottom: '0',
+                      left: '60px', // Leave space for the time labels
+                      pointerEvents: 'none' // Allow click through to the time slots
+                    }}>
+                      {getEventsForDay(currentDate).map(event => {
+                        const { top, height, minHeight } = calculateEventDisplay(event);
+                        return (
                           <div
                             key={event.id}
                             style={{
@@ -1195,22 +1240,129 @@ const formatDateTime = (date) => {
                               fontWeight: '500',
                               cursor: 'pointer',
                               zIndex: 10,
-                              position: 'relative'
+                              position: 'absolute',
+                              top: top,
+                              height: height,
+                              minHeight: minHeight,
+                              width: 'calc(100% - 16px)', // Full width minus padding
+                              overflow: 'hidden',
+                              pointerEvents: 'auto' // Re-enable pointer events for the event
                             }}
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingEvent(event);
                             }}
                           >
-                            <div>{event.title}</div>
+                            <div style={{ fontWeight: 'bold' }}>{event.title}</div>
                             <div style={{ fontSize: '11px', opacity: 0.9 }}>
                               {formatDate(event.start, 'time')} - {formatDate(event.end, 'time')}
                             </div>
                           </div>
-                        ))}
+                        );
+                      })}
+                    </div>
+                  </div>
+                      <div style={{
+                        padding: '8px',
+                        borderRight: '1px solid #E5E7EB',
+                        fontSize: '12px',
+                        color: '#6B7280',
+                        textAlign: 'center'
+                      }}>
+                        {getTimeLabel(hour)}
                       </div>
+
+                      {getDaysInWeek().map((day, index) => (
+                        <div
+                          key={index}
+                          style={{
+                            padding: '4px',
+                            borderRight: index < 6 ? '1px solid #E5E7EB' : 'none',
+                            backgroundColor: '#FEFAF0',
+                            cursor: 'pointer',
+                            position: 'relative'
+                          }}
+                          onClick={() => {
+                            const date = new Date(day);
+                            date.setHours(hour, 0, 0, 0);
+                            setSelectedDate(date);
+                            setEditingEvent(null);
+                            setShowEventModal(true);
+                          }}
+                        >
+                        </div>
+                      ))}
                     </div>
                   ))}
+                  
+                  {/* Events for each day */}
+                  {getDaysInWeek().map((day, dayIndex) => {
+                    const dayEvents = getEventsForDay(day);
+                    const columnWidth = `calc((100% - 60px) / 7)`;
+                    const columnLeft = `calc(60px + ${dayIndex} * ${columnWidth})`;
+                    
+                    return (
+                      <div 
+                        key={`events-${dayIndex}`}
+                        style={{ 
+                          position: 'absolute', 
+                          top: '0',
+                          height: '100%',
+                          width: columnWidth,
+                          left: columnLeft,
+                          pointerEvents: 'none'
+                        }}
+                      >
+                        {dayEvents.map(event => {
+                          const { top, height, minHeight } = calculateEventDisplay(event);
+                          
+                          // Handle overlapping events by calculating width
+                          // This is a simplified approach - for production, you'd want more complex logic
+                          const overlapCount = dayEvents.filter(e => {
+                            return (e.start < event.end && e.end > event.start);
+                          }).length;
+                          
+                          const eventWidth = overlapCount > 1 
+                            ? `calc(${100 / overlapCount}% - 8px)` 
+                            : 'calc(100% - 8px)';
+                          
+                          return (
+                            <div
+                              key={event.id}
+                              style={{
+                                backgroundColor: event.color,
+                                color: 'white',
+                                padding: '4px 8px',
+                                borderRadius: '4px',
+                                fontSize: '11px',
+                                fontWeight: '500',
+                                cursor: 'pointer',
+                                zIndex: 10,
+                                position: 'absolute',
+                                top: top,
+                                height: height,
+                                minHeight: minHeight,
+                                width: eventWidth,
+                                overflow: 'hidden',
+                                pointerEvents: 'auto', // Re-enable pointer events
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingEvent(event);
+                              }}
+                            >
+                              <div style={{ fontWeight: 'bold' }}>{event.title}</div>
+                              <div style={{ fontSize: '10px', opacity: 0.9 }}>
+                                {formatDate(event.start, 'time')}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
