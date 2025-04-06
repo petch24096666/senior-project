@@ -35,43 +35,57 @@ export const getTaskById = async (req, res) => {
 // Create a new task
 // controllers/taskController.js
 export const createTask = async (req, res) => {
-    try {
-      const { title, description, priority, status, due_date, project_id, assignee } = req.body;
-      
-      // Validate project_id
-      if (!project_id) {
-        return res.status(400).json({ error: 'Project ID is required' });
-      }
-      
-      const taskData = [
-        title,
-        description || '',
-        priority || 'low',
-        status || 'todo',
-        due_date || null,
-        project_id,  // Ensure project_id is required
-        assignee || ''
-      ];
-      
-      const [result] = await db.query(Task.createTask, taskData);
-      
-      const newTask = {
-        id: result.insertId,
-        title,
-        description: description || '',
-        priority: priority || 'low',
-        status: status || 'todo',
-        due_date: due_date || null,
-        project_id,  // Include project_id in the response
-        assignee: assignee || ''
-      };
-      
-      res.status(201).json(newTask);
-    } catch (error) {
-      console.error('Error creating task:', error);
-      res.status(500).json({ error: 'Failed to create task: ' + error.message });
+  try {
+    const {
+      title, description, priority,
+      status, due_date, project_id,
+      assignees, assignee
+    } = req.body;
+
+    if (!project_id) {
+      return res.status(400).json({ error: 'Project ID is required' });
     }
-  };
+
+    // Normalize assignees into array
+    const list = Array.isArray(assignees)
+      ? assignees
+      : Array.isArray(assignee)
+        ? assignee
+        : typeof assignee === 'string'
+          ? assignee.split(',').map(s => s.trim()).filter(Boolean)
+          : [];
+
+    const assigneeString = list.join(',');
+
+    const params = [
+      title,
+      description || '',
+      priority || 'low',
+      status || 'todo',
+      due_date || null,
+      project_id,
+      assigneeString
+    ];
+
+    const [result] = await db.query(Task.createTask, params);
+
+    const newTask = {
+      id: result.insertId,
+      title,
+      description: description || '',
+      priority: priority || 'low',
+      status: status || 'todo',
+      due_date: due_date || null,
+      project_id,
+      assignee: assigneeString
+    };
+
+    res.status(201).json(newTask);
+  } catch (error) {
+    console.error('Error creating task:', error);
+    res.status(500).json({ error: 'Failed to create task: ' + error.message });
+  }
+};
 
 // Update an existing task
 // ตัวอย่างปรับ updateTask โดยใช้ due_date และ status (แทน dueDate และ column)
@@ -79,48 +93,57 @@ export const createTask = async (req, res) => {
 export const updateTask = async (req, res) => {
   try {
     const id = req.params.id;
-    // ให้ชื่อ key ใน body สอดคล้องกัน (เช่น due_date, status)
-    const { title, description, priority, due_date, status, assignee } = req.body;
+    const {
+      title, description, priority,
+      status, due_date,
+      assignees, assignee
+    } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    // Normalize assignees into array
+    const list = Array.isArray(assignees)
+      ? assignees
+      : Array.isArray(assignee)
+        ? assignee
+        : typeof assignee === 'string'
+          ? assignee.split(',').map(s => s.trim()).filter(Boolean)
+          : [];
+
+    const assigneeString = list.join(',');
 
     const sql = `
       UPDATE tasks
-      SET
-        title=?,
-        description=?,
-        priority=?,
-        due_date=?,
-        status=?,
-        assignee=?
+      SET title=?, description=?, priority=?, due_date=?, status=?, assignee=?
       WHERE id=?
     `;
-
-    const taskData = [
-      title || '',
+    const params = [
+      title,
       description || '',
       priority || 'low',
       due_date || null,
       status || 'todo',
-      assignee || '',
+      assigneeString,
       id
     ];
 
-    const [result] = await db.query(sql, taskData);
+    const [result] = await db.query(sql, params);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    const updatedTask = {
+    res.status(200).json({
       id,
-      title: title || '',
+      title,
       description: description || '',
       priority: priority || 'low',
       due_date: due_date || null,
       status: status || 'todo',
-      assignee: assignee || ''
-    };
-
-    res.status(200).json(updatedTask);
+      assignee: assigneeString
+    });
   } catch (error) {
     console.error('Error updating task:', error);
     res.status(500).json({ error: 'Failed to update task' });

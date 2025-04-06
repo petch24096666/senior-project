@@ -203,4 +203,26 @@ export const getProjectTaskCounts = async (req, res) => {
   }
 };
 
+// controllers/projectController.js
+export const getProjectUsers = async (req, res) => {
+  const { project_id } = req.params;
+  if (!project_id) {
+    return res.status(400).json({ success: false, error: "Project ID is required." });
+  }
+  try {
+    // ดึง email, role, user_id จาก projectmembers
+    const sql = `
+      SELECT user_id, email, role
+      FROM projectmembers
+      WHERE project_id = ?
+    `;
+    const [rows] = await db.query(sql, [project_id]);
+    return res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Error fetching project users:", error);
+    return res.status(500).json({ success: false, error: "Failed to fetch project users." });
+  }
+};
+
+
 

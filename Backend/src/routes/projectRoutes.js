@@ -1,5 +1,5 @@
 import express from "express";
-import { getAllProjects, createProject, updateProject, deleteProject, getProjectById, getProjectTaskCounts } from "../controllers/projectController.js";
+import { getAllProjects, createProject, updateProject, deleteProject, getProjectById, getProjectTaskCounts,getProjectUsers} from "../controllers/projectController.js";
 
 const router = express.Router();
 
@@ -13,5 +13,6 @@ router.get('/api/projects', getAllProjects);
 router.post('/api/projects', createProject);
 router.put('/api/projects/:project_id', updateProject);
 router.delete('/api/projects/:project_id', deleteProject);
+router.get('/api/projects/:project_id/users', getProjectUsers);
 
 export default router;
