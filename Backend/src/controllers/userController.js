@@ -2,9 +2,7 @@ import db from "../config/database.js";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
 import User from "../models/userModel.js"; // ✅ ใช้ Model ที่ import มา
-import { supabase
-
- } from "../config/supabaseClient.js";
+import { supabase } from "../config/supabaseClient.js";
 dotenv.config();
 
 const saltRounds = 10; // ✅ ใช้ค่า salt rounds ที่ปลอดภัย
