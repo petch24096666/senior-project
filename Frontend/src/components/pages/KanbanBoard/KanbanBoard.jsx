@@ -1,9 +1,17 @@
 import React, { useState, useEffect } from "react";
+import { useParams } from 'react-router-dom';
 import {
   Box,
   Typography,
   Button as MuiButton,
+  Snackbar,
+  Alert,
+  CircularProgress  // Make sure this is included
 } from "@mui/material";
+import axios from "axios";
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+dayjs.extend(utc);
 
 // CSS Styles as a string variable for injection
 const styles = `
@@ -324,34 +332,142 @@ textarea {
 .cancel-btn:hover {
   background-color: #d1d5db;
 }
+
+.card-actions {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 999;
+}
+
+.kanban-card:hover .card-actions {
+  opacity: 0.7;
+}
+  
+.btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  /* กำหนดขนาดหากจำเป็น */
+  width: 30px;
+  height: 30px;
+  /* ...สไตล์อื่นๆ... */
+}
+
+.card-actions .btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #636e7b;
+  border-radius: 3px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.card-actions .btn:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #2c3e50;
+}
+
+.card-actions .delete-btn {
+  color: #e74c3c;
+}
+
+.card-actions .delete-btn:hover {
+  background-color: rgba(231, 76, 60, 0.1);
+  color: #c0392b;
+}
+
+.edit-btn, .delete-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.edit-btn:hover, .delete-btn:hover {
+  opacity: 1;
+}
+
+.delete-btn {
+  color: #e74c3c;
+}
+
+.delete-btn:hover {
+  color: #c0392b;
+}
 `;
 
-// Task Card Component - renamed to avoid conflicts with MUI Card
-const TaskCard = ({ task, onDragStart, onEditTask, isDone }) => {
+const TaskCard = ({ task, onDragStart, onEditTask, onDeleteTask, isDone }) => {
   // Format date
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    
+
     const date = new Date(dateString);
+    
+    // Validate date
+    if (isNaN(date.getTime())) return '';
+
     const month = date.toLocaleString('default', { month: 'short' });
     const day = date.getDate();
-    
-    return `${month} ${day}`;
+    const year = date.getFullYear();
+
+    return `${month} ${day}, ${year}`;
   };
 
   // Check if task is overdue
   const isOverdue = () => {
     if (isDone) return false;
-    return new Date(task.dueDate) < new Date();
+    
+    const dueDate = task.dueDate || task.due_date;
+    if (!dueDate) return false;
+
+    return new Date(dueDate) < new Date();
   };
 
+  // Determine the due date value
+  const dueDateValue = task.dueDate || task.due_date;
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    if (window.confirm("Are you sure you want to delete this task?")) {
+      onDeleteTask(task.id);
+    }
+  };
   return (
-    <div 
+    <div
       className="kanban-card"
       draggable
       onDragStart={(e) => onDragStart(e, task.id)}
       data-id={task.id}
     >
+      <div className="card-actions">
+        <button
+          className="btn edit-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onEditTask(task.id);
+          }}
+        >
+          ✏️
+        </button>
+        <button
+          className="btn delete-btn"
+          onClick={(e) => {handleDelete}}
+        >
+          🗑️
+        </button>
+      </div>
       <div className="card-labels">
         <div className={`label ${task.priority}`}></div>
       </div>
@@ -359,46 +475,40 @@ const TaskCard = ({ task, onDragStart, onEditTask, isDone }) => {
       <div className="card-description">{task.description}</div>
       <div className="card-meta">
         <div className={`due-date ${isOverdue() ? 'overdue' : ''}`}>
-          {isDone ? 'Completed: ' : 'Due: '}{formatDate(task.dueDate)}
+          {dueDateValue 
+            ? (isDone ? 'Completed: ' : 'Due: ') + formatDate(dueDateValue)
+            : 'No due date'}
         </div>
-        <div className="avatar">{task.assignee}</div>
+        <div className="avatar">{task.assignee || 'NA'}</div>
       </div>
-      <button 
-        className="edit-btn"
-        onClick={(e) => {
-          e.stopPropagation();
-          onEditTask(task.id);
-        }}
-      >
-        ✏️
-      </button>
     </div>
   );
 };
 
-// Column Component
-const Column = ({ 
-  title, 
-  tasks, 
-  columnName, 
-  onDragStart, 
-  onDragOver, 
-  onDrop, 
-  onEditTask, 
-  onAddCard 
+// Column Component - remains mostly the same
+const Column = ({
+  title,
+  tasks,
+  columnName,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onEditTask,
+  onDeleteTask, // เพิ่ม prop นี้
+  onAddCard
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
-  
+
   const handleDragOver = (e) => {
     e.preventDefault();
     setIsDragOver(true);
     onDragOver(e);
   };
-  
+
   const handleDragLeave = () => {
     setIsDragOver(false);
   };
-  
+
   const handleDrop = (e) => {
     setIsDragOver(false);
     onDrop(e, columnName);
@@ -410,18 +520,19 @@ const Column = ({
         <div className="column-title">{title}</div>
         <div className="task-count">{tasks.length}</div>
       </div>
-      <div 
+      <div
         className={`column-content ${isDragOver ? 'drag-over' : ''}`}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
         {tasks.map((task) => (
-          <TaskCard 
-            key={task.id} 
-            task={task} 
+          <TaskCard
+            key={task.id}
+            task={task}
             onDragStart={onDragStart}
             onEditTask={onEditTask}
+            onDeleteTask={onDeleteTask} // ส่ง onDeleteTask เข้าไปที่ TaskCard
             isDone={columnName === 'done'}
           />
         ))}
@@ -433,30 +544,45 @@ const Column = ({
   );
 };
 
-// TaskModal Component
-const TaskModal = ({ onClose, onSave, task, isEdit }) => {
+
+// TaskModal Component - updated to include project_id
+// TaskModal Component - updated to include project_id and task id when editing
+const TaskModal = ({ onClose, onSave, task, isEdit, projectId }) => {
   const [formData, setFormData] = useState({
+    // เพิ่ม id ในกรณีที่มี task (สำหรับ edit)
+    id: task?.id || null,
     title: '',
     description: '',
     priority: 'low',
     dueDate: '',
     assignee: '',
-    column: 'todo'
+    column: 'todo',
+    project_id: projectId || ''
   });
 
   // Set initial form data if editing a task
   useEffect(() => {
-    if (task) {
+    if (isEdit && task) {
+      let dateOnly = '';
+      if (typeof task.due_date === 'string') {
+        // ถ้า task.due_date เป็น string ที่เก็บแบบ "YYYY-MM-DD" อยู่แล้ว
+        dateOnly = task.due_date;
+      } else if (task.due_date) {
+        dateOnly = new Date(task.due_date).toISOString().split('T')[0];
+      }
       setFormData({
+        id: task.id,
         title: task.title || '',
         description: task.description || '',
         priority: task.priority || 'low',
-        dueDate: task.dueDate || '',
+        dueDate: dateOnly, // ควรจะได้ "YYYY-MM-DD"
         assignee: task.assignee || '',
-        column: task.column || 'todo'
+        column: task.column || 'todo',
+        project_id: projectId || task.project_id || ''
       });
     }
-  }, [task]);
+  }, [isEdit, task, projectId]);
+  
 
   // Handle input changes
   const handleChange = (e) => {
@@ -466,6 +592,7 @@ const TaskModal = ({ onClose, onSave, task, isEdit }) => {
       [id.replace('task-', '')]: value
     });
   };
+  
 
   // Handle form submission
   const handleSubmit = (e) => {
@@ -483,27 +610,27 @@ const TaskModal = ({ onClose, onSave, task, isEdit }) => {
         <form id="task-form" onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="task-title">Title</label>
-            <input 
-              type="text" 
-              id="task-title" 
-              value={formData.title} 
-              onChange={handleChange} 
-              required 
+            <input
+              type="text"
+              id="task-title"
+              value={formData.title}
+              onChange={handleChange}
+              required
             />
           </div>
           <div className="form-group">
             <label htmlFor="task-description">Description</label>
-            <textarea 
-              id="task-description" 
-              value={formData.description} 
+            <textarea
+              id="task-description"
+              value={formData.description}
               onChange={handleChange}
             ></textarea>
           </div>
           <div className="form-group">
             <label htmlFor="task-priority">Priority</label>
-            <select 
-              id="task-priority" 
-              value={formData.priority} 
+            <select
+              id="task-priority"
+              value={formData.priority}
               onChange={handleChange}
             >
               <option value="low">Low</option>
@@ -513,28 +640,28 @@ const TaskModal = ({ onClose, onSave, task, isEdit }) => {
           </div>
           <div className="form-group">
             <label htmlFor="task-dueDate">Due Date</label>
-            <input 
-              type="date" 
-              id="task-dueDate" 
-              value={formData.dueDate} 
-              onChange={handleChange} 
+            <input
+              type="date"
+              id="task-dueDate"
+              value={formData.dueDate}
+              onChange={handleChange}
             />
           </div>
           <div className="form-group">
             <label htmlFor="task-assignee">Assignee</label>
-            <input 
-              type="text" 
-              id="task-assignee" 
-              placeholder="Enter initials" 
-              value={formData.assignee} 
-              onChange={handleChange} 
+            <input
+              type="text"
+              id="task-assignee"
+              placeholder="Enter initials"
+              value={formData.assignee}
+              onChange={handleChange}
             />
           </div>
           <div className="form-group">
             <label htmlFor="task-column">Column</label>
-            <select 
-              id="task-column" 
-              value={formData.column} 
+            <select
+              id="task-column"
+              value={formData.column}
               onChange={handleChange}
             >
               <option value="todo">To Do</option>
@@ -543,9 +670,15 @@ const TaskModal = ({ onClose, onSave, task, isEdit }) => {
               <option value="done">Done</option>
             </select>
           </div>
+          {/* Hidden field for project_id */}
+          <input
+            type="hidden"
+            id="task-project_id"
+            value={formData.project_id}
+          />
           <div className="form-actions">
             <button type="button" className="cancel-btn" onClick={onClose}>Cancel</button>
-            <button type="submit">Save Task</button>
+            <button type="submit">{isEdit ? 'Update Task' : 'Save Task'}</button>
           </div>
         </form>
       </div>
@@ -553,13 +686,14 @@ const TaskModal = ({ onClose, onSave, task, isEdit }) => {
   );
 };
 
-// KanbanBoardView Component
-const KanbanBoardView = ({ tasks, onEditTask, onMoveTask, onAddCard }) => {
+
+// KanbanBoardView Component - remains mostly the same
+const KanbanBoardView = ({ tasks, onEditTask, onMoveTask, onAddCard, onDeleteTask }) => {
   // Group tasks by column
-  const todoTasks = tasks.filter(task => task.column === 'todo');
-  const inProgressTasks = tasks.filter(task => task.column === 'inprogress');
-  const reviewTasks = tasks.filter(task => task.column === 'review');
-  const doneTasks = tasks.filter(task => task.column === 'done');
+  const todoTasks = tasks.filter(task => task.column_status === 'todo' || task.column === 'todo');
+  const inProgressTasks = tasks.filter(task => task.column_status === 'inprogress' || task.column === 'inprogress');
+  const reviewTasks = tasks.filter(task => task.column_status === 'review' || task.column === 'review');
+  const doneTasks = tasks.filter(task => task.column_status === 'done' || task.column === 'done');
 
   // Handle drag start
   const handleDragStart = (e, taskId) => {
@@ -579,184 +713,270 @@ const KanbanBoardView = ({ tasks, onEditTask, onMoveTask, onAddCard }) => {
 
   return (
     <div className="board-container">
-      <Column 
-        title="To Do" 
-        tasks={todoTasks} 
+      <Column
+        title="To Do"
+        tasks={todoTasks}
         columnName="todo"
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onEditTask={onEditTask}
+        onDeleteTask={onDeleteTask}
         onAddCard={onAddCard}
       />
-      <Column 
-        title="In Progress" 
-        tasks={inProgressTasks} 
+      <Column
+        title="In Progress"
+        tasks={inProgressTasks}
         columnName="inprogress"
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onEditTask={onEditTask}
+        onDeleteTask={onDeleteTask}
         onAddCard={onAddCard}
       />
-      <Column 
-        title="Review" 
-        tasks={reviewTasks} 
+      <Column
+        title="Review"
+        tasks={reviewTasks}
         columnName="review"
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onEditTask={onEditTask}
+        onDeleteTask={onDeleteTask}
         onAddCard={onAddCard}
       />
-      <Column 
-        title="Done" 
-        tasks={doneTasks} 
+      <Column
+        title="Done"
+        tasks={doneTasks}
         columnName="done"
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onEditTask={onEditTask}
+        onDeleteTask={onDeleteTask}
         onAddCard={onAddCard}
       />
     </div>
   );
 };
 
-// Main KanbanBoard Component
+
+// Main KanbanBoard Component - updated with API integration
 const KanbanBoard = () => {
+  const { projectId } = useParams();
   const [showModal, setShowModal] = useState(false);
   const [currentTaskId, setCurrentTaskId] = useState(null);
   const [selectedColumn, setSelectedColumn] = useState('todo');
-  const [tasksData, setTasksData] = useState([
-    // To Do
-    {
-      id: "task-1",
-      title: "Design landing page",
-      description: "Create wireframes and mockups for the new marketing site",
-      priority: "high",
-      dueDate: "2025-03-25",
-      assignee: "JD",
-      column: "todo"
-    },
-    {
-      id: "task-2",
-      title: "Update documentation",
-      description: "Review and update user guide with new features",
-      priority: "medium",
-      dueDate: "2025-04-02",
-      assignee: "TK",
-      column: "todo"
-    },
-    {
-      id: "task-3",
-      title: "Research competitors",
-      description: "Analyze top 5 competitors' feature sets",
-      priority: "low",
-      dueDate: "2025-04-05",
-      assignee: "AS",
-      column: "todo"
-    },
-    // In Progress
-    {
-      id: "task-4",
-      title: "Implement login system",
-      description: "Create user authentication flow and account setup",
-      priority: "high",
-      dueDate: "2025-04-01",
-      assignee: "RJ",
-      column: "inprogress"
-    },
-    {
-      id: "task-5",
-      title: "Create email templates",
-      description: "Design responsive email templates for onboarding",
-      priority: "medium",
-      dueDate: "2025-04-03",
-      assignee: "LM",
-      column: "inprogress"
-    },
-    // Review
-    {
-      id: "task-6",
-      title: "QA testing for v2.0",
-      description: "Complete test cases for the new features",
-      priority: "high",
-      dueDate: "2025-03-30",
-      assignee: "PL",
-      column: "review"
-    },
-    {
-      id: "task-7",
-      title: "Code review",
-      description: "Review PR #342 for the payment integration",
-      priority: "low",
-      dueDate: "2025-03-31",
-      assignee: "KJ",
-      column: "review"
-    },
-    // Done
-    {
-      id: "task-8",
-      title: "Set up CI/CD pipeline",
-      description: "Configure automated testing and deployment",
-      priority: "medium",
-      dueDate: "2025-03-22",
-      assignee: "DM",
-      column: "done"
-    },
-    {
-      id: "task-9",
-      title: "Database migration",
-      description: "Migrate from MySQL to PostgreSQL",
-      priority: "high",
-      dueDate: "2025-03-20",
-      assignee: "JT",
-      column: "done"
-    },
-    {
-      id: "task-10",
-      title: "Team meeting",
-      description: "Weekly sprint planning and backlog grooming",
-      priority: "low",
-      dueDate: "2025-03-18",
-      assignee: "TM",
-      column: "done"
-    }
-  ]);
+  const [projectTitle, setProjectTitle] = useState("");
+  const [tasksData, setTasksData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [notification, setNotification] = useState({
+    open: false,
+    message: '',
+    type: 'success'
+  });
 
-  // Generate a unique ID for a new task
-  const generateTaskId = () => {
-    return 'task-' + Date.now() + Math.floor(Math.random() * 1000);
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
+
+  // Fetch tasks from the API when component mounts
+  useEffect(() => {
+    console.log("Received projectId:", projectId);
+
+    if (!projectId) {
+      setError("No project ID provided");
+      setLoading(false);
+      return;
+    }
+
+    const fetchTasks = async () => {
+      try {
+        setLoading(true);
+        const response = await axios.get(`${API_BASE_URL}/api/projects/${projectId}/tasks`);
+        console.log("Fetched tasks:", response.data);
+
+        const formattedTasks = response.data.map(task => ({
+          ...task,
+          column: task.status || task.column_status
+        }));
+
+        setTasksData(formattedTasks);
+      } catch (err) {
+        console.error("Error fetching tasks:", err);
+        setError(err.message || "Failed to fetch tasks");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTasks();
+  }, [projectId]);
+
+  // Fetch project details to get project title
+  axios.get(`${API_BASE_URL}/api/projects/${projectId}`)
+    .then(response => {
+      if (response.data.success) {
+        // title จริงอยู่ใน response.data.data.title
+        setProjectTitle(response.data.data.title);
+      } else {
+        console.error("API returned success=false:", response.data.error);
+      }
+    })
+    .catch(error => {
+      console.error("Error fetching project details:", error);
+    });
+
+
+  // Fetch all tasks or project-specific tasks
+  const fetchTasks = async () => {
+    try {
+      setLoading(true);
+      let endpoint = '/api/tasks';
+
+      if (projectId) {
+        endpoint = `/api/projects/${projectId}/tasks`;
+      }
+
+      const response = await axios.get(`${API_BASE_URL}${endpoint}`);
+      const formattedTasks = response.data.map(task => ({
+        ...task,
+        column: task.column_status
+      }));
+
+      setTasksData(formattedTasks);
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch tasks:', err);
+      setError('Failed to load tasks. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Add or update a task
-  const saveTask = (taskData) => {
-    if (currentTaskId) {
-      // Update existing task
-      const updatedTasks = tasksData.map(task => 
-        task.id === currentTaskId ? { ...task, ...taskData } : task
-      );
-      setTasksData(updatedTasks);
-    } else {
-      // Create new task
-      const newTask = {
-        id: generateTaskId(),
-        ...taskData,
-        column: selectedColumn
+  const saveTask = async (taskData) => {
+    try {
+      if (!projectId) {
+        showNotification('Project ID is required', 'error');
+        return;
+      }
+  
+      const apiPayload = {
+        title: taskData.title,
+        description: taskData.description || '',
+        priority: taskData.priority || 'low',
+        status: taskData.column || 'todo',
+        due_date: taskData.dueDate,
+        project_id: projectId,
+        assignee: taskData.assignee || ''
       };
-      setTasksData([...tasksData, newTask]);
+  
+      if (taskData.id) {
+        // Editing task ใช้ PUT method สำหรับ update task
+        console.log('Updating task with payload:', apiPayload);
+        await axios.put(`${API_BASE_URL}/api/tasks/${taskData.id}`, apiPayload);
+        showNotification('Task updated successfully', 'success');
+      } else {
+        // Creating new task ใช้ POST method
+        console.log('Creating task with payload:', apiPayload);
+        await axios.post(`${API_BASE_URL}/api/tasks`, apiPayload);
+        showNotification('Task created successfully', 'success');
+      }
+  
+      // Refresh tasks หลังจาก save task
+      const tasksResponse = await axios.get(`${API_BASE_URL}/api/projects/${projectId}/tasks`);
+      const formattedTasks = tasksResponse.data.map(task => ({
+        ...task,
+        column: task.status || task.column_status || 'todo'
+      }));
+  
+      setTasksData(formattedTasks);
+      setShowModal(false);
+    } catch (err) {
+      console.error('Error saving task:', err);
+      showNotification(
+        `Failed to save task: ${err.response?.data?.error || err.message}`,
+        'error'
+      );
     }
-    setShowModal(false);
-    setCurrentTaskId(null);
   };
+  
+  
+
+  useEffect(() => {
+    if (!projectId) {
+      console.error('No project ID provided');
+      return;
+    }
+  }, [projectId]);
+
+  if (!projectId) {
+    return (
+      <Box className="app" sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh'
+      }}>
+        <Typography color="error">
+          No Project Selected. Please select a project from the dashboard.
+        </Typography>
+      </Box>
+    );
+  }
 
   // Move a task to a different column
-  const moveTask = (taskId, newColumn) => {
-    const updatedTasks = tasksData.map(task => 
-      task.id === taskId ? { ...task, column: newColumn } : task
-    );
-    setTasksData(updatedTasks);
+  const moveTask = async (taskId, newColumn) => {
+    try {
+      // อัปเดต State ใน React ก่อน (Optimistic UI)
+      setTasksData(prevTasks =>
+        prevTasks.map(task =>
+          task.id === parseInt(taskId)
+            ? { ...task, column: newColumn, column_status: newColumn }
+            : task
+        )
+      );
+  
+      // เรียก API เพื่ออัปเดตใน DB
+      await axios.patch(`${API_BASE_URL}/api/tasks/${taskId}/column`, { column: newColumn });
+      showNotification('Task moved successfully', 'success');
+  
+      // ถ้าต้องการให้แน่ใจว่า sync กับ DB ก็ fetchTasks อีกรอบ (หรือไม่ก็ได้ ถ้าเชื่อว่า optimistic UI พอ)
+      // await fetchTasks();
+    } catch (err) {
+      console.error('Error moving task:', err);
+      fetchTasks(); // fallback ดึงข้อมูลล่าสุดจาก DB
+      showNotification('Failed to move task: ' + (err.response?.data?.error || err.message), 'error');
+    }
+  };
+  
+
+  // Delete a task
+  const deleteTask = async (taskId) => {
+    try {
+      await axios.delete(`${API_BASE_URL}/api/tasks/${taskId}`);
+      showNotification('Task deleted successfully', 'success');
+      fetchTasks(); // Refresh tasks หลังจากลบ
+    } catch (err) {
+      console.error('Error deleting task:', err);
+      showNotification('Failed to delete task: ' + (err.response?.data?.error || err.message), 'error');
+    }
+  };
+  
+
+  // Show notification
+  const showNotification = (message, type = 'info') => {
+    setNotification({
+      open: true,
+      message,
+      type
+    });
+  };
+
+  // Close notification
+  const handleCloseNotification = () => {
+    setNotification(prev => ({ ...prev, open: false }));
   };
 
   // Open edit modal with task data
@@ -774,16 +994,29 @@ const KanbanBoard = () => {
 
   // Find task by ID
   const getTaskById = (taskId) => {
-    return tasksData.find(task => task.id === taskId);
+    return tasksData.find(task => task.id === parseInt(taskId));
   };
+
+  if (error && tasksData.length === 0) {
+    return (
+      <Box className="app" sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <Typography color="error">{error}</Typography>
+        <button onClick={fetchTasks} style={{ marginLeft: '10px' }}>Try Again</button>
+      </Box>
+    );
+  }
 
   return (
     <Box className="app">
-      {/* Embed CSS */}
       <style>{styles}</style>
-      
+
       <header className="header">
-        <h1>My Kanban Board</h1>
+        <h1>
+          {projectId
+            ? (projectTitle ? `${projectTitle} Kanban Board` : "Loading...")
+            : "My Kanban Board"
+          }
+        </h1>
         <div className="header-buttons">
           <button onClick={() => {
             setCurrentTaskId(null);
@@ -792,16 +1025,16 @@ const KanbanBoard = () => {
           }}>+ Add New Task</button>
         </div>
       </header>
-      
-      <KanbanBoardView 
-        tasks={tasksData} 
-        onEditTask={editTask} 
-        onMoveTask={moveTask} 
-        onAddCard={addCard} 
+
+      <KanbanBoardView
+        tasks={tasksData}
+        onEditTask={editTask}
+        onMoveTask={moveTask}
+        onAddCard={addCard}
       />
-      
+
       {showModal && (
-        <TaskModal 
+        <TaskModal
           onClose={() => {
             setShowModal(false);
             setCurrentTaskId(null);
@@ -809,8 +1042,20 @@ const KanbanBoard = () => {
           onSave={saveTask}
           task={currentTaskId ? getTaskById(currentTaskId) : { column: selectedColumn }}
           isEdit={!!currentTaskId}
+          projectId={projectId}
         />
       )}
+
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseNotification} severity={notification.type} sx={{ width: '100%' }}>
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

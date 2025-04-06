@@ -36,7 +36,7 @@ function App() {
                     <Route path="profile" element={<ProfilePage />} />
                     <Route path="messages" element={<MessagePage />} />
                     <Route path="booking" element={<BookingPage />} />
-                    <Route path="kanban" element={<KanbanBoard />} />
+                    <Route path="/kanban/:projectId" element={<KanbanBoard />} />
                   </Routes>
                 </MainLayout>
               }

@@ -6,8 +6,7 @@ import userRoutes from "./src/routes/userRoutes.js";
 import db from "./src/config/database.js";
 import calendarRoutes from "./src/routes/calendarRoutes.js";
 import { google } from "googleapis";
-
-
+import taskRoutes from "./src/routes/taskRoutes.js"
 
 dotenv.config();
 
@@ -19,6 +18,7 @@ app.use(cors());
 app.use(userRoutes);
 app.use(projectRoutes);
 app.use("/api",calendarRoutes);
+app.use(taskRoutes);
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
 (async () => {

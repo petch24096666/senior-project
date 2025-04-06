@@ -2,6 +2,10 @@ import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { UserContext } from '../../../context/Usercontext';
 import { v4 as uuidv4 } from 'uuid';
 import dayjs from 'dayjs';
+import { useNavigate } from "react-router-dom";
+import axios from 'axios';
+import { Snackbar, Alert } from '@mui/material';
+
 
 // Custom CSS keyframes for animations
 const fadeInKeyframes = `
@@ -23,9 +27,14 @@ const ProjectDashboard = () => {
   // State variables
   const [viewMode, setViewMode] = useState('grid');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const navigate = useNavigate();
+  const [menuOpenId, setMenuOpenId] = useState(null);
+  
   // ปรับ state ใหม่ ไม่รวม tasks fields และ description
   const [newProject, setNewProject] = useState({
     project_id: uuidv4(),
@@ -47,31 +56,47 @@ const ProjectDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
-
+  const [notification, setNotification] = useState({ open:false, message:'', type:'info' });
+  const showNotification = (msg, type='info') => setNotification({ open:true, message:msg, type });
+  const handleCloseNotification = () => setNotification(prev => ({ ...prev, open:false }));
+  
   // Fetch projects
-  useEffect(() => {
-    setLoading(true);
-    fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
-      .then(response => response.json())
-      .then(data => {
-        if (data.success && Array.isArray(data.data)) {
-          const normalized = data.data.map(project => ({
-            ...project,
-            duedate: project.due_date // ✅ convert to camelCase
-          }));
-          setProjects(normalized);
-          console.log("📌 Projects Normalized:", normalized);
-        } else {
-          setProjects([]);
-          setError(data.error || "No projects found");
-        }
-        setLoading(false);
-      })
-      .catch(err => {
-        setError(err.message);
-        setLoading(false);
+  const fetchProjectsAndCounts = useCallback(async () => {
+    try {
+      setLoading(true);
+      const projRes = await axios.get(`http://localhost:8081/api/projects?userId=${currentUserId}`);
+      const projectsData = projRes.data.data.map(p => ({
+        ...p,
+        startdate: p.start_date.split(' ')[0],
+        duedate:   p.due_date.split(' ')[0],
+        tasks:     0,
+        totalTasks:0
+      }));
+      const countsRes = await axios.get(`http://localhost:8081/api/projects/taskCounts?userId=${currentUserId}`);
+      const counts = countsRes.data.data;
+      const merged = projectsData.map(p => {
+        const c = counts.find(x => x.project_id === p.project_id);
+        return {
+          ...p,
+          totalTasks: c?.totalTasks || 0,
+          tasks:      c?.tasksCompleted || 0
+        };
       });
+      setProjects(merged);
+    } catch (err) {
+      console.error(err);
+      showNotification("Failed to load projects", 'error');
+    } finally {
+      setLoading(false);
+    }
   }, [currentUserId]);
+
+  // 2) เรียกใน useEffect พร้อม polling
+  useEffect(() => {
+    fetchProjectsAndCounts();
+    const intervalId = setInterval(fetchProjectsAndCounts, 30000);
+    return () => clearInterval(intervalId);
+  }, [fetchProjectsAndCounts]);
 
 
   // Memoized filter function
@@ -101,6 +126,20 @@ const ProjectDashboard = () => {
     filterProjects();
     updateStats();
   }, [filterProjects, projects]);
+
+  // Add this useEffect to handle clicks outside the menu
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuOpenId && !event.target.closest('.project-menu-button')) {
+        setMenuOpenId(null);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [menuOpenId]);
 
   // Handle search input keypress
   const handleSearchKeyPress = (e) => {
@@ -287,6 +326,11 @@ const ProjectDashboard = () => {
     return styles[priority] || { bg: '#E5E7EB', text: '#4B5563' };
   };
 
+  const handleProjectClick = (projectId) => {
+    console.log("Navigating to Kanban board with projectId:", projectId);
+    navigate(`/kanban/${projectId}`);
+  };
+
   // Handle form input changes
   const handleInputChange = (e) => {
     const { id, value } = e.target;
@@ -298,20 +342,29 @@ const ProjectDashboard = () => {
       projectPriority: 'priority',
       projectTeam: 'team'
     };
+
     const field = mapping[id];
     if (field) {
-      setNewProject(prev => ({
-        ...prev,
-        [field]: value
-      }));
+      if (isEditMode) {
+        setEditingProject(prev => ({
+          ...prev,
+          [field]: value
+        }));
+      } else {
+        setNewProject(prev => ({
+          ...prev,
+          [field]: value
+        }));
+      }
     }
   };
 
 
   // Validate form before saving
   const validateForm = () => {
-    const { title, category, duedate, priority } = newProject;
-    if (!title || !category || duedate === '' || !priority) {
+    const project = isEditMode ? editingProject : newProject;
+    const { title, category, duedate, priority } = project;
+    if (!title || !category || !duedate || !priority) {
       alert('Please fill out all required fields');
       return false;
     }
@@ -369,6 +422,45 @@ const ProjectDashboard = () => {
       .catch(error => console.error("Error:", error));
   };
 
+  const handleEditProject = async (project) => {
+    try {
+      // ดึงรายละเอียดโปรเจคพร้อมสมาชิก
+      const res = await axios.get(
+        `http://localhost:8081/api/projects/${project.project_id}`
+      );
+      const data = res.data.data;
+      // แปลงสมาชิกเป็น comma-separated string
+      const teamString = Array.isArray(data.team)
+        ? data.team.map(m => m.email).join(', ')
+        : '';
+
+      // แปลงวันที่เป็น YYYY-MM-DD
+      const startOnly = project.startdate
+        ? project.startdate.split(' ')[0]
+        : '';
+      const dueOnly = project.duedate
+        ? project.duedate.split(' ')[0]
+        : '';
+
+      // ตั้งค่า editingProject
+      setEditingProject({
+        project_id: data.project_id,
+        title: data.title,
+        category: data.category,
+        startdate: startOnly,
+        duedate: dueOnly,
+        priority: data.priority,
+        team: teamString
+      });
+
+      setIsEditMode(true);
+      setShowModal(true);
+    } catch (err) {
+      showNotification("Cannot load project details", 'error');
+    }
+  };
+
+
 
 
 
@@ -390,6 +482,59 @@ const ProjectDashboard = () => {
     }
   };
 
+  const updateProject = () => {
+    if (!validateForm()) return;
+  
+    // แปลง team string เป็น array
+    let teamMembers = [];
+    if (editingProject.team) {
+      teamMembers = editingProject.team
+        .split(',')
+        .map(email => ({ email: email.trim(), role: 'member' }));
+    }
+  
+    const creatorEmail = customUser.email;
+    // ตรวจสอบว่ามี creator ในทีมหรือไม่
+    if (!teamMembers.some(m => m.email === creatorEmail)) {
+      showNotification("You cannot remove the project creator from the team.", 'warning');
+      return;
+    }
+  
+    const projectData = {
+      project_id: editingProject.project_id,
+      title:       editingProject.title,
+      category:    editingProject.category,
+      startdate:   editingProject.startdate,
+      duedate:     editingProject.duedate,
+      priority:    editingProject.priority,
+      team:        teamMembers,
+      creator_id:  currentUserId
+    };
+  
+    console.log("Updating project:", projectData);
+  
+    fetch(`http://localhost:8081/api/projects/${editingProject.project_id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(projectData)
+    })
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
+          showNotification("Project updated successfully!", 'success');
+          closeModal();
+          // รีเฟรช projects + counts
+          fetchProjectsAndCounts();
+        } else {
+          showNotification("Error updating project: " + result.error, 'error');
+        }
+      })
+      .catch(error => {
+        console.error("Error:", error);
+        showNotification("Error updating project. Please try again.", 'error');
+      });
+  };
+
 
   // Open/close modal functions
   const openModal = () => {
@@ -398,14 +543,21 @@ const ProjectDashboard = () => {
 
   const closeModal = () => {
     setShowModal(false);
-    setNewProject({
-      project_id: uuidv4(), // ✅ reset ใหม่
-      title: '',
-      category: '',
-      duedate: '',
-      priority: '',
-      team: ''
-    });
+    setIsEditMode(false);
+    // Reset form state
+    if (isEditMode) {
+      setEditingProject(null);
+    } else {
+      setNewProject({
+        project_id: uuidv4(),
+        title: '',
+        category: '',
+        startdate: '',
+        duedate: '',
+        priority: '',
+        team: ''
+      });
+    }
   };
 
 
@@ -449,28 +601,39 @@ const ProjectDashboard = () => {
     }
 
     return filteredProjects.map(project => {
-      const progress = Math.round((project.tasks / project.totalTasks) * 100);
+      const progress = Math.round((project.tasks / project.totalTasks) * 100) || 0;
       const formattedDate = formatDate(project.duedate);
       return (
         <div
-          key={project.id}
+          key={project.project_id}
+          onClick={(e) => {
+            // Only navigate if we didn't click on a menu button or menu item
+            if (!e.target.closest('.project-menu-button') && !menuOpenId) {
+              console.log("Card clicked, navigating to:", project.project_id);
+              handleProjectClick(project.project_id);
+            } else {
+              console.log("Clicked inside menu or menu is open, preventing navigation");
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
           style={{
             backgroundColor: 'white',
             borderRadius: '12px',
-            boxShadow: hoveredCard === project.id
+            boxShadow: hoveredCard === project.project_id
               ? '0 12px 20px rgba(0,0,0,0.1)'
               : '0 4px 12px rgba(0,0,0,0.05)',
             overflow: 'hidden',
             transition: 'transform 0.3s, box-shadow 0.3s',
-            transform: hoveredCard === project.id ? 'translateY(-5px)' : 'translateY(0)',
+            transform: hoveredCard === project.project_id ? 'translateY(-5px)' : 'translateY(0)',
             position: 'relative',
             display: 'flex',
             flexDirection: 'column',
             border: '1px solid #f1f1f1',
             animation: 'fadeIn 0.5s ease-out',
-            zIndex: hoveredCard === project.id ? 1 : 0
+            zIndex: hoveredCard === project.project_id || menuOpenId === project.project_id ? 1 : 0
           }}
-          onMouseEnter={() => setHoveredCard(project.id)}
+          onMouseEnter={() => setHoveredCard(project.project_id)}
           onMouseLeave={() => setHoveredCard(null)}
         >
           <div
@@ -499,47 +662,70 @@ const ProjectDashboard = () => {
                 style={{
                   fontWeight: 700,
                   fontSize: '18px',
-                  color: hoveredCard === project.id ? '#4f46e5' : '#1a202c',
+                  color: hoveredCard === project.project_id ? '#4f46e5' : '#1a202c',
                   transition: 'color 0.2s'
                 }}
               >
                 {project.title}
               </h3>
-              <div style={{ position: 'relative' }}>
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                zIndex: 20
+              }}>
                 <button
+                  type="button"
                   onClick={(e) => {
+                    e.preventDefault();
                     e.stopPropagation();
-                    deleteProject(project.project_id);
+                    console.log("Edit button clicked for project:", project.project_id);
+                    handleEditProject(project);
                   }}
                   style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: '50%',
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    cursor: 'pointer',
+                    width: '30px',
+                    height: '30px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '2px',
-                    transition: 'background-color 0.2s'
+                    backgroundColor: '#EDF2F7',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
                   }}
                 >
-                  {[1, 2, 3].map(i => (
-                    <span
-                      key={i}
-                      style={{
-                        width: '4px',
-                        height: '4px',
-                        backgroundColor: '#718096',
-                        borderRadius: '50%'
-                      }}
-                    ></span>
-                  ))}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log("Delete button clicked for project:", project.project_id);
+                    deleteProject(project.project_id);
+                  }}
+                  style={{
+                    width: '30px',
+                    height: '30px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#FEE2E2',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </button>
               </div>
             </div>
-
             <span
               style={{
                 display: 'inline-flex',
@@ -585,7 +771,7 @@ const ProjectDashboard = () => {
                   Progress
                 </span>
                 <span style={{ fontWeight: 600, color: '#2d3748' }}>
-                  {project.tasks}/{project.totalTasks}
+                  {project.tasks || 0}/{project.totalTasks || 0}
                 </span>
               </div>
               <div style={{ height: '8px', backgroundColor: '#edf2f7', borderRadius: '4px', overflow: 'hidden' }}>
@@ -623,10 +809,10 @@ const ProjectDashboard = () => {
                   maskRepeat: 'no-repeat',
                   maskPosition: 'center'
                 }}></span>
-                {formatDate(project.duedate)}
+                {formattedDate}
               </span>
               <div style={{ display: 'flex' }}>
-                {generateAvatars(project.team, project.category)}
+                {generateAvatars(project.team || [], project.category)}
               </div>
             </div>
           </div>
@@ -672,7 +858,8 @@ const ProjectDashboard = () => {
       const priorityStyles = getPriorityStyles(project.priority);
       return (
         <div
-          key={project.id}
+          key={project.project_id}
+          onClick={() => handleProjectClick(project.project_id)}
           style={{
             backgroundColor: 'white',
             borderRadius: '12px',
@@ -752,28 +939,65 @@ const ProjectDashboard = () => {
           }}>
             {capitalize(project.priority)}
           </span>
-          <button style={{
-            width: '28px',
-            height: '28px',
-            borderRadius: '50%',
-            border: 'none',
-            backgroundColor: 'transparent',
-            cursor: 'pointer',
+
+          <div style={{
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '2px'
+            gap: '8px',
+            zIndex: 20
           }}>
-            {[1, 2, 3].map(i => (
-              <span key={i} style={{
-                width: '4px',
-                height: '4px',
-                backgroundColor: '#718096',
-                borderRadius: '50%'
-              }}>
-              </span>
-            ))}
-          </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("Edit button clicked for project:", project);
+                handleEditProject(project);
+              }}
+              style={{
+                width: '30px',
+                height: '30px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#EDF2F7',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                  stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                alert("Deleting project: " + project.title);
+                console.log("Delete button clicked for project:", project);
+                deleteProject(project.project_id);
+              }}
+              style={{
+                width: '30px',
+                height: '30px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#FEE2E2',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       );
     });
@@ -1094,8 +1318,7 @@ const ProjectDashboard = () => {
           </div>
         </div>
       </div>
-
-      {/* Add Project Modal */}
+      {/* Add/Edit Project Modal */}
       {showModal && (
         <div style={{
           position: 'fixed',
@@ -1124,7 +1347,9 @@ const ProjectDashboard = () => {
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c' }}>Add New Project</h2>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c' }}>
+                {isEditMode ? 'Edit Project' : 'Add New Project'}
+              </h2>
               <button
                 onClick={closeModal}
                 style={{
@@ -1147,7 +1372,7 @@ const ProjectDashboard = () => {
                   <input
                     type="text"
                     id="projectTitle"
-                    value={newProject.title || ''}
+                    value={(isEditMode ? editingProject : newProject).title || ''}
                     onChange={handleInputChange}
                     required
                     style={{
@@ -1166,7 +1391,7 @@ const ProjectDashboard = () => {
                   </label>
                   <select
                     id="projectCategory"
-                    value={newProject.category || ''}
+                    value={(isEditMode ? editingProject : newProject).category || ''}
                     onChange={handleInputChange}
                     required
                     style={{
@@ -1192,7 +1417,7 @@ const ProjectDashboard = () => {
                   <input
                     type="date"
                     id="projectStartDate"
-                    value={newProject.startdate || ''}
+                    value={isEditMode ? editingProject.startdate : newProject.startdate || ''}
                     onChange={handleInputChange}
                     required
                     style={{
@@ -1213,7 +1438,7 @@ const ProjectDashboard = () => {
                   <input
                     type="date"
                     id="projectDueDate"
-                    value={newProject.duedate || ''}
+                    value={isEditMode ? editingProject.duedate : newProject.duedate || ''}
                     onChange={handleInputChange}
                     required
                     style={{
@@ -1232,7 +1457,7 @@ const ProjectDashboard = () => {
                   </label>
                   <select
                     id="projectPriority"
-                    value={newProject.priority || ''}
+                    value={isEditMode ? editingProject.priority : newProject.priority || ''}
                     onChange={handleInputChange}
                     required
                     style={{
@@ -1258,7 +1483,7 @@ const ProjectDashboard = () => {
                     type="text"
                     id="projectTeam"
                     placeholder="e.g. Alex, Jamie, Taylor"
-                    value={newProject.team || ''}
+                    value={isEditMode ? editingProject.team : newProject.team || ''}
                     onChange={handleInputChange}
                     style={{
                       width: '100%',
@@ -1294,7 +1519,7 @@ const ProjectDashboard = () => {
                 Cancel
               </button>
               <button
-                onClick={saveProject}
+                onClick={isEditMode ? updateProject : saveProject}
                 style={{
                   backgroundColor: '#4f46e5',
                   color: 'white',
@@ -1305,12 +1530,22 @@ const ProjectDashboard = () => {
                   cursor: 'pointer'
                 }}
               >
-                Save Project
+                {isEditMode ? 'Update Project' : 'Save Project'}
               </button>
             </div>
           </div>
         </div>
       )}
+      <Snackbar
+      open={notification.open}
+      autoHideDuration={6000}
+      onClose={handleCloseNotification}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+    >
+      <Alert onClose={handleCloseNotification} severity={notification.type} sx={{ width: '100%' }}>
+        {notification.message}
+      </Alert>
+    </Snackbar>
     </div>
   );
 };
