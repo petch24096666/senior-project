@@ -1,129 +1,284 @@
 import db from "../config/database.js";
 import bcrypt from "bcrypt";
 import dotenv from "dotenv";
-import User from "../models/userModel.js"; // ✅ ใช้ Model ที่ import มา
+import User from "../models/userModel.js";
 import { supabase } from "../config/supabaseClient.js";
 dotenv.config();
 
-const saltRounds = 10; // ✅ ใช้ค่า salt rounds ที่ปลอดภัย
+const saltRounds = 10;
 
-// ✅ สมัครสมาชิก
+// Register user with Supabase and local database
+// Register user with Supabase and local database
 export const registerUser = async (req, res) => {
   try {
-    console.log("Received request body:", req.body);
+    console.log("🔍 REGISTER: Received registration request:", {
+      fullname: req.body.fullname,
+      email: req.body.email,
+      password: req.body.password ? "PROVIDED" : "MISSING"
+    });
 
     const { fullname, email, password } = req.body;
-
+    
+    // Basic validation
     if (!fullname || !email || !password) {
+      console.log("❌ REGISTER: Missing required fields");
       return res.status(400).json({ success: false, error: "All fields are required" });
     }
-
-    // ✅ ตรวจสอบว่ามี email นี้อยู่แล้วหรือไม่
-    const [existingUser] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    if (existingUser.length > 0) {
+    
+    // Check if email exists
+    console.log("🔍 REGISTER: Checking if email exists:", email);
+    const [existingUsers] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+    
+    if (existingUsers.length > 0) {
+      console.log("❌ REGISTER: Email already exists");
       return res.status(400).json({ success: false, error: "Email already exists" });
     }
-
-    // ✅ เข้ารหัสรหัสผ่าน
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
-    const sql = "INSERT INTO users (fullname, email, password) VALUES (?, ?, ?)";
-    const [result] = await db.query(sql, [fullname, email, hashedPassword]);
-
-    if (result.affectedRows === 1) {
-      res.status(201).json({ success: true, message: "User registered successfully" });
-    } else {
-      res.status(500).json({ success: false, error: "User registration failed" });
+    
+    console.log("✅ REGISTER: Email is available");
+    
+    // Generate password hash - USING SYNC VERSION
+    console.log("🔑 REGISTER: Hashing password");
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    console.log("✅ REGISTER: Password hashed successfully, hash length:", hashedPassword.length);
+    
+    // Insert user directly with SQL query
+    console.log("📝 REGISTER: Inserting user into database");
+    const insertQuery = "INSERT INTO users (fullname, email, password, provider, created_at, updated_at) VALUES (?, ?, ?, 'email', NOW(), NOW())";
+    
+    try {
+      const [result] = await db.query(insertQuery, [fullname, email, hashedPassword]);
+      console.log("📊 REGISTER: Database insert result:", result);
+      
+      if (result.affectedRows !== 1) {
+        console.log("❌ REGISTER: Database insert failed");
+        return res.status(500).json({ success: false, error: "Failed to create user" });
+      }
+      
+      // Verify password was stored
+      const [newUser] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+      
+      if (newUser.length === 0) {
+        console.log("❌ REGISTER: User not found after insert");
+        return res.status(500).json({ success: false, error: "User creation failed" });
+      }
+      
+      // Check if password field has data
+      const hasPassword = newUser[0].password !== null && newUser[0].password !== undefined && newUser[0].password !== '';
+      console.log("🔍 REGISTER: Password stored:", hasPassword ? "YES" : "NO");
+      
+      if (!hasPassword) {
+        console.log("⚠️ REGISTER: Password field is empty or null");
+      }
+      
+      console.log("✅ REGISTER: User registered successfully");
+      return res.status(201).json({
+        success: true,
+        message: "User registered successfully",
+        user: { 
+          email, 
+          fullname
+        }
+      });
+    } catch (dbError) {
+      console.error("❌ REGISTER: Database error:", dbError);
+      return res.status(500).json({ 
+        success: false, 
+        error: "Database error: " + dbError.message 
+      });
     }
   } catch (error) {
-    console.error("Database error:", error);
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    console.error("❌ REGISTER: Unexpected error:", error);
+    return res.status(500).json({ 
+      success: false, 
+      error: "Registration error: " + error.message 
+    });
   }
 };
 
-// ✅ เข้าสู่ระบบ
+// Login using Supabase with local database fallback
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log("Login request received:", req.body);
+    console.log("Login request received for email:", email);
 
     if (!email || !password) {
       return res.status(400).json({ success: false, error: "Email and password are required" });
     }
 
-    // ✅ ใช้ SQL จาก userModel.js
-    const [rows] = await db.query(User.loginUser, [email]);
-
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, error: "User not found" });
-    }
-
-    const user = rows[0];
-
-    try {
-      // ✅ ตรวจสอบรหัสผ่าน
-      const match = await bcrypt.compare(password, user.password);
-      if (!match) {
-        return res.status(401).json({ success: false, error: "Incorrect password" });
-      }
-    } catch (bcryptError) {
-      console.error("Error comparing password:", bcryptError);
-      return res.status(500).json({ success: false, error: "Error verifying password" });
-    }
-
-    // ✅ ส่งข้อมูลผู้ใช้กลับไป
-    return res.status(200).json({
-      success: true,
-      message: "Login successful",
-      user: {
-        id: user.id,
-        fullname: user.fullname,
-        email: user.email,
-      },
+    // First attempt to login with Supabase
+    const { data: supabaseData, error: supabaseError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
+
+    // If Supabase login successful
+    if (!supabaseError && supabaseData?.user) {
+      console.log("Supabase authentication successful");
+      
+      // Check if user exists in local database
+      const [rows] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+      
+      let userId;
+      
+      if (rows.length === 0) {
+        console.log("User not found in local database, creating now");
+        // User doesn't exist in local database, create them
+        try {
+          const hashedPassword = await bcrypt.hash(password, saltRounds);
+          const sql = "INSERT INTO users (fullname, email, password, provider, token, created_at, updated_at) VALUES (?, ?, ?, ?, ?, NOW(), NOW())";
+          const [result] = await db.query(sql, [
+            supabaseData.user.user_metadata?.fullname || email.split('@')[0], 
+            email, 
+            hashedPassword, 
+            "email", 
+            supabaseData.session?.access_token
+          ]);
+          userId = result.insertId;
+          console.log("Created new user in local database with ID:", userId);
+        } catch (hashError) {
+          console.error("Error creating user in local database:", hashError);
+          // Continue anyway since Supabase auth was successful
+          userId = null;
+        }
+      } else {
+        // User exists, update their token
+        const user = rows[0];
+        userId = user.user_id;
+        console.log("User found in local database with ID:", userId);
+        
+        try {
+          await db.query(
+            "UPDATE users SET token = ?, updated_at = NOW() WHERE email = ?", 
+            [supabaseData.session?.access_token, email]
+          );
+          console.log("Updated user token in local database");
+        } catch (updateError) {
+          console.error("Error updating token:", updateError);
+          // Continue anyway since the authentication was successful
+        }
+      }
+
+      // Return success with user info
+      return res.status(200).json({
+        success: true,
+        message: "Login successful",
+        user: {
+          id: userId,
+          fullname: supabaseData.user.user_metadata?.fullname,
+          email: supabaseData.user.email,
+          provider: "email",
+        },
+      });
+    } 
+    // If Supabase login fails, try local database as fallback
+    else {
+      console.log("Supabase login failed, trying local database. Error:", supabaseError);
+      
+      // Get user from local database
+      const [rows] = await db.query(User.loginUser, [email]);
+
+      if (rows.length === 0) {
+        return res.status(404).json({ success: false, error: "User not found" });
+      }
+
+      const user = rows[0];
+      console.log("User found in local database. Checking password...");
+
+      // Verify the user has a password in the database
+      if (!user.password) {
+        console.error("User has no password in database");
+        return res.status(401).json({ success: false, error: "Invalid login method. Try logging in with OAuth instead." });
+      }
+
+      try {
+        // Verify password
+        const match = await bcrypt.compare(password, user.password);
+        if (!match) {
+          console.log("Password verification failed");
+          return res.status(401).json({ success: false, error: "Incorrect password" });
+        }
+        console.log("Password verified successfully");
+      } catch (bcryptError) {
+        console.error("Error comparing password:", bcryptError);
+        return res.status(500).json({ success: false, error: "Error verifying password" });
+      }
+
+      // Return success with user info
+      return res.status(200).json({
+        success: true,
+        message: "Login successful (local database)",
+        user: {
+          id: user.user_id,
+          fullname: user.fullname,
+          email: user.email,
+          provider: "email",
+        },
+      });
+    }
   } catch (error) {
     console.error("Error during login:", error);
     return res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
 
-// ✅ ฟังก์ชัน Logout
-export const logoutUser = (req, res) => {
-  res.status(200).json({ success: true, message: "Logout successful" });
+// Log out both from Supabase and clear local session
+export const logoutUser = async (req, res) => {
+  try {
+    // Sign out from Supabase
+    const { error } = await supabase.auth.signOut();
+    
+    if (error) {
+      console.error("Supabase logout error:", error);
+    }
+    
+    res.status(200).json({ success: true, message: "Logout successful" });
+  } catch (error) {
+    console.error("Error during logout:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
 };
 
-
-// ✅ เข้าสู่ระบบผ่าน OAuth (Google/Azure)
-// controllers/userController.js
-
-// ✅ เข้าสู่ระบบผ่าน OAuth (Google/Azure)
+// OAuth login (Google/Azure) with Supabase
 export const oauthLoginUser = async (req, res) => {
   try {
-    const { email, provider_token, provider } = req.body; // ได้ข้อมูลจาก frontend เช่น email, provider_token (Google หรือ Azure)
+    const { email, provider_token, provider } = req.body;
+    console.log("OAuth login request:", { email, provider });
     
-    // ตรวจสอบว่าผู้ใช้มีในฐานข้อมูลหรือไม่
+    if (!email || !provider) {
+      return res.status(400).json({ success: false, error: "Email and provider are required" });
+    }
+    
+    // Check if user exists in local database
     const [existingUser] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
 
     if (existingUser.length === 0) {
-      // หากผู้ใช้ไม่มีในฐานข้อมูล ให้เพิ่มผู้ใช้ใหม่
+      console.log("OAuth user not found in database, creating new user");
+      // If user doesn't exist, add them to local database
+      // For OAuth users, password is null (correct behavior)
       const sql = "INSERT INTO users (email, provider, token, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())";
       const [result] = await db.query(sql, [email, provider, provider_token]);
 
       if (result.affectedRows === 1) {
+        console.log("OAuth user created successfully in local database");
         res.status(201).json({ success: true, message: "User registered successfully through OAuth" });
       } else {
+        console.error("Failed to register OAuth user in database");
         res.status(500).json({ success: false, error: "Failed to register user through OAuth" });
       }
     } else {
-      // หากผู้ใช้มีอยู่แล้วในฐานข้อมูลให้ทำการอัพเดต token
+      console.log("OAuth user found in database, updating token");
+      // If user exists, update their token and provider
       const updateSql = "UPDATE users SET token = ?, provider = ?, updated_at = NOW() WHERE email = ?";
       const [updateResult] = await db.query(updateSql, [provider_token, provider, email]);
 
       if (updateResult.affectedRows === 1) {
+        console.log("OAuth user token updated successfully");
         res.status(200).json({
           success: true,
           message: `User's ${provider} token updated successfully`,
         });
       } else {
+        console.error("Failed to update OAuth user token");
         res.status(500).json({ success: false, error: "Failed to update user token" });
       }
     }
@@ -133,27 +288,31 @@ export const oauthLoginUser = async (req, res) => {
   }
 };
 
-
+// Update user tokens
 export const updateUser = async (req, res) => {
   try {
     const { email, provider_token, provider } = req.body;
+    console.log("Update user request:", { email, provider });
 
-    // ตรวจสอบว่าผู้ใช้มีในฐานข้อมูลหรือไม่
+    // Check if user exists in database
     const [existingUser] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
 
     if (existingUser.length === 0) {
       return res.status(404).json({ success: false, error: "User not found" });
     }
 
-    // อัพเดต token ของ provider ที่ใช้
+    // Update token based on provider
     let updateQuery = "";
     let updateParams = [];
 
     if (provider === "google") {
-      updateQuery = "UPDATE users SET google_token = ? WHERE email = ?";
+      updateQuery = "UPDATE users SET google_token = ?, updated_at = NOW() WHERE email = ?";
       updateParams = [provider_token, email];
-    } else if (provider === "microsoft") {
-      updateQuery = "UPDATE users SET microsoft_token = ? WHERE email = ?";
+    } else if (provider === "microsoft" || provider === "azure") {
+      updateQuery = "UPDATE users SET microsoft_token = ?, updated_at = NOW() WHERE email = ?";
+      updateParams = [provider_token, email];
+    } else if (provider === "email") {
+      updateQuery = "UPDATE users SET token = ?, updated_at = NOW() WHERE email = ?";
       updateParams = [provider_token, email];
     } else {
       return res.status(400).json({ success: false, error: "Invalid provider" });
@@ -162,8 +321,10 @@ export const updateUser = async (req, res) => {
     const [result] = await db.query(updateQuery, updateParams);
 
     if (result.affectedRows === 1) {
+      console.log("User token updated successfully");
       return res.status(200).json({ success: true, message: `User's ${provider} token updated successfully` });
     } else {
+      console.error("Failed to update user token");
       return res.status(500).json({ success: false, error: "Failed to update user token" });
     }
   } catch (error) {
@@ -172,17 +333,258 @@ export const updateUser = async (req, res) => {
   }
 };
 
+// Get user by email
 export const getUserByEmail = async (req, res) => {
   const { email } = req.query;
-  if (!email) return res.status(400).json({ success: false, error: "Email is required" });
+  
+  if (!email) {
+    return res.status(400).json({ success: false, error: "Email is required" });
+  }
+  
   try {
-    const [rows] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+    const [rows] = await db.query(
+      "SELECT * FROM users WHERE email = ?",
+      [email]
+    );
+    
     if (rows.length === 0) {
       return res.status(404).json({ success: false, error: "User not found" });
     }
-    return res.status(200).json({ success: true, data: rows[0] });
+    
+    return res.status(200).json({
+      success: true,
+      data: rows[0]
+    });
   } catch (error) {
     console.error("Error fetching user:", error);
-    return res.status(500).json({ success: false, error: "Database query error" });
+    return res.status(500).json({ success: false, error: "Database error" });
+  }
+};
+
+// Reset password (using Supabase)
+export const resetPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    console.log("Password reset request for:", email);
+    
+    if (!email) {
+      return res.status(400).json({ success: false, error: "Email is required" });
+    }
+    
+    // Request password reset email through Supabase
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password`,
+    });
+    
+    if (error) {
+      console.error("Password reset error:", error);
+      return res.status(400).json({ success: false, error: error.message });
+    }
+    
+    console.log("Password reset email sent successfully");
+    return res.status(200).json({ 
+      success: true, 
+      message: "Password reset email sent successfully" 
+    });
+  } catch (error) {
+    console.error("Error in password reset:", error);
+    return res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
+// Update password (using both Supabase and local database)
+export const updatePassword = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+    console.log("Password update request for:", email);
+    
+    if (!email || !newPassword) {
+      return res.status(400).json({ success: false, error: "Email and new password are required" });
+    }
+    
+    // Update password in Supabase
+    const { error } = await supabase.auth.updateUser({
+      password: newPassword
+    });
+    
+    if (error) {
+      console.error("Supabase password update error:", error);
+      return res.status(400).json({ success: false, error: error.message });
+    }
+    
+    // Hash new password for local database
+    let hashedPassword;
+    try {
+      hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+      console.log("New password hashed successfully");
+    } catch (hashError) {
+      console.error("Error hashing new password:", hashError);
+      return res.status(500).json({ success: false, error: "Error processing new password" });
+    }
+    
+    // Update password in local database
+    const [result] = await db.query(
+      "UPDATE users SET password = ?, updated_at = NOW() WHERE email = ?", 
+      [hashedPassword, email]
+    );
+    
+    if (result.affectedRows === 0) {
+      console.log("User not found in local database");
+      return res.status(404).json({ success: false, error: "User not found in local database" });
+    }
+    
+    console.log("Password updated successfully in both systems");
+    return res.status(200).json({ 
+      success: true, 
+      message: "Password updated successfully" 
+    });
+  } catch (error) {
+    console.error("Error updating password:", error);
+    return res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
+// Direct password setter for testing
+export const setUserPassword = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password required" });
+    }
+    
+    // Generate hash synchronously to avoid any async issues
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    console.log("DIRECT FIX: Created hash:", hashedPassword);
+    
+    // Update password directly
+    const [result] = await db.query(
+      "UPDATE users SET password = ? WHERE email = ?", 
+      [hashedPassword, email]
+    );
+    
+    console.log("DIRECT FIX: Update result:", result);
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    
+    return res.status(200).json({ 
+      success: true, 
+      message: "Password set successfully" 
+    });
+  } catch (error) {
+    console.error("Error setting password:", error);
+    return res.status(500).json({ error: error.message });
+  }
+};
+
+export const getUserRoles = async (req, res) => {
+  const { user_id } = req.params;
+  
+  if (!user_id) {
+    return res.status(400).json({ success: false, error: "User ID is required" });
+  }
+  
+  try {
+    // Get all projects where the user is a member along with their role
+    const sql = `
+      SELECT 
+        pm.project_id, 
+        pm.role
+      FROM 
+        projectmembers pm
+      WHERE 
+        pm.user_id = ?
+      UNION
+      SELECT 
+        p.project_id, 
+        'admin' as role
+      FROM 
+        projects p
+      WHERE 
+        p.creator_id = ?
+        AND p.project_id NOT IN (
+          SELECT project_id FROM projectmembers WHERE user_id = ?
+        )
+    `;
+    
+    const [rows] = await db.query(sql, [user_id, user_id, user_id]);
+    
+    // Even if there are no roles, return an empty array rather than an error
+    return res.status(200).json({
+      success: true,
+      data: rows || []
+    });
+  } catch (error) {
+    console.error("Error fetching user roles:", error);
+    return res.status(500).json({ success: false, error: "Database error" });
+  }
+};
+
+// Create or update user from OAuth login
+export const processOAuthLogin = async (req, res) => {
+  const { email, provider, provider_token } = req.body;
+  
+  if (!email || !provider) {
+    return res.status(400).json({ success: false, error: "Email and provider are required" });
+  }
+  
+  try {
+    // Check if user exists
+    const [existingUsers] = await db.query(
+      "SELECT * FROM users WHERE email = ?",
+      [email]
+    );
+    
+    if (existingUsers.length > 0) {
+      // Update existing user
+      const user = existingUsers[0];
+      
+      // Update token based on provider
+      let updateSql = "";
+      let params = [];
+      
+      if (provider === "google") {
+        updateSql = "UPDATE users SET google_token = ? WHERE user_id = ?";
+        params = [provider_token, user.user_id];
+      } else if (provider === "azure" || provider === "microsoft") {
+        updateSql = "UPDATE users SET microsoft_token = ? WHERE user_id = ?";
+        params = [provider_token, user.user_id];
+      }
+      
+      if (updateSql) {
+        await db.query(updateSql, params);
+      }
+      
+      return res.status(200).json({
+        success: true,
+        data: user
+      });
+    } else {
+      // Create new user
+      const google_token = provider === "google" ? provider_token : null;
+      const microsoft_token = (provider === "azure" || provider === "microsoft") ? provider_token : null;
+      
+      const [result] = await db.query(
+        "INSERT INTO users (email, google_token, microsoft_token, created_at) VALUES (?, ?, ?, NOW())",
+        [email, google_token, microsoft_token]
+      );
+      
+      const newUser = {
+        user_id: result.insertId,
+        email,
+        google_token,
+        microsoft_token
+      };
+      
+      return res.status(201).json({
+        success: true,
+        data: newUser
+      });
+    }
+  } catch (error) {
+    console.error("Error processing OAuth login:", error);
+    return res.status(500).json({ success: false, error: "Database error" });
   }
 };

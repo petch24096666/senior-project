@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import { useNavigate } from "react-router-dom";
 import axios from 'axios';
 import { Snackbar, Alert } from '@mui/material';
+import { useRBAC } from '../../../context/RBAC';
 
 
 // Custom CSS keyframes for animations
@@ -53,6 +54,7 @@ const ProjectDashboard = () => {
     highPriorityCount: 0,
     dueThisWeek: 0
   });
+  const { canCreateProject, canEditProject, canDeleteProject } = useRBAC();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
@@ -328,7 +330,7 @@ const ProjectDashboard = () => {
 
   const handleProjectClick = (projectId) => {
     console.log("Navigating to Kanban board with projectId:", projectId);
-    navigate(`/kanban/${projectId}`);
+    navigate(`/task/${projectId}`);
   };
 
   // Handle form input changes
@@ -373,54 +375,69 @@ const ProjectDashboard = () => {
 
   // Save new project
   // ตัวอย่างส่วนของ saveProject ใน ProjectDashboard.jsx
-  const saveProject = () => {
-    if (!validateForm()) return;
+// Save new project
+const saveProject = () => {
+  if (!validateForm()) return;
 
-    let teamMembers = [];
-    if (newProject.team) {
-      teamMembers = newProject.team
-        .split(',')
-        .map(email => ({ email: email.trim(), role: 'member' }));
-    }
+  let teamMembers = [];
+  if (newProject.team) {
+    // All added members get view-only role by default
+    teamMembers = newProject.team
+      .split(',')
+      .map(email => ({ email: email.trim(), role: 'view-only' }));
+  }
 
-    const creatorEmail = customUser.email;
-    const isCreatorInTeam = teamMembers.some(member => member.email === creatorEmail);
-    if (!isCreatorInTeam) {
-      teamMembers.push({ email: creatorEmail, role: 'creator' });
-    }
+  const creatorEmail = customUser.email;
+  // Check if creator is already in the team list
+  const isCreatorInTeam = teamMembers.some(member => member.email === creatorEmail);
+  
+  if (!isCreatorInTeam) {
+    // Add creator with admin role
+    teamMembers.push({ email: creatorEmail, role: 'admin' });
+  } else {
+    // If creator was manually added to the team list, ensure they have admin role
+    teamMembers = teamMembers.map(member => 
+      member.email === creatorEmail 
+        ? { ...member, role: 'admin' } 
+        : member
+    );
+  }
 
-    const projectData = {
-      project_id: newProject.project_id,
-      title: newProject.title,
-      category: newProject.category,
-      startdate: newProject.startdate,
-      duedate: newProject.duedate,
-      priority: newProject.priority,
-      team: teamMembers, // ✅
-      creator_id: currentUserId
-    };
-
-    console.log("Sending project:", projectData); // ✅ เช็ก log
-
-    fetch("http://localhost:8081/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(projectData)
-    })
-      .then(response => response.json())
-      .then(result => {
-        if (result.success) {
-          fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
-            .then(response => response.json())
-            .then(data => setProjects(data.data));
-          closeModal();
-          alert("Project added successfully!");
-        } else {
-          alert("Error creating project: " + result.error);
-        }
-      })
-      .catch(error => console.error("Error:", error));
+  const projectData = {
+    project_id: newProject.project_id,
+    title: newProject.title,
+    category: newProject.category,
+    startdate: newProject.startdate,
+    duedate: newProject.duedate,
+    priority: newProject.priority,
+    team: teamMembers,
+    creator_id: currentUserId
   };
+
+  console.log("Sending project:", projectData);
+
+  fetch("http://localhost:8081/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(projectData)
+  })
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
+        fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
+          .then(response => response.json())
+          .then(data => setProjects(data.data));
+        closeModal();
+        showNotification("Project added successfully!", "success");
+      } else {
+        showNotification("Error creating project: " + result.error, "error");
+      }
+    })
+    .catch(error => {
+      console.error("Error:", error);
+      showNotification("Failed to create project. Please try again.", "error");
+    });
+};
 
   const handleEditProject = async (project) => {
     try {
@@ -485,30 +502,44 @@ const ProjectDashboard = () => {
   const updateProject = () => {
     if (!validateForm()) return;
   
-    // แปลง team string เป็น array
+    // Convert team string to array
     let teamMembers = [];
     if (editingProject.team) {
       teamMembers = editingProject.team
         .split(',')
-        .map(email => ({ email: email.trim(), role: 'member' }));
+        .map(email => ({ 
+          email: email.trim(), 
+          // By default, new members get view-only role
+          role: 'view-only' 
+        }));
     }
   
     const creatorEmail = customUser.email;
-    // ตรวจสอบว่ามี creator ในทีมหรือไม่
-    if (!teamMembers.some(m => m.email === creatorEmail)) {
-      showNotification("You cannot remove the project creator from the team.", 'warning');
-      return;
+    // Check if creator is in the team
+    const isCreatorInTeam = teamMembers.some(m => m.email === creatorEmail);
+    
+    if (!isCreatorInTeam) {
+      // If creator was removed, add them back with admin role
+      showNotification("Project creator cannot be removed from the team.", 'warning');
+      teamMembers.push({ email: creatorEmail, role: 'admin' });
+    } else {
+      // Ensure creator always has admin role
+      teamMembers = teamMembers.map(member => 
+        member.email === creatorEmail 
+          ? { ...member, role: 'admin' } 
+          : member
+      );
     }
   
     const projectData = {
       project_id: editingProject.project_id,
-      title:       editingProject.title,
-      category:    editingProject.category,
-      startdate:   editingProject.startdate,
-      duedate:     editingProject.duedate,
-      priority:    editingProject.priority,
-      team:        teamMembers,
-      creator_id:  currentUserId
+      title: editingProject.title,
+      category: editingProject.category,
+      startdate: editingProject.startdate,
+      duedate: editingProject.duedate,
+      priority: editingProject.priority,
+      team: teamMembers,
+      creator_id: currentUserId
     };
   
     console.log("Updating project:", projectData);
@@ -523,7 +554,7 @@ const ProjectDashboard = () => {
         if (result.success) {
           showNotification("Project updated successfully!", 'success');
           closeModal();
-          // รีเฟรช projects + counts
+          // Refresh projects + counts
           fetchProjectsAndCounts();
         } else {
           showNotification("Error updating project: " + result.error, 'error');
@@ -673,6 +704,7 @@ const ProjectDashboard = () => {
                 gap: '8px',
                 zIndex: 20
               }}>
+                { canEditProject(project.project_id) && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -698,7 +730,8 @@ const ProjectDashboard = () => {
                       stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
-
+              )}
+                { canDeleteProject(project.project_id) && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -724,6 +757,7 @@ const ProjectDashboard = () => {
                       stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
+              )}
               </div>
             </div>
             <span
@@ -945,6 +979,7 @@ const ProjectDashboard = () => {
             gap: '8px',
             zIndex: 20
           }}>
+            { canEditProject(project.project_id) && (
             <button
               type="button"
               onClick={(e) => {
@@ -970,7 +1005,8 @@ const ProjectDashboard = () => {
                   stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
-
+            )}
+            { canDeleteProject(project.project_id) && (
             <button
               type="button"
               onClick={(e) => {
@@ -997,6 +1033,7 @@ const ProjectDashboard = () => {
                   stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
+            )}
           </div>
         </div>
       );
@@ -1028,6 +1065,7 @@ const ProjectDashboard = () => {
               Get an overview of your projects and track progress.
             </p>
           </div>
+          { canCreateProject() && (
           <button
             onClick={openModal}
             style={{
@@ -1060,6 +1098,7 @@ const ProjectDashboard = () => {
           >
             + Add Project
           </button>
+          )}
         </div>
 
         {/* Search and Filters */}

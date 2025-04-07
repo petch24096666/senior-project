@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import './KanbanBoard.css';
 
 const AssigneeDropdown = ({ 
   projectId, 
   selectedAssignees, // Now expecting an array of emails
   onAssigneeChange, // Will receive an array of emails
-  API_BASE_URL 
+  API_BASE_URL,
+  disabled = false  // เพิ่ม prop disabled โดย default เป็น false
 }) => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -166,167 +168,80 @@ const AssigneeDropdown = ({
     <div className="assignee-dropdown" ref={dropdownRef}>
       <div 
         className="assignee-display" 
-        onClick={() => setDropdownOpen(!dropdownOpen)}
-        style={{ 
-          display: 'flex',
-          alignItems: 'center',
-          padding: '8px 12px',
-          border: '2px solid #DFE1E6',
-          borderRadius: '3px',
-          backgroundColor: '#FAFBFC',
-          cursor: 'pointer',
-          minHeight: '36px'
+        onClick={() => {
+          if (!disabled) {
+            setDropdownOpen(!dropdownOpen);
+          }
         }}
+        style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
       >
         {selectedUserObjects.length === 0 ? (
           // Show "Unassigned" if no one is assigned
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ 
-              width: '24px', 
-              height: '24px', 
-              borderRadius: '50%', 
-              backgroundColor: '#DFE1E6',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginRight: '8px',
-              fontSize: '12px',
-              fontWeight: 'bold',
-              color: '#172B4D'
-            }}>
+          <div className="unassigned-display">
+            <div className="unassigned-avatar">
               NA
             </div>
-            <div style={{ fontSize: '14px' }}>Unassigned</div>
+            <div className="assignee-name">Unassigned</div>
           </div>
         ) : (
           // Show all assigned users
-          <div style={{ 
-            display: 'flex', 
-            flexWrap: 'wrap', 
-            gap: '4px',
-            maxWidth: '100%'
-          }}>
+          <div className="selected-assignees-container">
             {selectedUserObjects.map(user => (
               <div 
                 key={`selected-${user.id || user.email}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  backgroundColor: '#E9F2FF',
-                  borderRadius: '3px',
-                  padding: '2px 8px',
-                  maxWidth: '100%'
-                }}
+                className="selected-assignee"
               >
-                <div style={{ 
-                  width: '20px', 
-                  height: '20px', 
-                  borderRadius: '50%', 
-                  backgroundColor: '#4C9AFF',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  marginRight: '4px',
-                  fontSize: '10px',
-                  fontWeight: 'bold',
-                  color: 'white'
-                }}>
+                <div className="selected-avatar">
                   {getInitials(user.email)}
                 </div>
-                <span style={{ 
-                  fontSize: '12px',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  maxWidth: '80px'  // Adjust based on your layout
-                }}>
+                <span className="selected-email">
                   {formatEmailForDisplay(user.email)}
                 </span>
               </div>
             ))}
           </div>
         )}
-        <div style={{ marginLeft: 'auto' }}>
+        <div className="dropdown-arrow">
           ▼
         </div>
       </div>
       
-      {dropdownOpen && (
-        <div className="assignee-dropdown-menu" style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          width: '100%',
-          backgroundColor: 'white',
-          border: '1px solid #DFE1E6',
-          borderRadius: '3px',
-          boxShadow: '0 4px 8px rgba(9, 30, 66, 0.25)',
-          zIndex: 10,
-          marginTop: '4px',
-          maxHeight: '250px',
-          overflowY: 'auto'
-        }}>
-          <div style={{ padding: '8px' }}>
+      {dropdownOpen && !disabled && (
+        <div className="assignee-dropdown-menu">
+          <div className="search-container-dropdown">
             <input 
               type="text" 
               placeholder="Search users..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                border: '1px solid #DFE1E6',
-                borderRadius: '3px',
-                fontSize: '14px'
-              }}
+              className="search-input-dropdown"
             />
           </div>
           
           {loading ? (
-            <div style={{ padding: '16px', textAlign: 'center', color: '#6B778C' }}>
+            <div className="dropdown-message">
               Loading users...
             </div>
           ) : error ? (
-            <div style={{ padding: '16px', textAlign: 'center', color: '#DE350B' }}>
+            <div className="dropdown-error">
               {error}
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div style={{ padding: '16px', textAlign: 'center', color: '#6B778C' }}>
+            <div className="dropdown-message">
               {searchTerm ? 'No users found matching search' : 'No users available'}
             </div>
           ) : (
             <div>
               <div 
-                className="dropdown-item" 
+                className={`dropdown-item ${assigneeList.length === 0 ? 'selected' : ''}`}
                 onClick={() => handleSelectUser({ email: '' })}
-                style={{
-                  padding: '8px 12px',
-                  cursor: 'pointer',
-                  borderBottom: '1px solid #F4F5F7',
-                  display: 'flex',
-                  alignItems: 'center',
-                  backgroundColor: assigneeList.length === 0 ? 'rgba(9, 30, 66, 0.04)' : 'transparent'
-                }}
               >
                 <input 
                   type="checkbox" 
                   checked={assigneeList.length === 0}
                   readOnly
-                  style={{ marginRight: '8px' }}
                 />
-                <div style={{
-                  width: '24px', 
-                  height: '24px', 
-                  borderRadius: '50%', 
-                  backgroundColor: '#DFE1E6',
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  marginRight: '8px',
-                  fontSize: '12px',
-                  fontWeight: 'bold',
-                  color: '#172B4D'
-                }}>
+                <div className="unassigned-avatar-dropdown">
                   NA
                 </div>
                 <div>Unassigned</div>
@@ -335,41 +250,20 @@ const AssigneeDropdown = ({
               {filteredUsers.map(user => (
                 <div 
                   key={user.id || `user-${user.email}`}
-                  className="dropdown-item"
+                  className={`dropdown-item ${assigneeList.includes(user.email) ? 'selected' : ''}`}
                   onClick={() => handleSelectUser(user)}
-                  style={{
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    borderBottom: '1px solid #F4F5F7',
-                    display: 'flex',
-                    alignItems: 'center',
-                    backgroundColor: assigneeList.includes(user.email) ? 'rgba(9, 30, 66, 0.04)' : 'transparent'
-                  }}
                 >
                   <input 
                     type="checkbox" 
                     checked={assigneeList.includes(user.email)}
                     readOnly
-                    style={{ marginRight: '8px' }}
                   />
-                  <div style={{
-                    width: '24px', 
-                    height: '24px', 
-                    borderRadius: '50%', 
-                    backgroundColor: assigneeList.includes(user.email) ? '#4C9AFF' : '#DFE1E6',
-                    display: 'flex',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginRight: '8px',
-                    fontSize: '12px',
-                    fontWeight: 'bold',
-                    color: assigneeList.includes(user.email) ? 'white' : '#172B4D'
-                  }}>
+                  <div className={`assignee-avatar-dropdown ${assigneeList.includes(user.email) ? 'selected' : ''}`}>
                     {getInitials(user.email)}
                   </div>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <div style={{ fontSize: '14px' }}>{formatEmailForDisplay(user.email)}</div>
-                    {user.role && <div style={{ fontSize: '12px', color: '#6B778C' }}>{user.role}</div>}
+                  <div className="dropdown-user-info">
+                    <div className="dropdown-user-name">{formatEmailForDisplay(user.email)}</div>
+                    {user.role && <div className="dropdown-user-role">{user.role}</div>}
                   </div>
                 </div>
               ))}

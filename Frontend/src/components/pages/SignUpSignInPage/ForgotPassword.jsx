@@ -1,17 +1,55 @@
 import { useState } from "react";
+import { supabase } from "../../../utils/supabaseClient";
+import axios from "axios";
+
+const url = import.meta.env.VITE_BACKEND_URL;
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [error, setError] = useState(null);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Password reset link sent to:", email);
-    alert("A password reset link has been sent to your email.");
+    setIsLoading(true);
+    setMessage(null);
+    setError(null);
+    
+    try {
+      console.log("Requesting password reset for:", email);
+      
+      // Request password reset via Supabase
+      const { error: supabaseError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+      
+      if (supabaseError) {
+        console.error("Supabase reset error:", supabaseError);
+        setError(supabaseError.message || "Failed to send reset email. Please try again.");
+        setIsLoading(false);
+        return;
+      }
+      
+      // Also notify your backend (optional)
+      try {
+        await axios.post(`${url}/api/reset-password`, { email });
+      } catch (apiError) {
+        console.error("Backend notification error:", apiError);
+        // Continue anyway since Supabase reset was successful
+      }
+      
+      setMessage("Password reset link has been sent to your email.");
+    } catch (err) {
+      console.error("Reset password error:", err);
+      setError("Something went wrong. Please try again later.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleBack = () => {
     console.log("Go back clicked");
-    // สามารถใช้ window.history.back() หรือ navigate("/login") ถ้าใช้ React Router
     window.history.back();
   };
 
@@ -106,13 +144,31 @@ const ForgotPassword = () => {
       borderRadius: "5px",
       fontSize: "16px",
       fontFamily: "Irish Grover, cursive",
-      cursor: "pointer",
+      cursor: isLoading ? "not-allowed" : "pointer",
       transition: "background 0.3s",
       boxSizing: "border-box",
+      opacity: isLoading ? 0.7 : 1,
     },
     "forgotpass-button:hover": {
       backgroundColor: "#166FE5",
     },
+    "forgotpass-message": {
+      padding: "10px",
+      borderRadius: "5px",
+      marginBottom: "15px",
+      fontSize: "14px",
+      fontWeight: "500",
+    },
+    "forgotpass-success": {
+      backgroundColor: "#d4edda",
+      color: "#155724",
+      border: "1px solid #c3e6cb",
+    },
+    "forgotpass-error": {
+      backgroundColor: "#f8d7da",
+      color: "#721c24",
+      border: "1px solid #f5c6cb",
+    }
   };
 
   return (
@@ -129,8 +185,21 @@ const ForgotPassword = () => {
         {/* 📝 หัวข้อ Forgot Password */}
         <h2 style={styles["forgotpass-title"]}>Forgot your password?</h2>
         <p style={styles["forgotpass-description"]}>
-          Enter your email address and we’ll send you a link to reset your password.
+          Enter your email address and we'll send you a link to reset your password.
         </p>
+
+        {/* Display success or error messages */}
+        {message && (
+          <div style={{...styles["forgotpass-message"], ...styles["forgotpass-success"]}}>
+            ✅ {message}
+          </div>
+        )}
+        
+        {error && (
+          <div style={{...styles["forgotpass-message"], ...styles["forgotpass-error"]}}>
+            ⚠️ {error}
+          </div>
+        )}
 
         {/* 📩 ฟอร์มป้อนอีเมล */}
         <form onSubmit={handleSubmit} style={styles["forgotpass-form"]}>
@@ -142,13 +211,18 @@ const ForgotPassword = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              disabled={isLoading}
               style={styles["forgotpass-input"]}
             />
           </div>
 
           {/* 🔵 ปุ่มส่งลิงก์รีเซ็ตรหัสผ่าน */}
-          <button type="submit" style={styles["forgotpass-button"]}>
-            Send reset link
+          <button 
+            type="submit" 
+            style={styles["forgotpass-button"]}
+            disabled={isLoading}
+          >
+            {isLoading ? "Sending..." : "Send reset link"}
           </button>
         </form>
       </div>

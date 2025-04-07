@@ -16,6 +16,7 @@ const LoginPage = () => {
 
   const [rememberMe, setRememberMe] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem("rememberedEmail");
@@ -61,7 +62,7 @@ const LoginPage = () => {
 
     if (data?.url) {
       console.log("✅ Redirecting to Google OAuth...");
-      window.location.href = data.url; // ✅ Redirect ไปยัง Google OAuth
+      window.location.href = data.url;
     }
 
     if (error) console.error("❌ Login error:", error);
@@ -90,55 +91,53 @@ const LoginPage = () => {
     }
   };
 
+  // Handle Supabase auth state changes
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         const provider = session.user?.identities?.[0]?.provider;
         const email = session.user?.email;
   
-        // ลบข้อมูลใน localStorage และ sessionStorage ก่อนบันทึกข้อมูลใหม่
+        // Store auth provider and token
         localStorage.removeItem("authProvider");
         localStorage.removeItem("googleToken");
         localStorage.removeItem("microsoftToken");
+        localStorage.removeItem("supabaseToken");
   
-        // ตรวจสอบ provider และบันทึกข้อมูลลง localStorage ใหม่
         if (provider === "google") {
           localStorage.setItem("authProvider", "google");
-          localStorage.setItem("googleToken", session.provider_token);  // ใช้ token ของ Google
+          localStorage.setItem("googleToken", session.provider_token);
         } else if (provider === "azure" || provider === "microsoft") {
           localStorage.setItem("authProvider", "microsoft");
-          localStorage.setItem("microsoftToken", session.provider_token);  // ใช้ token ของ Microsoft
+          localStorage.setItem("microsoftToken", session.provider_token);
+        } else {
+          // For email/password login
+          localStorage.setItem("authProvider", "email");
+          localStorage.setItem("supabaseToken", session.access_token);
         }
   
-        // ส่งข้อมูลผู้ใช้ไปยัง Backend หลังจากล็อกอินสำเร็จ
+        // Save user data to your database via your backend API
         axios.post(`${url}/api/oauth-login`, {
           email: email,
-          provider_token: session.provider_token,
-          provider: provider,
+          provider_token: session.provider_token || session.access_token,
+          provider: provider || "email",
         })
         .then(response => {
-          // เช็คว่าผู้ใช้มีอยู่ในฐานข้อมูลแล้วหรือไม่
           const user = response.data;
   
           if (user) {
-            // ถ้า user มีข้อมูลแล้วใน DB ให้ทำการอัพเดตข้อมูล provider และ token
-            if (provider === "google") {
-              axios.put(`${url}/api/update-user`, {
-                email: user.email,
-                google_token: session.provider_token,
-              });
-            } else if (provider === "microsoft") {
-              axios.put(`${url}/api/update-user`, {
-                email: user.email,
-                microsoft_token: session.provider_token,
-              });
-            }
+            // Update existing user
+            axios.put(`${url}/api/update-user`, {
+              email: user.email,
+              token: session.provider_token || session.access_token,
+              provider: provider || "email"
+            });
           } else {
-            // ถ้าผู้ใช้ไม่มีในฐานข้อมูล ให้ทำการสร้างใหม่
+            // Create new user
             axios.post(`${url}/api/create-user`, {
               email: session.user.email,
-              provider_token: session.provider_token,
-              provider: provider,
+              provider_token: session.provider_token || session.access_token,
+              provider: provider || "email",
             });
           }
         })
@@ -146,38 +145,50 @@ const LoginPage = () => {
           console.error("Error saving user data:", error);
         });
   
-        navigate("/dashboard");  // เปลี่ยนเส้นทางหลังจากล็อกอิน
+        navigate("/dashboard");
       }
     });
   
     return () => authListener.subscription.unsubscribe();
-  }, []);  
+  }, []);
 
-  function login(event) {
+  async function login(event) {
     event.preventDefault();
     if (!validateForm()) return;
-
-    console.log("Attempting to login with:", values);
-
-    axios.post(`${url}/api/login`, values)
-      .then((res) => {
-        console.log("Login response received:", res.data);
-
-        if (res.data.success) {
-          if (rememberMe) {
-            localStorage.setItem("rememberedEmail", values.email);
-          } else {
-            localStorage.removeItem("rememberedEmail");
-          }
-          navigate("/dashboard");
-        } else {
-          setErrors({ general: res.data.error || "Login failed" });
-        }
-      })
-      .catch((err) => {
-        console.error("API Error:", err.response?.data || err.message);
-        setErrors({ general: err.response?.data?.error || "Something went wrong" });
+    
+    setIsLoading(true);
+    
+    try {
+      console.log("Attempting to login with:", values);
+      
+      // Use Supabase email/password sign in
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: values.email,
+        password: values.password,
       });
+      
+      if (error) {
+        console.error("Supabase login error:", error);
+        setErrors({ general: error.message || "Login failed" });
+        setIsLoading(false);
+        return;
+      }
+      
+      console.log("Login successful:", data);
+      
+      // Handle "remember me" functionality
+      if (rememberMe) {
+        localStorage.setItem("rememberedEmail", values.email);
+      } else {
+        localStorage.removeItem("rememberedEmail");
+      }
+      
+      // User will be redirected by the auth state listener
+    } catch (err) {
+      console.error("Login error:", err);
+      setErrors({ general: "Something went wrong during login" });
+      setIsLoading(false);
+    }
   }
 
   const styles = {
@@ -266,6 +277,7 @@ const LoginPage = () => {
       fontSize: "16px",
       fontWeight: "600",
       marginBottom: "24px",
+      opacity: isLoading ? 0.7 : 1,
     },
     divider: {
       display: "flex",
@@ -310,6 +322,15 @@ const LoginPage = () => {
       textDecoration: "none",
       fontWeight: "600",
     },
+    generalError: {
+      backgroundColor: "#FEE2E2",
+      color: "#DC2626",
+      padding: "10px",
+      borderRadius: "6px",
+      marginBottom: "16px",
+      fontSize: "14px",
+      textAlign: "center",
+    }
   };
 
   return (
@@ -318,6 +339,12 @@ const LoginPage = () => {
         <h2 style={styles.title}>Welcome back</h2>
         <p style={styles.subtitle}>Please enter your details to sign in</p>
         <form onSubmit={login}>
+          {errors.general && (
+            <div style={styles.generalError}>
+              ⚠️ {errors.general}
+            </div>
+          )}
+          
           {/* 📩 Email Input */}
           <div style={styles.inputGroup}>
             <label style={styles.label}>Email</label>
@@ -327,6 +354,7 @@ const LoginPage = () => {
               style={styles.input(errors.email)}
               value={values.email}
               onChange={(e) => setValues({ ...values, email: e.target.value })}
+              disabled={isLoading}
               required
             />
             {errors.email && (
@@ -343,6 +371,7 @@ const LoginPage = () => {
               style={styles.input(errors.password)}
               value={values.password}
               onChange={(e) => setValues({ ...values, password: e.target.value })}
+              disabled={isLoading}
               required
             />
             {errors.password && (
@@ -358,6 +387,7 @@ const LoginPage = () => {
                 style={styles.checkbox}
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
+                disabled={isLoading}
               />
               Remember me
             </label>
@@ -365,7 +395,9 @@ const LoginPage = () => {
           </div>
 
           {/* 🔵 Login Button */}
-          <button type="submit" style={styles.button}>Sign in</button>
+          <button type="submit" style={styles.button} disabled={isLoading}>
+            {isLoading ? "Signing in..." : "Sign in"}
+          </button>
 
           {/* 🔗 Social Login */}
           <div style={styles.divider}>
@@ -375,10 +407,20 @@ const LoginPage = () => {
           </div>
 
           <div style={styles.socialButtons}>
-            <button onClick={handleGoogleLogin} style={styles.socialBtn}>
+            <button 
+              type="button"
+              onClick={handleGoogleLogin} 
+              style={styles.socialBtn}
+              disabled={isLoading}
+            >
               <FaGoogle color="#DB4437" />
             </button>
-            <button onClick={handleAzureLogin} style={styles.socialBtn}>
+            <button 
+              type="button"
+              onClick={handleAzureLogin} 
+              style={styles.socialBtn}
+              disabled={isLoading}
+            >
               <FaMicrosoft color="#0078D4" />
             </button>
           </div>

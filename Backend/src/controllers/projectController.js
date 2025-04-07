@@ -224,5 +224,27 @@ export const getProjectUsers = async (req, res) => {
   }
 };
 
+export const updateProjectUserRole = async (req, res) => {
+  const { project_id, user_id } = req.params;
+  const { role } = req.body;
+  if (!project_id || !user_id || !role) {
+    return res.status(400).json({ success: false, error: "Project ID, User ID และ role จำเป็นต้องระบุ" });
+  }
+  try {
+    const sql = `
+      UPDATE projectmembers
+      SET role = ?
+      WHERE project_id = ? AND user_id = ?
+    `;
+    const [result] = await db.query(sql, [role, project_id, user_id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: "ไม่พบผู้ใช้นี้ในโปรเจค" });
+    }
+    return res.status(200).json({ success: true, message: "อัปเดต role สำเร็จ" });
+  } catch (error) {
+    console.error("Error updating user role:", error);
+    return res.status(500).json({ success: false, error: "เกิดข้อผิดพลาดของฐานข้อมูล" });
+  }
+};
 
 
