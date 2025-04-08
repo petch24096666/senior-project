@@ -4,7 +4,6 @@ import dotenv from "dotenv";
 import projectRoutes from "./src/routes/projectRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import db from "./src/config/database.js";
-import calendarRoutes from "./src/routes/calendarRoutes.js";
 import { google } from "googleapis";
 import taskRoutes from "./src/routes/taskRoutes.js"
 
@@ -14,10 +13,11 @@ const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173' // หรือ '*'
+}));
 app.use(userRoutes);
 app.use(projectRoutes);
-app.use("/api",calendarRoutes);
 app.use(taskRoutes);
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)

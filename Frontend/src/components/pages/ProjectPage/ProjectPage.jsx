@@ -6,8 +6,7 @@ import { useNavigate } from "react-router-dom";
 import axios from 'axios';
 import { Snackbar, Alert } from '@mui/material';
 import { useRBAC } from '../../../context/RBAC';
-
-
+import TeamMemberDropdown from './TeamMemberDropdown';
 // Custom CSS keyframes for animations
 const fadeInKeyframes = `
   @keyframes fadeIn {
@@ -18,11 +17,12 @@ const fadeInKeyframes = `
 
 const ProjectDashboard = () => {
   // ดึงข้อมูลผู้ใช้จาก context
-  const { customUser } = useContext(UserContext);
-  if (!customUser) {
+  const ctx = useContext(UserContext);
+  if (!ctx || !ctx.customUser) {
     return <div>Please log in to view your projects.</div>;
   }
-  const currentUserId = customUser.user_id; // ดึง user_id จากตาราง users
+  const currentUserId = ctx.customUser.user_id;
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
   // Project data
   const [projects, setProjects] = useState([]);
   // State variables
@@ -35,7 +35,8 @@ const ProjectDashboard = () => {
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
   const [menuOpenId, setMenuOpenId] = useState(null);
-  
+  // ดึงผู้ใช้ทั้งหมด (ใช้ใน dropdown หากจำเป็น)
+  const [allUsers, setAllUsers] = useState([]);
   // ปรับ state ใหม่ ไม่รวม tasks fields และ description
   const [newProject, setNewProject] = useState({
     project_id: uuidv4(),
@@ -44,7 +45,7 @@ const ProjectDashboard = () => {
     startdate: '',
     duedate: '',
     priority: '',
-    team: ''
+    team: []  // เริ่มต้นเป็น array
   });
 
   // Stats state
@@ -58,10 +59,10 @@ const ProjectDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
-  const [notification, setNotification] = useState({ open:false, message:'', type:'info' });
-  const showNotification = (msg, type='info') => setNotification({ open:true, message:msg, type });
-  const handleCloseNotification = () => setNotification(prev => ({ ...prev, open:false }));
-  
+  const [notification, setNotification] = useState({ open: false, message: '', type: 'info' });
+  const showNotification = (msg, type = 'info') => setNotification({ open: true, message: msg, type });
+  const handleCloseNotification = () => setNotification(prev => ({ ...prev, open: false }));
+
   // Fetch projects
   const fetchProjectsAndCounts = useCallback(async () => {
     try {
@@ -70,9 +71,9 @@ const ProjectDashboard = () => {
       const projectsData = projRes.data.data.map(p => ({
         ...p,
         startdate: p.start_date.split(' ')[0],
-        duedate:   p.due_date.split(' ')[0],
-        tasks:     0,
-        totalTasks:0
+        duedate: p.due_date.split(' ')[0],
+        tasks: 0,
+        totalTasks: 0
       }));
       const countsRes = await axios.get(`http://localhost:8081/api/projects/taskCounts?userId=${currentUserId}`);
       const counts = countsRes.data.data;
@@ -81,7 +82,7 @@ const ProjectDashboard = () => {
         return {
           ...p,
           totalTasks: c?.totalTasks || 0,
-          tasks:      c?.tasksCompleted || 0
+          tasks: c?.tasksCompleted || 0
         };
       });
       setProjects(merged);
@@ -99,7 +100,6 @@ const ProjectDashboard = () => {
     const intervalId = setInterval(fetchProjectsAndCounts, 30000);
     return () => clearInterval(intervalId);
   }, [fetchProjectsAndCounts]);
-
 
   // Memoized filter function
   const filterProjects = useCallback(() => {
@@ -321,12 +321,25 @@ const ProjectDashboard = () => {
   // Get priority badge styles
   const getPriorityStyles = (priority) => {
     const styles = {
-      high: { bg: '#FEE2E2', text: '#DC2626' },
-      medium: { bg: '#FEF3C7', text: '#D97706' },
-      low: { bg: '#ECFDF5', text: '#059669' }
+      high: { 
+        bg: '#FEE2E2', 
+        text: '#DC2626',
+        dotColor: '#DC2626' // Add dot color property
+      },
+      medium: { 
+        bg: '#FEF3C7', 
+        text: '#D97706',
+        dotColor: '#D97706'
+      },
+      low: { 
+        bg: '#ECFDF5', 
+        text: '#059669',
+        dotColor: '#059669'
+      }
     };
-    return styles[priority] || { bg: '#E5E7EB', text: '#4B5563' };
+    return styles[priority] || { bg: '#E5E7EB', text: '#4B5563', dotColor: '#4B5563' };
   };
+  
 
   const handleProjectClick = (projectId) => {
     console.log("Navigating to Kanban board with projectId:", projectId);
@@ -335,7 +348,11 @@ const ProjectDashboard = () => {
 
   // Handle form input changes
   const handleInputChange = (e) => {
-    const { id, value } = e.target;
+    const { id } = e.target;
+    let value = e.target.value;
+    if (e.target.multiple) {
+      value = Array.from(e.target.selectedOptions, option => option.value);
+    }
     const mapping = {
       projectTitle: 'title',
       projectCategory: 'category',
@@ -344,19 +361,12 @@ const ProjectDashboard = () => {
       projectPriority: 'priority',
       projectTeam: 'team'
     };
-
     const field = mapping[id];
     if (field) {
       if (isEditMode) {
-        setEditingProject(prev => ({
-          ...prev,
-          [field]: value
-        }));
+        setEditingProject(prev => ({ ...prev, [field]: value }));
       } else {
-        setNewProject(prev => ({
-          ...prev,
-          [field]: value
-        }));
+        setNewProject(prev => ({ ...prev, [field]: value }));
       }
     }
   };
@@ -375,91 +385,69 @@ const ProjectDashboard = () => {
 
   // Save new project
   // ตัวอย่างส่วนของ saveProject ใน ProjectDashboard.jsx
-// Save new project
-const saveProject = () => {
-  if (!validateForm()) return;
+  // Save new project
+  const saveProject = () => {
+    if (!validateForm()) return;
 
-  let teamMembers = [];
-  if (newProject.team) {
-    // All added members get view-only role by default
-    teamMembers = newProject.team
-      .split(',')
-      .map(email => ({ email: email.trim(), role: 'view-only' }));
-  }
+    let teamMembers = [];
+    if (newProject.team && newProject.team.length > 0) {
+      teamMembers = newProject.team.map(email => ({ email: email.trim(), role: 'view-only' }));
+    }
 
-  const creatorEmail = customUser.email;
-  // Check if creator is already in the team list
-  const isCreatorInTeam = teamMembers.some(member => member.email === creatorEmail);
-  
-  if (!isCreatorInTeam) {
-    // Add creator with admin role
-    teamMembers.push({ email: creatorEmail, role: 'admin' });
-  } else {
-    // If creator was manually added to the team list, ensure they have admin role
-    teamMembers = teamMembers.map(member => 
-      member.email === creatorEmail 
-        ? { ...member, role: 'admin' } 
-        : member
-    );
-  }
+    const creatorEmail = ctx.customUser.email;
+    const isCreatorInTeam = teamMembers.some(member => member.email === creatorEmail);
 
-  const projectData = {
-    project_id: newProject.project_id,
-    title: newProject.title,
-    category: newProject.category,
-    startdate: newProject.startdate,
-    duedate: newProject.duedate,
-    priority: newProject.priority,
-    team: teamMembers,
-    creator_id: currentUserId
-  };
+    if (!isCreatorInTeam) {
+      teamMembers.push({ email: creatorEmail, role: 'admin' });
+    } else {
+      teamMembers = teamMembers.map(member =>
+        member.email === creatorEmail ? { ...member, role: 'admin' } : member
+      );
+    }
 
-  console.log("Sending project:", projectData);
+    const projectData = {
+      project_id: newProject.project_id,
+      title: newProject.title,
+      category: newProject.category,
+      startdate: newProject.startdate,
+      duedate: newProject.duedate,
+      priority: newProject.priority,
+      team: teamMembers,
+      creator_id: currentUserId
+    };
 
-  fetch("http://localhost:8081/api/projects", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(projectData)
-  })
-    .then(response => response.json())
-    .then(result => {
-      if (result.success) {
-        fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
-          .then(response => response.json())
-          .then(data => setProjects(data.data));
-        closeModal();
-        showNotification("Project added successfully!", "success");
-      } else {
-        showNotification("Error creating project: " + result.error, "error");
-      }
+    console.log("Sending project:", projectData);
+
+    fetch("http://localhost:8081/api/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(projectData)
     })
-    .catch(error => {
-      console.error("Error:", error);
-      showNotification("Failed to create project. Please try again.", "error");
-    });
-};
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
+          fetch(`http://localhost:8081/api/projects?userId=${currentUserId}`)
+            .then(response => response.json())
+            .then(data => setProjects(data.data));
+          closeModal();
+          showNotification("Project added successfully!", "success");
+        } else {
+          showNotification("Error creating project: " + result.error, "error");
+        }
+      })
+      .catch(error => {
+        console.error("Error:", error);
+        showNotification("Failed to create project. Please try again.", "error");
+      });
+  };
 
   const handleEditProject = async (project) => {
     try {
-      // ดึงรายละเอียดโปรเจคพร้อมสมาชิก
-      const res = await axios.get(
-        `http://localhost:8081/api/projects/${project.project_id}`
-      );
+      const res = await axios.get(`http://localhost:8081/api/projects/${project.project_id}`);
       const data = res.data.data;
-      // แปลงสมาชิกเป็น comma-separated string
-      const teamString = Array.isArray(data.team)
-        ? data.team.map(m => m.email).join(', ')
-        : '';
-
-      // แปลงวันที่เป็น YYYY-MM-DD
-      const startOnly = project.startdate
-        ? project.startdate.split(' ')[0]
-        : '';
-      const dueOnly = project.duedate
-        ? project.duedate.split(' ')[0]
-        : '';
-
-      // ตั้งค่า editingProject
+      const teamArray = Array.isArray(data.team) ? data.team.map(m => m.email) : [];
+      const startOnly = project.startdate ? project.startdate.split(' ')[0] : '';
+      const dueOnly = project.duedate ? project.duedate.split(' ')[0] : '';
       setEditingProject({
         project_id: data.project_id,
         title: data.title,
@@ -467,9 +455,8 @@ const saveProject = () => {
         startdate: startOnly,
         duedate: dueOnly,
         priority: data.priority,
-        team: teamString
+        team: teamArray
       });
-
       setIsEditMode(true);
       setShowModal(true);
     } catch (err) {
@@ -501,36 +488,30 @@ const saveProject = () => {
 
   const updateProject = () => {
     if (!validateForm()) return;
-  
-    // Convert team string to array
+
     let teamMembers = [];
-    if (editingProject.team) {
-      teamMembers = editingProject.team
-        .split(',')
-        .map(email => ({ 
-          email: email.trim(), 
-          // By default, new members get view-only role
-          role: 'view-only' 
-        }));
+    if (editingProject.team && editingProject.team.length > 0) {
+      // Remove .split(',') because editingProject.team is already an array
+      teamMembers = editingProject.team.map(email => ({
+        email: email.trim(),
+        role: 'view-only'
+      }));
     }
-  
-    const creatorEmail = customUser.email;
-    // Check if creator is in the team
+
+    const creatorEmail = ctx.customUser.email;
     const isCreatorInTeam = teamMembers.some(m => m.email === creatorEmail);
-    
+
     if (!isCreatorInTeam) {
-      // If creator was removed, add them back with admin role
       showNotification("Project creator cannot be removed from the team.", 'warning');
       teamMembers.push({ email: creatorEmail, role: 'admin' });
     } else {
-      // Ensure creator always has admin role
-      teamMembers = teamMembers.map(member => 
-        member.email === creatorEmail 
-          ? { ...member, role: 'admin' } 
+      teamMembers = teamMembers.map(member =>
+        member.email === creatorEmail
+          ? { ...member, role: 'admin' }
           : member
       );
     }
-  
+
     const projectData = {
       project_id: editingProject.project_id,
       title: editingProject.title,
@@ -541,9 +522,9 @@ const saveProject = () => {
       team: teamMembers,
       creator_id: currentUserId
     };
-  
+
     console.log("Updating project:", projectData);
-  
+    
     fetch(`http://localhost:8081/api/projects/${editingProject.project_id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -554,7 +535,6 @@ const saveProject = () => {
         if (result.success) {
           showNotification("Project updated successfully!", 'success');
           closeModal();
-          // Refresh projects + counts
           fetchProjectsAndCounts();
         } else {
           showNotification("Error updating project: " + result.error, 'error');
@@ -586,125 +566,160 @@ const saveProject = () => {
         startdate: '',
         duedate: '',
         priority: '',
-        team: ''
+        team: []
       });
     }
   };
 
-
+  
   // Render grid view
   const renderGridView = () => {
-    if (filteredProjects.length === 0) {
-      return (
-        <div style={{
-          gridColumn: '1 / -1',
-          textAlign: 'center',
-          padding: '60px 20px',
+  if (filteredProjects.length === 0) {
+    return (
+      <div style={{
+        gridColumn: '1 / -1',
+        textAlign: 'center',
+        padding: '60px 20px',
+        backgroundColor: 'white',
+        borderRadius: '12px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
+      }}>
+        <h3 style={{
+          color: '#4a5568',
+          fontSize: '18px',
+          marginBottom: '12px'
+        }}>No projects found</h3>
+        <p style={{
+          color: '#718096',
+          marginBottom: '24px'
+        }}>Try adjusting your search or filter criteria</p>
+        <button
+          onClick={resetFilters}
+          style={{
+            backgroundColor: '#4f46e5',
+            color: 'white',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            fontWeight: 500
+          }}
+        >
+          Reset Filters
+        </button>
+      </div>
+    );
+  }
+
+  return filteredProjects.map(project => {
+    const progress = Math.round((project.tasks / project.totalTasks) * 100) || 0;
+    const formattedDate = formatDate(project.duedate);
+    const priorityStyles = getPriorityStyles(project.priority);
+    
+    
+    return (
+      <div
+        key={project.project_id}
+        onClick={(e) => {
+          // Only navigate if we didn't click on a menu button or menu item
+          if (!e.target.closest('.project-menu-button') && !menuOpenId) {
+            console.log("Card clicked, navigating to:", project.project_id);
+            handleProjectClick(project.project_id);
+          } else {
+            console.log("Clicked inside menu or menu is open, preventing navigation");
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        }}
+        style={{
           backgroundColor: 'white',
           borderRadius: '12px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
-        }}>
-          <h3 style={{
-            color: '#4a5568',
-            fontSize: '18px',
-            marginBottom: '12px'
-          }}>No projects found</h3>
-          <p style={{
-            color: '#718096',
-            marginBottom: '24px'
-          }}>Try adjusting your search or filter criteria</p>
-          <button
-            onClick={resetFilters}
-            style={{
-              backgroundColor: '#4f46e5',
-              color: 'white',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontWeight: 500
-            }}
-          >
-            Reset Filters
-          </button>
-        </div>
-      );
-    }
-
-    return filteredProjects.map(project => {
-      const progress = Math.round((project.tasks / project.totalTasks) * 100) || 0;
-      const formattedDate = formatDate(project.duedate);
-      return (
+          boxShadow: hoveredCard === project.project_id
+            ? '0 12px 20px rgba(0,0,0,0.1)'
+            : '0 4px 12px rgba(0,0,0,0.05)',
+          overflow: 'hidden',
+          transition: 'transform 0.3s, box-shadow 0.3s',
+          transform: hoveredCard === project.project_id ? 'translateY(-5px)' : 'translateY(0)',
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          border: '1px solid #f1f1f1',
+          animation: 'fadeIn 0.5s ease-out',
+          zIndex: hoveredCard === project.project_id || menuOpenId === project.project_id ? 1 : 0
+        }}
+        onMouseEnter={() => setHoveredCard(project.project_id)}
+        onMouseLeave={() => setHoveredCard(null)}
+      >
         <div
-          key={project.project_id}
-          onClick={(e) => {
-            // Only navigate if we didn't click on a menu button or menu item
-            if (!e.target.closest('.project-menu-button') && !menuOpenId) {
-              console.log("Card clicked, navigating to:", project.project_id);
-              handleProjectClick(project.project_id);
-            } else {
-              console.log("Clicked inside menu or menu is open, preventing navigation");
-              e.preventDefault();
-              e.stopPropagation();
-            }
-          }}
           style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            boxShadow: hoveredCard === project.project_id
-              ? '0 12px 20px rgba(0,0,0,0.1)'
-              : '0 4px 12px rgba(0,0,0,0.05)',
-            overflow: 'hidden',
-            transition: 'transform 0.3s, box-shadow 0.3s',
-            transform: hoveredCard === project.project_id ? 'translateY(-5px)' : 'translateY(0)',
-            position: 'relative',
-            display: 'flex',
-            flexDirection: 'column',
-            border: '1px solid #f1f1f1',
-            animation: 'fadeIn 0.5s ease-out',
-            zIndex: hoveredCard === project.project_id || menuOpenId === project.project_id ? 1 : 0
+            height: '6px',
+            backgroundColor: getCategoryColor(project.category, 'header')
           }}
-          onMouseEnter={() => setHoveredCard(project.project_id)}
-          onMouseLeave={() => setHoveredCard(null)}
+        ></div>
+        <div
+          style={{
+            padding: '24px',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column'
+          }}
         >
           <div
             style={{
-              height: '6px',
-              backgroundColor: getCategoryColor(project.category, 'header')
-            }}
-          ></div>
-          <div
-            style={{
-              padding: '24px',
-              flex: 1,
               display: 'flex',
-              flexDirection: 'column'
+              justifyContent: 'space-between',
+              alignItems: 'flex-start', // Changed to flex-start for better alignment
+              marginBottom: '16px'
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '16px'
-              }}
-            >
+            <div style={{ flex: 1 }}>
               <h3
                 style={{
                   fontWeight: 700,
                   fontSize: '18px',
                   color: hoveredCard === project.project_id ? '#4f46e5' : '#1a202c',
-                  transition: 'color 0.2s'
+                  transition: 'color 0.2s',
+                  marginTop: 0,
+                  marginBottom: '6px' // Add margin bottom for spacing
                 }}
               >
                 {project.title}
               </h3>
-              <div style={{
-                display: 'flex',
-                gap: '8px',
-                zIndex: 20
-              }}>
-                { canEditProject(project.project_id) && (
+              
+              {/* Priority Badge - New Addition */}
+              <span
+            style={{
+              display: 'inline-flex',
+              padding: '5px 12px',
+              borderRadius: '50px',
+              fontSize: '13px',
+              fontWeight: 500,
+              alignItems: 'center',
+              width: 'fit-content',
+              backgroundColor: priorityStyles.bg,
+              color: priorityStyles.text
+            }}
+          >
+            <span
+              style={{
+                marginRight: '6px',
+                display: 'inline-block',
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                backgroundColor: priorityStyles.dotColor
+              }}
+            ></span>
+            {capitalize(project.priority)}
+          </span>
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+              zIndex: 20
+            }}>
+              {canEditProject(project.project_id) && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -731,7 +746,7 @@ const saveProject = () => {
                   </svg>
                 </button>
               )}
-                { canDeleteProject(project.project_id) && (
+              {canDeleteProject(project.project_id) && (
                 <button
                   type="button"
                   onClick={(e) => {
@@ -758,102 +773,103 @@ const saveProject = () => {
                   </svg>
                 </button>
               )}
-              </div>
             </div>
+          </div>
+          
+          <span
+            style={{
+              display: 'inline-flex',
+              padding: '5px 12px',
+              borderRadius: '50px',
+              fontSize: '13px',
+              fontWeight: 500,
+              alignItems: 'center',
+              marginBottom: '20px',
+              width: 'fit-content',
+              backgroundColor: getCategoryColor(project.category, 'bg'),
+              color: getCategoryColor(project.category, 'text')
+            }}
+          >
             <span
               style={{
-                display: 'inline-flex',
-                padding: '5px 12px',
-                borderRadius: '50px',
-                fontSize: '13px',
-                fontWeight: 500,
-                alignItems: 'center',
-                marginBottom: '20px',
-                width: 'fit-content',
-                backgroundColor: getCategoryColor(project.category, 'bg'),
-                color: getCategoryColor(project.category, 'text')
+                marginRight: '6px',
+                display: 'inline-block',
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                backgroundColor: getCategoryColor(project.category, 'text')
               }}
-            >
-              <span
-                style={{
-                  marginRight: '6px',
-                  display: 'inline-block',
-                  width: '12px',
-                  height: '12px',
-                  borderRadius: '50%',
-                  backgroundColor: getCategoryColor(project.category, 'text')
-                }}
-              ></span>
-              {capitalize(project.category)}
-            </span>
+            ></span>
+            {capitalize(project.category)}
+          </span>
 
+          <div
+            style={{
+              marginBottom: '20px',
+              marginTop: 'auto'
+            }}
+          >
             <div
               style={{
-                marginBottom: '20px',
-                marginTop: 'auto'
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '8px',
+                fontSize: '14px'
               }}
             >
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  marginBottom: '8px',
-                  fontSize: '14px'
-                }}
-              >
-                <span style={{ color: '#718096', fontWeight: 500 }}>
-                  Progress
-                </span>
-                <span style={{ fontWeight: 600, color: '#2d3748' }}>
-                  {project.tasks || 0}/{project.totalTasks || 0}
-                </span>
-              </div>
-              <div style={{ height: '8px', backgroundColor: '#edf2f7', borderRadius: '4px', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  borderRadius: '4px',
-                  transition: 'width 0.5s ease',
-                  width: `${progress}%`,
-                  backgroundColor: getCategoryColor(project.category, 'header')
-                }}></div>
-              </div>
+              <span style={{ color: '#718096', fontWeight: 500 }}>
+                Progress
+              </span>
+              <span style={{ fontWeight: 600, color: '#2d3748' }}>
+                {project.tasks || 0}/{project.totalTasks || 0}
+              </span>
             </div>
+            <div style={{ height: '8px', backgroundColor: '#edf2f7', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                borderRadius: '4px',
+                transition: 'width 0.5s ease',
+                width: `${progress}%`,
+                backgroundColor: getCategoryColor(project.category, 'header')
+              }}></div>
+            </div>
+          </div>
 
-            <div style={{
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '20px'
+          }}>
+            <span style={{
+              fontSize: '14px',
+              color: '#718096',
               display: 'flex',
-              justifyContent: 'space-between',
               alignItems: 'center',
-              marginTop: '20px'
+              gap: '6px',
+              fontWeight: 500
             }}>
               <span style={{
-                fontSize: '14px',
-                color: '#718096',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                fontWeight: 500
-              }}>
-                <span style={{
-                  width: '14px',
-                  height: '14px',
-                  display: 'inline-block',
-                  backgroundColor: '#718096',
-                  maskImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' /%3E%3C/svg%3E")`,
-                  maskSize: 'contain',
-                  maskRepeat: 'no-repeat',
-                  maskPosition: 'center'
-                }}></span>
-                {formattedDate}
-              </span>
-              <div style={{ display: 'flex' }}>
-                {generateAvatars(project.team || [], project.category)}
-              </div>
+                width: '14px',
+                height: '14px',
+                display: 'inline-block',
+                backgroundColor: '#718096',
+                maskImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='currentColor'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' /%3E%3C/svg%3E")`,
+                maskSize: 'contain',
+                maskRepeat: 'no-repeat',
+                maskPosition: 'center'
+              }}></span>
+              {formattedDate}
+            </span>
+            <div style={{ display: 'flex' }}>
+              {generateAvatars(project.team || [], project.category)}
             </div>
           </div>
         </div>
-      );
-    });
-  };
+      </div>
+    );
+  });
+};
 
   // Render list view (ไม่ซ้ำกับ grid มากนัก)
   const renderListView = () => {
@@ -979,60 +995,60 @@ const saveProject = () => {
             gap: '8px',
             zIndex: 20
           }}>
-            { canEditProject(project.project_id) && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                console.log("Edit button clicked for project:", project);
-                handleEditProject(project);
-              }}
-              style={{
-                width: '30px',
-                height: '30px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#EDF2F7',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                  stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            {canEditProject(project.project_id) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log("Edit button clicked for project:", project);
+                  handleEditProject(project);
+                }}
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#EDF2F7',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
             )}
-            { canDeleteProject(project.project_id) && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                alert("Deleting project: " + project.title);
-                console.log("Delete button clicked for project:", project);
-                deleteProject(project.project_id);
-              }}
-              style={{
-                width: '30px',
-                height: '30px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#FEE2E2',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                  stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            {canDeleteProject(project.project_id) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  alert("Deleting project: " + project.title);
+                  console.log("Delete button clicked for project:", project);
+                  deleteProject(project.project_id);
+                }}
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#FEE2E2',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
             )}
           </div>
         </div>
@@ -1065,39 +1081,39 @@ const saveProject = () => {
               Get an overview of your projects and track progress.
             </p>
           </div>
-          { canCreateProject() && (
-          <button
-            onClick={openModal}
-            style={{
-              backgroundColor: '#4f46e5',
-              color: 'white',
-              border: 'none',
-              padding: '10px 20px',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontWeight: 600,
-              fontSize: '15px',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 4px 6px rgba(79, 70, 229, 0.1)',
-              position: 'relative',
-              overflow: 'hidden'
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = '#4338ca';
-              e.currentTarget.style.transform = 'translateY(-2px)';
-              e.currentTarget.style.boxShadow = '0 6px 10px rgba(79, 70, 229, 0.2)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.backgroundColor = '#4f46e5';
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 4px 6px rgba(79, 70, 229, 0.1)';
-            }}
-          >
-            + Add Project
-          </button>
+          {canCreateProject() && (
+            <button
+              onClick={openModal}
+              style={{
+                backgroundColor: '#4f46e5',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontWeight: 600,
+                fontSize: '15px',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 4px 6px rgba(79, 70, 229, 0.1)',
+                position: 'relative',
+                overflow: 'hidden'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = '#4338ca';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 10px rgba(79, 70, 229, 0.2)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = '#4f46e5';
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 6px rgba(79, 70, 229, 0.1)';
+              }}
+            >
+              + Add Project
+            </button>
           )}
         </div>
 
@@ -1369,7 +1385,8 @@ const saveProject = () => {
           backgroundColor: 'rgba(0,0,0,0.5)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          padding: '20px' // Add padding to ensure modal doesn't touch screen edges
         }}>
           <div style={{
             backgroundColor: 'white',
@@ -1377,7 +1394,11 @@ const saveProject = () => {
             boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
             width: '90%',
             maxWidth: '500px',
-            animation: 'fadeIn 0.3s'
+            animation: 'fadeIn 0.3s',
+            maxHeight: '90vh', // Limit height to 90% of viewport
+            display: 'flex',
+            flexDirection: 'column', // Ensure proper layout
+            overflow: 'hidden' // Hide overflow
           }}>
             <div style={{
               padding: '20px',
@@ -1386,7 +1407,7 @@ const saveProject = () => {
               justifyContent: 'space-between',
               alignItems: 'center'
             }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c', margin: 0 }}>
                 {isEditMode ? 'Edit Project' : 'Add New Project'}
               </h2>
               <button
@@ -1396,13 +1417,23 @@ const saveProject = () => {
                   border: 'none',
                   fontSize: '24px',
                   cursor: 'pointer',
-                  color: '#718096'
+                  color: '#718096',
+                  padding: '0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '30px',
+                  height: '30px'
                 }}
               >
                 &times;
               </button>
             </div>
-            <div style={{ padding: '20px' }}>
+            <div style={{
+              padding: '20px',
+              overflowY: 'auto',
+              maxHeight: 'calc(90vh - 140px)'
+            }}>
               <form>
                 <div style={{ marginBottom: '20px' }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectTitle">
@@ -1469,7 +1500,6 @@ const saveProject = () => {
                     }}
                   />
                 </div>
-
                 <div style={{ marginBottom: '20px' }}>
                   <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectDueDate">
                     Due Date
@@ -1515,23 +1545,23 @@ const saveProject = () => {
                   </select>
                 </div>
                 <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="projectTeam">
-                    Team Members (comma separated)
+                  <label
+                    style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }}
+                    htmlFor="projectTeam"
+                  >
+                    Team Members
                   </label>
-                  <input
-                    type="text"
-                    id="projectTeam"
-                    placeholder="e.g. Alex, Jamie, Taylor"
-                    value={isEditMode ? editingProject.team : newProject.team || ''}
-                    onChange={handleInputChange}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '6px',
-                      fontSize: '15px',
-                      transition: 'all 0.2s'
+                  <TeamMemberDropdown
+                    selectedTeamMembers={isEditMode ? editingProject.team : newProject.team}
+                    onTeamMemberChange={(members) => {
+                      if (isEditMode) {
+                        setEditingProject(prev => ({ ...prev, team: members }));
+                      } else {
+                        setNewProject(prev => ({ ...prev, team: members }));
+                      }
                     }}
+                    API_BASE_URL={API_BASE_URL}
+                    disabled={false}
                   />
                 </div>
               </form>
@@ -1541,7 +1571,8 @@ const saveProject = () => {
               borderTop: '1px solid #eaeaea',
               display: 'flex',
               justifyContent: 'flex-end',
-              gap: '10px'
+              gap: '10px',
+              backgroundColor: 'white'
             }}>
               <button
                 onClick={closeModal}
@@ -1576,15 +1607,15 @@ const saveProject = () => {
         </div>
       )}
       <Snackbar
-      open={notification.open}
-      autoHideDuration={6000}
-      onClose={handleCloseNotification}
-      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-    >
-      <Alert onClose={handleCloseNotification} severity={notification.type} sx={{ width: '100%' }}>
-        {notification.message}
-      </Alert>
-    </Snackbar>
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseNotification} severity={notification.type} sx={{ width: '100%' }}>
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </div>
   );
 };

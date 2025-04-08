@@ -1,5 +1,5 @@
 import express from "express";
-import { getAllProjects, createProject, updateProject, deleteProject, getProjectById, getProjectTaskCounts,getProjectUsers, updateProjectUserRole} from "../controllers/projectController.js";
+import { getAllProjects, createProject, updateProject, deleteProject, getProjectById, getProjectTaskCounts,getProjectUsers, updateProjectUserRole,updateProjectStatus} from "../controllers/projectController.js";
 
 const router = express.Router();
 
@@ -15,5 +15,7 @@ router.put('/api/projects/:project_id', updateProject);
 router.delete('/api/projects/:project_id', deleteProject);
 router.get('/api/projects/:project_id/users', getProjectUsers);
 router.put('/api/projects/:project_id/users/:user_id/role', updateProjectUserRole);
+router.patch("/api/projects/:projectId/update-status", updateProjectStatus);
+
 
 export default router;

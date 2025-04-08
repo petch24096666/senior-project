@@ -8,12 +8,14 @@ export const UserContextProvider = ({ children }) => {
   const [customUser, setCustomUser] = useState(null);
 
   useEffect(() => {
+    console.log("supabaseUser:", supabaseUser);
     if (supabaseUser && supabaseUser.email) {
       fetch(`http://localhost:8081/api/users?email=${encodeURIComponent(supabaseUser.email)}`)
         .then((res) => res.json())
         .then((data) => {
+          console.log("Fetched custom user:", data);
           if (data.success && data.data) {
-            setCustomUser(data.data); // data.data ควรมี property user_id
+            setCustomUser(data.data);
           }
         })
         .catch((err) => {
@@ -21,10 +23,11 @@ export const UserContextProvider = ({ children }) => {
         });
     }
   }, [supabaseUser]);
+  
 
   return (
     <UserContext.Provider value={{ customUser }}>
       {children}
     </UserContext.Provider>
-  );
+  );  
 };

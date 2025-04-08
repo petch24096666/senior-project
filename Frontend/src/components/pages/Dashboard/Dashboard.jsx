@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 const Dashboard = () => {
-  // State for active date in calendar
+  // State สำหรับวันที่ active ใน calendar
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [projects, setProjects] = useState([
     { 
@@ -54,14 +54,14 @@ const Dashboard = () => {
     { id: 4, title: 'Finalize API specifications', priority: 'High', dueDate: '2025-04-03', completed: false }
   ]);
 
-  // State for hover effects
+  // State สำหรับ hover effect ต่างๆ
   const [hoveredRow, setHoveredRow] = useState(null);
   const [hoveredActivity, setHoveredActivity] = useState(null);
   const [hoveredTask, setHoveredTask] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
   const [hoveredDay, setHoveredDay] = useState(null);
 
-  // Calendar navigation
+  // ฟังก์ชันสำหรับนำทาง calendar
   const nextMonth = () => {
     const date = new Date(currentMonth);
     date.setMonth(date.getMonth() + 1);
@@ -74,12 +74,12 @@ const Dashboard = () => {
     setCurrentMonth(date);
   };
 
-  // Format month name and year
+  // ฟังก์ชันสำหรับแสดงชื่อเดือนและปี
   const formatMonthYear = (date) => {
     return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
-  // Get days in month for calendar
+  // ฟังก์ชันสำหรับรับวันที่ในเดือน
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
@@ -87,33 +87,42 @@ const Dashboard = () => {
     const firstDayOfMonth = new Date(year, month, 1).getDay();
     
     const daysArray = [];
-    
-    // Add empty cells for days before the first day of the month
+    // เพิ่ม cell ว่างสำหรับวันที่ก่อนวันที่ 1 ของเดือน
     for (let i = 0; i < firstDayOfMonth; i++) {
       daysArray.push({ day: '', date: null });
     }
-    
-    // Add days of the month
+    // เพิ่มวันในเดือน
     for (let i = 1; i <= daysInMonth; i++) {
-      const date = new Date(year, month, i);
+      const dateObj = new Date(year, month, i);
       daysArray.push({ 
         day: i, 
-        date: date,
-        isToday: new Date().toDateString() === date.toDateString(),
-        hasEvent: i === 15 || i === 22 || i === 29 // Dummy event days
+        date: dateObj,
+        isToday: new Date().toDateString() === dateObj.toDateString(),
+        hasEvent: i === 15 || i === 22 || i === 29 // ตัวอย่าง dummy event
       });
     }
-    
     return daysArray;
   };
 
-  // Toggle task completion
+  // ฟังก์ชันสำหรับ toggle task completion
   const toggleTaskCompletion = (taskId) => {
     setUpcomingTasks(prevTasks => 
       prevTasks.map(task => 
         task.id === taskId ? { ...task, completed: !task.completed } : task
       )
     );
+  };
+
+  // ฟังก์ชันสำหรับ trigger OAuth flow (placeholder) เพื่อเชื่อมต่อกับ Google Calendar
+  const connectGoogleCalendar = () => {
+    console.log("Trigger OAuth flow for Google Calendar");
+    // นำไปต่อยอดเรียก OAuth flow สำหรับ Google Calendar
+  };
+
+  // ฟังก์ชันสำหรับ trigger OAuth flow (placeholder) เพื่อเชื่อมต่อกับ Microsoft Calendar
+  const connectMicrosoftCalendar = () => {
+    console.log("Trigger OAuth flow for Microsoft Calendar");
+    // นำไปต่อยอดเรียก OAuth flow สำหรับ Microsoft Calendar
   };
 
   return (
@@ -135,6 +144,42 @@ const Dashboard = () => {
           margin: 0 
         }}>Here's what's happening with your projects today.</p>
       </header>
+      
+      {/* ปุ่มสำหรับเชื่อมต่อ Calendar */}
+      <div style={{ marginBottom: '24px', display: 'flex', gap: '16px' }}>
+        <button 
+          onClick={connectGoogleCalendar}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#2563EB',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          Connect Google Calendar
+        </button>
+        <button 
+          onClick={connectMicrosoftCalendar}
+          style={{
+            padding: '8px 16px',
+            backgroundColor: '#2563EB',
+            color: 'white',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          Connect Microsoft Calendar
+        </button>
+      </div>
       
       <div style={{ 
         display: 'grid',

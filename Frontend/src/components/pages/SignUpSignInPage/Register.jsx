@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { supabase } from "../../../utils/supabaseClient";
 import { FaGoogle, FaMicrosoft } from "react-icons/fa";
+import { v4 as uuidv4 } from 'uuid';
 
 const url = import.meta.env.VITE_BACKEND_URL;
 
@@ -64,13 +65,16 @@ const RegisterPage = () => {
 
   async function register(event) {
     event.preventDefault();
-  
+
+    // สร้าง UUID สำหรับ user_id
+    const userId = uuidv4();
+
     // Password validation
     if (password !== confirmPassword) {
       setError("Passwords do not match. Please try again.");
       return;
     }
-  
+
     if (!agree) {
       setError("You must agree to the Terms and Privacy Policy.");
       return;
@@ -80,69 +84,61 @@ const RegisterPage = () => {
       setError("Password must be at least 6 characters long.");
       return;
     }
-  
+
     setIsRegistering(true);
     setError("");
-  
+
     try {
       console.log("Starting registration process");
-      
+
       // Step 1: Register with Supabase
       console.log("Registering with Supabase");
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error: supaError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: {
-            fullname,
-          },
+          data: { fullname },
         },
       });
 
-      if (error) {
-        console.error("Supabase registration error:", error);
-        setError(error.message);
+      if (supaError) {
+        console.error("Supabase registration error:", supaError);
+        setError(supaError.message);
         setIsRegistering(false);
         return;
       }
 
       console.log("Supabase registration successful");
 
-      // Step 2: Send data to your backend including the password
-      try {
-        console.log("Saving user data to database");
-        // Use /api/register instead of /api/create-user to ensure password hashing
-        const backendResponse = await axios.post(`${url}/api/register`, {
-          fullname,
-          email,
-          password, // Important: Send the password to be hashed on the backend
-          provider: "email",
-          token: data.session?.access_token || null,
-        });
+      // Step 2: Send data to your backend including the password and user_id
+      console.log("Saving user data to database");
+      const backendResponse = await axios.post(`${url}/api/register`, {
+        user_id: userId,        // ส่ง UUID ไปด้วย
+        fullname,
+        email,
+        password,               // BE จะ hash
+        provider: "email",
+        token: data.session?.access_token || null,
+      });
 
-        console.log("Database save response:", backendResponse.data);
-        
-        if (!backendResponse.data.success) {
-          console.error("Database save error:", backendResponse.data.error);
-          setError("Registration successful, but there was an issue saving your profile.");
-          setIsRegistering(false);
-          return;
-        }
-        
-        // Show confirmation message instead of immediately redirecting
-        setRegistrationComplete(true);
-        setRegisteredEmail(email);
-        
-      } catch (apiError) {
-        console.error("API Error:", apiError.response?.data || apiError);
-        setError("Registration successful, but we couldn't save your complete profile. Please check your email to confirm your account.");
-        // Still show confirmation since Supabase registration was successful
-        setRegistrationComplete(true);
-        setRegisteredEmail(email);
+      console.log("Database save response:", backendResponse.data);
+
+      if (!backendResponse.data.success) {
+        console.error("Database save error:", backendResponse.data.error);
+        setError("Registration successful, but there was an issue saving your profile.");
+        setIsRegistering(false);
+        return;
       }
-    } catch (err) {
-      console.error("Registration error:", err);
-      setError("Something went wrong during registration. Please try again.");
+
+      // แสดงหน้าขอบคุณ
+      setRegistrationComplete(true);
+      setRegisteredEmail(email);
+
+    } catch (apiError) {
+      console.error("API Error:", apiError.response?.data || apiError);
+      setError("Registration successful, but we couldn't save your complete profile. Please check your email to confirm your account.");
+      setRegistrationComplete(true);
+      setRegisteredEmail(email);
     } finally {
       setIsRegistering(false);
     }

@@ -6,7 +6,8 @@ import {
   oauthLoginUser, 
   updateUser, 
   getUserByEmail,
-  setUserPassword  // Add this new import
+  setUserPassword,
+  getAllUsers  // Add this new import
 } from "../controllers/userController.js";
 
 const router = express.Router();
@@ -18,7 +19,7 @@ router.post("/api/logout", logoutUser);
 router.post("/api/oauth-login", oauthLoginUser);
 router.put("/api/update-user", updateUser);
 router.get("/api/users", getUserByEmail);
-
+router.get("/api/allusers", getAllUsers);
 // Add the new route for setting passwords
 router.post("/api/set-password", setUserPassword);
 

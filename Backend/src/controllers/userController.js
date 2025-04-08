@@ -8,92 +8,93 @@ dotenv.config();
 const saltRounds = 10;
 
 // Register user with Supabase and local database
-// Register user with Supabase and local database
+export const getAllUsers = async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT * FROM users");
+    return res.status(200).json(rows); 
+    // หรือถ้าต้องการรูปแบบ {success: true, data: [...]} ก็ได้
+    // return res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Error fetching all users:", error);
+    return res.status(500).json({ success: false, error: "Internal Server Error" });
+  }
+};
+
 export const registerUser = async (req, res) => {
   try {
     console.log("🔍 REGISTER: Received registration request:", {
+      user_id: req.body.user_id,
       fullname: req.body.fullname,
       email: req.body.email,
       password: req.body.password ? "PROVIDED" : "MISSING"
     });
 
-    const { fullname, email, password } = req.body;
+    const { user_id, fullname, email, password } = req.body;
     
     // Basic validation
-    if (!fullname || !email || !password) {
+    if (!user_id || !fullname || !email || !password) {
       console.log("❌ REGISTER: Missing required fields");
       return res.status(400).json({ success: false, error: "All fields are required" });
     }
     
-    // Check if email exists
-    console.log("🔍 REGISTER: Checking if email exists:", email);
-    const [existingUsers] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-    
+    // Check if email or user_id exists
+    console.log("🔍 REGISTER: Checking if email or user_id exists:", email, user_id);
+    const [existingUsers] = await db.query(
+      "SELECT * FROM users WHERE email = ? OR user_id = ?",
+      [email, user_id]
+    );
     if (existingUsers.length > 0) {
-      console.log("❌ REGISTER: Email already exists");
-      return res.status(400).json({ success: false, error: "Email already exists" });
+      console.log("❌ REGISTER: Email or user_id already exists");
+      return res.status(400).json({ success: false, error: "Email or user ID already exists" });
     }
+    console.log("✅ REGISTER: Email and user_id are available");
     
-    console.log("✅ REGISTER: Email is available");
-    
-    // Generate password hash - USING SYNC VERSION
+    // Hash password
     console.log("🔑 REGISTER: Hashing password");
     const hashedPassword = bcrypt.hashSync(password, 10);
-    console.log("✅ REGISTER: Password hashed successfully, hash length:", hashedPassword.length);
+    console.log("✅ REGISTER: Password hashed, length:", hashedPassword.length);
     
-    // Insert user directly with SQL query
+    // Insert user with provided UUID
     console.log("📝 REGISTER: Inserting user into database");
-    const insertQuery = "INSERT INTO users (fullname, email, password, provider, created_at, updated_at) VALUES (?, ?, ?, 'email', NOW(), NOW())";
+    const insertQuery = `
+      INSERT INTO users
+        (user_id, fullname, email, password, provider, created_at, updated_at)
+      VALUES
+        (?, ?, ?, ?, 'email', NOW(), NOW())
+    `;
     
-    try {
-      const [result] = await db.query(insertQuery, [fullname, email, hashedPassword]);
-      console.log("📊 REGISTER: Database insert result:", result);
-      
-      if (result.affectedRows !== 1) {
-        console.log("❌ REGISTER: Database insert failed");
-        return res.status(500).json({ success: false, error: "Failed to create user" });
-      }
-      
-      // Verify password was stored
-      const [newUser] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
-      
-      if (newUser.length === 0) {
-        console.log("❌ REGISTER: User not found after insert");
-        return res.status(500).json({ success: false, error: "User creation failed" });
-      }
-      
-      // Check if password field has data
-      const hasPassword = newUser[0].password !== null && newUser[0].password !== undefined && newUser[0].password !== '';
-      console.log("🔍 REGISTER: Password stored:", hasPassword ? "YES" : "NO");
-      
-      if (!hasPassword) {
-        console.log("⚠️ REGISTER: Password field is empty or null");
-      }
-      
-      console.log("✅ REGISTER: User registered successfully");
-      return res.status(201).json({
-        success: true,
-        message: "User registered successfully",
-        user: { 
-          email, 
-          fullname
-        }
-      });
-    } catch (dbError) {
-      console.error("❌ REGISTER: Database error:", dbError);
-      return res.status(500).json({ 
-        success: false, 
-        error: "Database error: " + dbError.message 
-      });
+    const [result] = await db.query(insertQuery, [
+      user_id,
+      fullname,
+      email,
+      hashedPassword
+    ]);
+    console.log("📊 REGISTER: Database insert result:", result);
+    
+    if (result.affectedRows !== 1) {
+      console.log("❌ REGISTER: Database insert failed");
+      return res.status(500).json({ success: false, error: "Failed to create user" });
     }
+    
+    console.log("✅ REGISTER: User registered successfully");
+    return res.status(201).json({
+      success: true,
+      message: "User registered successfully",
+      user: {
+        user_id,
+        fullname,
+        email
+      }
+    });
   } catch (error) {
     console.error("❌ REGISTER: Unexpected error:", error);
-    return res.status(500).json({ 
-      success: false, 
-      error: "Registration error: " + error.message 
+    return res.status(500).json({
+      success: false,
+      error: "Registration error: " + error.message
     });
   }
 };
+
 
 // Login using Supabase with local database fallback
 export const loginUser = async (req, res) => {
@@ -241,50 +242,85 @@ export const logoutUser = async (req, res) => {
 // OAuth login (Google/Azure) with Supabase
 export const oauthLoginUser = async (req, res) => {
   try {
-    const { email, provider_token, provider } = req.body;
-    console.log("OAuth login request:", { email, provider });
+    const { user_id, email, provider_token, provider } = req.body;
+    console.log("OAuth login request:", { user_id, email, provider });
     
-    if (!email || !provider) {
-      return res.status(400).json({ success: false, error: "Email and provider are required" });
+    // ตรวจสอบว่ามี user_id, email, provider ครบหรือไม่
+    if (!user_id || !email || !provider) {
+      return res.status(400).json({ success: false, error: "user_id, email and provider are required" });
     }
     
-    // Check if user exists in local database
-    const [existingUser] = await db.query("SELECT * FROM users WHERE email = ?", [email]);
+    // ตรวจสอบว่ามี user_id นี้อยู่ในฐานข้อมูลหรือไม่
+    const [existingUser] = await db.query(
+      "SELECT * FROM users WHERE user_id = ?",
+      [user_id]
+    );
 
     if (existingUser.length === 0) {
       console.log("OAuth user not found in database, creating new user");
-      // If user doesn't exist, add them to local database
-      // For OAuth users, password is null (correct behavior)
-      const sql = "INSERT INTO users (email, provider, token, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())";
-      const [result] = await db.query(sql, [email, provider, provider_token]);
+      // สร้างผู้ใช้ใหม่โดยใช้ UUID ที่ส่งมา
+      const sql = `
+        INSERT INTO users
+          (user_id, email, provider, token, created_at, updated_at)
+        VALUES
+          (?, ?, ?, ?, NOW(), NOW())
+      `;
+      const [result] = await db.query(sql, [
+        user_id,
+        email,
+        provider,
+        provider_token
+      ]);
 
       if (result.affectedRows === 1) {
         console.log("OAuth user created successfully in local database");
-        res.status(201).json({ success: true, message: "User registered successfully through OAuth" });
+        return res.status(201).json({
+          success: true,
+          message: "User registered successfully through OAuth",
+          user: { user_id, email, provider }
+        });
       } else {
         console.error("Failed to register OAuth user in database");
-        res.status(500).json({ success: false, error: "Failed to register user through OAuth" });
+        return res.status(500).json({
+          success: false,
+          error: "Failed to register user through OAuth"
+        });
       }
     } else {
       console.log("OAuth user found in database, updating token");
-      // If user exists, update their token and provider
-      const updateSql = "UPDATE users SET token = ?, provider = ?, updated_at = NOW() WHERE email = ?";
-      const [updateResult] = await db.query(updateSql, [provider_token, provider, email]);
+      // อัปเดต token และ provider ตาม UUID ที่มีอยู่
+      const updateSql = `
+        UPDATE users
+        SET token = ?, provider = ?, updated_at = NOW()
+        WHERE user_id = ?
+      `;
+      const [updateResult] = await db.query(updateSql, [
+        provider_token,
+        provider,
+        user_id
+      ]);
 
       if (updateResult.affectedRows === 1) {
         console.log("OAuth user token updated successfully");
-        res.status(200).json({
+        return res.status(200).json({
           success: true,
           message: `User's ${provider} token updated successfully`,
+          user: { user_id, email, provider }
         });
       } else {
         console.error("Failed to update OAuth user token");
-        res.status(500).json({ success: false, error: "Failed to update user token" });
+        return res.status(500).json({
+          success: false,
+          error: "Failed to update user token"
+        });
       }
     }
   } catch (error) {
     console.error("Error during OAuth login:", error);
-    res.status(500).json({ success: false, error: "Internal Server Error" });
+    return res.status(500).json({
+      success: false,
+      error: "Internal Server Error"
+    });
   }
 };
 
@@ -373,7 +409,7 @@ export const resetPassword = async (req, res) => {
     
     // Request password reset email through Supabase
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password`,
+      redirectTo: `${process.env.FRONTEND_URL || ''}/reset-password`,
     });
     
     if (error) {

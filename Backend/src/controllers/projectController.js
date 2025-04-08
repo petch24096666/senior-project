@@ -72,15 +72,15 @@ export const getProjectById = async (req, res) => {
 
 // สร้างโปรเจคใหม่
 export const createProject = async (req, res) => {
-  const { project_id, title, category, startdate,duedate, priority, creator_id, team } = req.body;
+  const { project_id, title, category, startdate, duedate, priority, creator_id, team } = req.body;
   const totalTasks = 0;
   const tasksCompleted = 0;
+  const status = "planning";
 
   if (!project_id || !title || !category || startdate === '' || duedate === '' || !priority || !creator_id || !team || team.length === 0) {
     return res.status(400).json({ success: false, error: "Invalid input data" });
   }
   
-
   try {
     // ตรวจสอบสมาชิกทีม
     for (const member of team) {
@@ -92,8 +92,8 @@ export const createProject = async (req, res) => {
     }
 
     await db.query(
-      "INSERT INTO projects (project_id, title, category, start_date, due_date, priority, tasks_completed, total_tasks, creator_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [project_id, title, category, startdate, duedate, priority, tasksCompleted, totalTasks, creator_id]
+      "INSERT INTO projects (project_id, title, category, start_date, due_date, priority, tasks_completed, total_tasks, creator_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [project_id, title, category, startdate, duedate, priority, tasksCompleted, totalTasks, creator_id, status]
     );
 
     if (team.length > 0) {
@@ -117,29 +117,31 @@ export const createProject = async (req, res) => {
 
 // อัปเดตโปรเจค
 export const updateProject = async (req, res) => {
-  const { project_id } = req.params;    // เปลี่ยนจาก id เป็น project_id
-  const { title, team } = req.body;
+  const { project_id } = req.params;  // เปลี่ยนจาก id เป็น project_id
+  const { title, category, startdate, duedate, priority, team } = req.body;
+
   if (!project_id) {
     return res.status(400).json({ success: false, error: "Project ID is required" });
   }
-  try {
-    // อัปเดตชื่อโปรเจค
-    const updateProjectQuery = "UPDATE projects SET title = ? WHERE project_id = ?";
-    await db.query(updateProjectQuery, [title, project_id]);
 
-    // ลบสมาชิกเดิมทั้งหมด
+  try {
+    // อัปเดต project fields (รวมทั้ง title, category, start_date, due_date, priority)
+    const updateProjectQuery = `
+      UPDATE projects
+      SET title = ?, category = ?, start_date = ?, due_date = ?, priority = ?
+      WHERE project_id = ?
+    `;
+    await db.query(updateProjectQuery, [title, category, startdate, duedate, priority, project_id]);
+
+    // ลบสมาชิกทีมเดิม
     const deleteMembersQuery = "DELETE FROM projectmembers WHERE project_id = ?";
     await db.query(deleteMembersQuery, [project_id]);
 
-    // เพิ่มสมาชิกใหม่ (ถ้ามี)
+    // เพิ่มสมาชิกทีมใหม่ (ถ้ามี)
     if (Array.isArray(team) && team.length > 0) {
       const memberValues = [];
       for (const member of team) {
-        // ตรวจสอบ user_id จาก email
-        const [userRows] = await db.query(
-          "SELECT user_id FROM users WHERE email = ?",
-          [member.email]
-        );
+        const [userRows] = await db.query("SELECT user_id FROM users WHERE email = ?", [member.email]);
         if (userRows.length === 0) {
           return res.status(400).json({ success: false, error: `User not found: ${member.email}` });
         }
@@ -151,10 +153,15 @@ export const updateProject = async (req, res) => {
           userRows[0].user_id
         ]);
       }
-      const insertMembersQuery =
-        "INSERT INTO projectmembers (project_member_id, project_id, email, role, user_id) VALUES ?";
+      const insertMembersQuery = `
+        INSERT INTO projectmembers (project_member_id, project_id, email, role, user_id)
+        VALUES ?
+      `;
       await db.query(insertMembersQuery, [memberValues]);
     }
+
+    // เนื่องจากการอัปเดต status ของ project แยก endpoint ใหม่แล้ว
+    // เราจะไม่คำนวณและอัปเดต status ใน endpoint นี้
 
     return res.status(200).json({ success: true, message: "Project updated successfully!" });
   } catch (error) {
@@ -162,6 +169,59 @@ export const updateProject = async (req, res) => {
     return res.status(500).json({ success: false, error: "An error occurred while updating the project." });
   }
 };
+
+
+export const updateProjectStatus = async (req, res) => {
+  const { projectId } = req.params;
+  try {
+    const [rows] = await db.query(
+      `
+        SELECT 
+          COUNT(*) AS total,
+          SUM(CASE WHEN LOWER(status) = 'todo' THEN 1 ELSE 0 END) AS todoCount,
+          SUM(CASE WHEN LOWER(status) = 'inprogress' THEN 1 ELSE 0 END) AS inprogressCount,
+          SUM(CASE WHEN LOWER(status) = 'review' THEN 1 ELSE 0 END) AS reviewCount,
+          SUM(CASE WHEN LOWER(status) = 'done' THEN 1 ELSE 0 END) AS doneCount
+        FROM tasks
+        WHERE project_id = ?
+      `,
+      [projectId]
+    );
+    
+    console.log("Counted task statuses:", rows[0]);
+    
+    let projectStatus = "planning"; // default
+    
+    if (rows[0].total > 0) {
+      // Convert all values to numbers to ensure accurate comparisons
+      const total = Number(rows[0].total);
+      const todoCount = Number(rows[0].todoCount);
+      const reviewCount = Number(rows[0].reviewCount);
+      const doneCount = Number(rows[0].doneCount);
+      
+      // Now do the comparisons with numerical values
+      if (todoCount === total && total > 0) {
+        projectStatus = "planning";
+      } else if (reviewCount === total && total > 0) {
+        projectStatus = "review";
+      } else if (doneCount === total && total > 0) {
+        projectStatus = "done";
+      } else {
+        projectStatus = "inprogress";
+      }
+    }
+
+    console.log("Setting project status to:", projectStatus);
+
+    await db.query("UPDATE projects SET status = ? WHERE project_id = ?", [projectStatus, projectId]);
+    return res.status(200).json({ success: true, status: projectStatus });
+  } catch (error) {
+    console.error("Error updating project status:", error);
+    return res.status(500).json({ success: false, error: "Failed to update project status" });
+  }
+};
+
+
 
 // ลบโปรเจค
 export const deleteProject = async (req, res) => {

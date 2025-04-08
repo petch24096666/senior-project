@@ -370,29 +370,33 @@ const KanbanBoard = () => {
   };
 
   const moveTask = async (taskId, newColumn) => {
-    // ตรวจสอบสิทธิ์ก่อนเลื่อน task
     if (!canMoveTask(projectId)) {
       showNotification("You do not have permission to move tasks", "error");
       return;
     }
     try {
-      setTasksData((prevTasks) =>
-        prevTasks.map((task) =>
-          task.id === parseInt(taskId)
-            ? {
-                ...task,
-                column: newColumn,
-                column_status: newColumn,
-                status: newColumn
-              }
+      // Optimistic update local tasks state
+      setTasksData(prevTasks =>
+        prevTasks.map(task =>
+          task.id === taskId
+            ? { ...task, status: newColumn, column_status: newColumn, column: newColumn }
             : task
         )
       );
-      await axios.patch(`${API_BASE_URL}/api/tasks/${taskId}/column`, {
-        column: newColumn
-      });
+      
+      // Call API to update task column
+      await axios.patch(`${API_BASE_URL}/api/tasks/${taskId}/column`, { column: newColumn, status: newColumn });
+      
+      // Call API to update project status
+      await axios.patch(`${API_BASE_URL}/api/projects/${projectId}/update-status`);
+      
+      // Fetch updated project
+      const projectRes = await axios.get(`${API_BASE_URL}/api/projects/${projectId}`);
+      const updatedProject = projectRes.data.data;
+      
       showNotification("Task moved successfully", "success");
     } catch (err) {
+      // Refresh task list on error
       fetchTasks();
       showNotification(
         "Failed to move task: " + (err.response?.data?.error || err.message),
@@ -400,6 +404,9 @@ const KanbanBoard = () => {
       );
     }
   };
+  
+  
+  
 
   const deleteTask = async (taskId) => {
     try {
@@ -446,7 +453,7 @@ const KanbanBoard = () => {
   };
 
   const getTaskById = (taskId) => {
-    return tasksData.find((task) => task.id === parseInt(taskId));
+    return tasksData.find((task) => task.id === taskId); // Remove parseInt
   };
 
   if (error && tasksData.length === 0) {

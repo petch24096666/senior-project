@@ -118,6 +118,7 @@ const LoginPage = () => {
   
         // Save user data to your database via your backend API
         axios.post(`${url}/api/oauth-login`, {
+          user_id: session.user.id,
           email: email,
           provider_token: session.provider_token || session.access_token,
           provider: provider || "email",
