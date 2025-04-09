@@ -73,7 +73,7 @@ const FilterButton = ({ filters, onFilterChange }) => {
   const open = Boolean(anchorEl);
 
   const icons = {
-    filter: '🔢'
+    filter: '☰'
   };
 
   return (

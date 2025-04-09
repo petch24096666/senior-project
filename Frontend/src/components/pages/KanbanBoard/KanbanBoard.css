@@ -139,19 +139,23 @@
   }
   
   .kanban-root .filter-button {
-    background-color: white;
-    color: var(--text-primary);
+    background-color: #4a6fa5;
     border: 1px solid var(--border-color);
-    padding: 6px 12px;
+    color: white;
+    padding: 8px 14px;
     border-radius: 4px;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
   }
   
   .kanban-root .filter-button:hover {
-    background-color: var(--column-bg);
+    background-color: #3a5985;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
   
   .kanban-root .active-filters {
@@ -209,16 +213,17 @@
   }
   
   .kanban-root .filter-count-badge {
-    background: var(--primary-color);
+    background-color: var(--primary-color);
     color: white;
     border-radius: 50%;
-    width: 18px;
-    height: 18px;
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+    font-weight: 500;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
-    margin-left: 5px;
+    margin-left: 6px;
   }
   
   .kanban-root .filter-menu-header {

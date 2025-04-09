@@ -9,7 +9,10 @@ import {
   getProjectTaskCounts,
   getProjectUsers, 
   updateProjectUserRole,
-  updateProjectStatus
+  updateProjectStatus,
+  getArchivedProjects,
+  restoreProject,
+  purgeProject
 } from "../controllers/projectController.js";
 
 const router = express.Router();
@@ -25,5 +28,14 @@ router.get('/api/projects/:project_id', getProjectById);
 router.get('/api/projects/:project_id/users', getProjectUsers);
 router.put('/api/projects/:project_id/users/:user_id/role', updateProjectUserRole);
 router.patch("/api/projects/:projectId/update-status", updateProjectStatus);
+// ดึงโปรเจกต์ที่ถูก archive (deleted_at ไม่เป็น NULL)
+router.get('/projects/archive', getArchivedProjects);
+
+// Restore project (ตั้ง deleted_at กลับเป็น NULL)
+router.patch('/projects/:project_id/restore', restoreProject);
+
+// Purge project (ลบโปรเจกต์ออกจากฐานข้อมูลถาวร)
+router.delete('/projects/:project_id/purge', purgeProject);
+
 
 export default router;

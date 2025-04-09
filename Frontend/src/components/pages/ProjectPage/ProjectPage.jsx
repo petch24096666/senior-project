@@ -7,6 +7,7 @@ import axios from 'axios';
 import { Snackbar, Alert } from '@mui/material';
 import { useRBAC } from '../../../context/RBAC';
 import TeamMemberDropdown from './TeamMemberDropdown';
+import ArchiveModal from './ArchiveModal'
 // Custom CSS keyframes for animations
 const fadeInKeyframes = `
   @keyframes fadeIn {
@@ -59,6 +60,7 @@ const ProjectDashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [notification, setNotification] = useState({ open: false, message: '', type: 'info' });
   const showNotification = (msg, type = 'info') => setNotification({ open: true, message: msg, type });
   const handleCloseNotification = () => setNotification(prev => ({ ...prev, open: false }));
@@ -150,6 +152,9 @@ const ProjectDashboard = () => {
     }
   };
 
+  const handleProjectRestored = () => {
+    fetchProjectsAndCounts();
+  };
   // Update dashboard statistics
   const updateStats = useCallback(() => {
     const totalProjects = projects.length;
@@ -469,21 +474,38 @@ const ProjectDashboard = () => {
 
 
   // Delete project functionality
-  const deleteProject = (id) => {
-    if (window.confirm("Are you sure you want to delete this project?")) {
-      fetch(`http://localhost:8081/api/projects/${id}`, {
+  const [showDeletePopup, setShowDeletePopup] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  
+  const initiateDelete = (id) => {
+    setProjectToDelete(id);
+    setShowDeletePopup(true);
+  };
+  
+  const confirmDelete = () => {
+    if (projectToDelete) {
+      fetch(`http://localhost:8081/api/projects/${projectToDelete}`, {
         method: "DELETE"
       })
         .then(response => response.json())
         .then(result => {
           if (result.success) {
-            setProjects(prev => prev.filter(project => project.project_id !== id)); // ใช้ project_id ถูกต้องแล้ว
+            setProjects(prev => prev.filter(project => project.project_id !== projectToDelete));
           } else {
             console.error("Delete error:", result.error);
           }
         })
-        .catch(error => console.error("Error deleting project:", error));
+        .catch(error => console.error("Error deleting project:", error))
+        .finally(() => {
+          setShowDeletePopup(false);
+          setProjectToDelete(null);
+        });
     }
+  };
+  
+  const cancelDelete = () => {
+    setShowDeletePopup(false);
+    setProjectToDelete(null);
   };
 
   const updateProject = () => {
@@ -753,7 +775,7 @@ const ProjectDashboard = () => {
                     e.preventDefault();
                     e.stopPropagation();
                     console.log("Delete button clicked for project:", project.project_id);
-                    deleteProject(project.project_id);
+                    initiateDelete(project.project_id);
                   }}
                   style={{
                     width: '30px',
@@ -1024,13 +1046,12 @@ const ProjectDashboard = () => {
             )}
             {canDeleteProject(project.project_id) && (
               <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  alert("Deleting project: " + project.title);
-                  console.log("Delete button clicked for project:", project);
-                  deleteProject(project.project_id);
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("Delete button clicked for project:", project.project_id);
+                initiateDelete(project.project_id);
                 }}
                 style={{
                   width: '30px',
@@ -1066,55 +1087,89 @@ const ProjectDashboard = () => {
     }}>
       <style>{fadeInKeyframes}</style>
       <div style={{ maxWidth: '1280px', margin: '0 auto' }}>
-        {/* Header */}
-        <div style={{
+{/* Header */}
+<div style={{
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: '30px',
+  paddingBottom: '20px',
+  borderBottom: '1px solid #eaeaea'
+}}>
+  <div>
+    <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>Projects</h1>
+    <p style={{ color: '#718096', marginTop: '5px', fontSize: '16px' }}>
+      Get an overview of your projects and track progress.
+    </p>
+  </div>
+  
+  <div style={{ display: 'flex', gap: '12px' }}>
+    <button 
+      onClick={() => setShowArchiveModal(true)}
+      style={{
+        backgroundColor: '#4f46e5',
+        color: 'white',
+        border: 'none',
+        padding: '10px 20px',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        fontWeight: 600,
+        fontSize: '15px',
+        transition: 'all 0.2s ease',
+        boxShadow: '0 4px 6px rgba(79, 70, 229, 0.1)',
+        whiteSpace: 'nowrap'
+      }}
+      onMouseOver={(e) => {
+        e.currentTarget.style.backgroundColor = '#4338ca';
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = '0 6px 10px rgba(79, 70, 229, 0.2)';
+      }}
+      onMouseOut={(e) => {
+        e.currentTarget.style.backgroundColor = '#4f46e5';
+        e.currentTarget.style.transform = 'translateY(0)';
+        e.currentTarget.style.boxShadow = '0 4px 6px rgba(79, 70, 229, 0.1)';
+      }}
+    >
+      Archived Projects
+    </button>
+    
+    {canCreateProject() && (
+      <button
+        onClick={openModal}
+        style={{
+          backgroundColor: '#4f46e5',
+          color: 'white',
+          border: 'none',
+          padding: '10px 20px',
+          borderRadius: '8px',
+          cursor: 'pointer',
           display: 'flex',
-          justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: '30px',
-          paddingBottom: '20px',
-          borderBottom: '1px solid #eaeaea'
-        }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>Projects</h1>
-            <p style={{ color: '#718096', marginTop: '5px', fontSize: '16px' }}>
-              Get an overview of your projects and track progress.
-            </p>
-          </div>
-          {canCreateProject() && (
-            <button
-              onClick={openModal}
-              style={{
-                backgroundColor: '#4f46e5',
-                color: 'white',
-                border: 'none',
-                padding: '10px 20px',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                fontWeight: 600,
-                fontSize: '15px',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 4px 6px rgba(79, 70, 229, 0.1)',
-                position: 'relative',
-                overflow: 'hidden'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.backgroundColor = '#4338ca';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 6px 10px rgba(79, 70, 229, 0.2)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.backgroundColor = '#4f46e5';
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 4px 6px rgba(79, 70, 229, 0.1)';
-              }}
-            >
-              + Add Project
-            </button>
-          )}
+          gap: '8px',
+          fontWeight: 600,
+          fontSize: '15px',
+          transition: 'all 0.2s ease',
+          boxShadow: '0 4px 6px rgba(79, 70, 229, 0.1)',
+          whiteSpace: 'nowrap'
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.backgroundColor = '#4338ca';
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = '0 6px 10px rgba(79, 70, 229, 0.2)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.backgroundColor = '#4f46e5';
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = '0 4px 6px rgba(79, 70, 229, 0.1)';
+        }}
+      >
+        + Add Project
+      </button>
+    )}
+  </div>
         </div>
 
         {/* Search and Filters */}
@@ -1606,6 +1661,64 @@ const ProjectDashboard = () => {
           </div>
         </div>
       )}
+      {showDeletePopup && (
+  <div style={{
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000
+  }}>
+    <div style={{
+      backgroundColor: 'white',
+      borderRadius: '8px',
+      padding: '20px',
+      width: '400px',
+      maxWidth: '90%',
+      boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)'
+    }}>
+      <h3 style={{ marginTop: 0 }}>Confirm Deletion</h3>
+      <p>Are you sure you want to delete this project?</p>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'flex-end',
+        gap: '10px',
+        marginTop: '20px'
+      }}>
+        <button 
+          onClick={cancelDelete}
+          style={{
+            padding: '8px 16px',
+            cursor: 'pointer',
+            borderRadius: '4px',
+            border: '1px solid #d9d9d9',
+            backgroundColor: 'white'
+          }}
+        >
+          Cancel
+        </button>
+        <button 
+          onClick={confirmDelete}
+          style={{
+            padding: '8px 16px',
+            cursor: 'pointer',
+            borderRadius: '4px',
+            border: 'none',
+            backgroundColor: '#ff4d4f',
+            color: 'white'
+          }}
+        >
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+)}
       <Snackbar
         open={notification.open}
         autoHideDuration={6000}
@@ -1616,6 +1729,9 @@ const ProjectDashboard = () => {
           {notification.message}
         </Alert>
       </Snackbar>
+      {showArchiveModal && (
+        <ArchiveModal open={showArchiveModal} onClose={() => setShowArchiveModal(false)} onProjectRestored={handleProjectRestored}/>
+      )}
     </div>
   );
 };

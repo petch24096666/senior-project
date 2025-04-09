@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import {
   Box,
   Typography,
   Snackbar,
   Alert,
-  CircularProgress
+  CircularProgress,
+  Button 
 } from "@mui/material";
 import axios from "axios";
 import dayjs from "dayjs";
@@ -20,18 +21,69 @@ import SettingsMenu from "./SettingMenu";
 import RoleManagementModal from "./RoleManagementModal";
 import { useRBAC } from "../../../context/RBAC";
 import './KanbanBoard.css';
+import TaskArchiveModal from './TaskArchiveModal';
 
-const Column = ({
-  projectId,
-  title,
-  tasks,
-  columnName,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onEditTask,
-  onDeleteTask,
-  onAddCard
+// API service to centralize API calls
+const TaskService = {
+  API_BASE_URL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8081",
+
+  async fetchTasks(projectId) {
+    const endpoint = projectId ? `/api/projects/${projectId}/tasks` : "/api/tasks";
+    const response = await axios.get(`${this.API_BASE_URL}${endpoint}`);
+    return response.data;
+  },
+
+  async fetchProject(projectId) {
+    const response = await axios.get(`${this.API_BASE_URL}/api/projects/${projectId}`);
+    return response.data;
+  },
+
+  async saveTask(taskData, projectId) {
+    const apiPayload = {
+      title: taskData.title,
+      description: taskData.description || "",
+      priority: taskData.priority || "low",
+      status: taskData.column || "todo",
+      due_date: taskData.dueDate,
+      project_id: projectId,
+      assignees: taskData.assignees
+    };
+
+    if (taskData.id) {
+      return await axios.put(`${this.API_BASE_URL}/api/tasks/${taskData.id}`, apiPayload);
+    } else {
+      return await axios.post(`${this.API_BASE_URL}/api/tasks`, apiPayload);
+    }
+  },
+
+  async moveTask(taskId, newColumn) {
+    return await axios.patch(`${this.API_BASE_URL}/api/tasks/${taskId}/column`, { 
+      column: newColumn, 
+      status: newColumn 
+    });
+  },
+
+  async updateProjectStatus(projectId) {
+    return await axios.patch(`${this.API_BASE_URL}/api/projects/${projectId}/update-status`);
+  },
+
+  async deleteTask(taskId) {
+    return await axios.delete(`${this.API_BASE_URL}/api/tasks/${taskId}`);
+  }
+};
+
+// Column component normalized
+const Column = ({ 
+  projectId, 
+  title, 
+  tasks, 
+  columnName, 
+  onDragStart, 
+  onDragOver, 
+  onDrop, 
+  onEditTask, 
+  onDeleteTask, 
+  onAddCard 
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -81,6 +133,7 @@ const Column = ({
   );
 };
 
+// Normalized KanbanBoardView with consistent task status handling
 const KanbanBoardView = ({
   projectId,
   tasks,
@@ -89,17 +142,24 @@ const KanbanBoardView = ({
   onAddCard,
   onDeleteTask
 }) => {
-  const todoTasks = tasks.filter(
-    (task) => task.column_status === "todo" || task.column === "todo"
+  // Unified status check function to handle inconsistent data structure
+  const getTaskStatus = (task) => task.column_status || task.column || task.status || "todo";
+
+  // Filter tasks with normalized status check
+  const todoTasks = tasks.filter(task => 
+    getTaskStatus(task) === "todo" && !task.deleted_at
   );
-  const inProgressTasks = tasks.filter(
-    (task) => task.column_status === "inprogress" || task.column === "inprogress"
+  
+  const inProgressTasks = tasks.filter(task => 
+    getTaskStatus(task) === "inprogress" && !task.deleted_at
   );
-  const reviewTasks = tasks.filter(
-    (task) => task.column_status === "review" || task.column === "review"
+  
+  const reviewTasks = tasks.filter(task => 
+    getTaskStatus(task) === "review" && !task.deleted_at
   );
-  const doneTasks = tasks.filter(
-    (task) => task.column_status === "done" || task.column === "done"
+  
+  const doneTasks = tasks.filter(task => 
+    getTaskStatus(task) === "done" && !task.deleted_at
   );
 
   const handleDragStart = (e, taskId) => {
@@ -169,39 +229,98 @@ const KanbanBoardView = ({
   );
 };
 
+// Main KanbanBoard component
 const KanbanBoard = () => {
   const { projectId } = useParams();
-  const { canEditTask, canCreateTask, canMoveTask, canManageRoles } = useRBAC();
+  const { canEditTask, canCreateTask, canMoveTask, canManageRoles,canViewArchiveTask } = useRBAC();
+  
+  // Modal states
   const [showModal, setShowModal] = useState(false);
+  const [showTaskArchiveModal, setShowTaskArchiveModal] = useState(false);
+  const [showRoleManagement, setShowRoleManagement] = useState(false);
+  
+  // Task states
   const [currentTaskId, setCurrentTaskId] = useState(null);
   const [selectedColumn, setSelectedColumn] = useState("todo");
-  const [modalMode, setModalMode] = useState("edit"); // "edit" หรือ "view"
+  const [modalMode, setModalMode] = useState("edit");
+  
+  // Data states
   const [projectTitle, setProjectTitle] = useState("");
   const [tasksData, setTasksData] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [filteredTasks, setFilteredTasks] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  
+  // UI states
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [notification, setNotification] = useState({
-    open: false,
-    message: "",
-    type: "success"
-  });
-
-  const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL || "http://localhost:8081";
-
+  const [searchTerm, setSearchTerm] = useState("");
   const [filters, setFilters] = useState({
     priority: [],
     assignees: [],
     dueDate: "all",
     status: []
   });
-  const [showRoleManagement, setShowRoleManagement] = useState(false);
+  
+  // Notification state
+  const [notification, setNotification] = useState({
+    open: false,
+    message: "",
+    type: "success"
+  });
 
+  // Fetch tasks from API
+  const fetchTasks = useCallback(async () => {
+    if (!projectId) {
+      setError("No project ID provided");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const tasks = await TaskService.fetchTasks(projectId);
+      
+      // Normalize task data structure 
+      const formattedTasks = tasks.map(task => ({
+        ...task,
+        // Ensure consistent column property
+        column: task.column_status || task.status || task.column || "todo"
+      }));
+      
+      setTasksData(formattedTasks);
+      setError(null);
+    } catch (err) {
+      setError("Failed to load tasks. Please try again later.");
+      console.error("Error fetching tasks:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  // Fetch project data
+  const fetchProjectData = useCallback(async () => {
+    if (!projectId) return;
+    
+    try {
+      const response = await TaskService.fetchProject(projectId);
+      if (response.success) {
+        setProjectTitle(response.data.title);
+      }
+    } catch (error) {
+      console.error("Error fetching project details:", error);
+    }
+  }, [projectId]);
+
+  // Initial data loading
+  useEffect(() => {
+    fetchTasks();
+    fetchProjectData();
+  }, [fetchTasks, fetchProjectData]);
+
+  // Apply filters to tasks
   useEffect(() => {
     let result = [...tasksData];
 
+    // Search filter
     if (searchTerm.trim()) {
       const searchTermLower = searchTerm.toLowerCase().trim();
       result = result.filter(
@@ -211,17 +330,20 @@ const KanbanBoard = () => {
       );
     }
 
+    // Priority filter
     if (filters.priority.length > 0) {
       result = result.filter((task) => filters.priority.includes(task.priority));
     }
 
+    // Status filter with normalized status check
     if (filters.status.length > 0) {
       result = result.filter((task) => {
-        const taskStatus = task.column || task.column_status || task.status;
+        const taskStatus = task.column_status || task.column || task.status;
         return filters.status.includes(taskStatus);
       });
     }
 
+    // Due date filter
     if (filters.dueDate !== "all") {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -233,14 +355,13 @@ const KanbanBoard = () => {
       result = result.filter((task) => {
         const dueDate = task.dueDate || task.due_date;
         if (!dueDate) return false;
+        
         const taskDueDate = new Date(dueDate);
+        const taskStatus = task.column_status || task.column || task.status;
+        
         switch (filters.dueDate) {
           case "overdue":
-            return (
-              taskDueDate < today &&
-              task.column !== "done" &&
-              task.column_status !== "done"
-            );
+            return taskDueDate < today && taskStatus !== "done";
           case "today":
             return taskDueDate >= today && taskDueDate < tomorrow;
           case "week":
@@ -253,8 +374,10 @@ const KanbanBoard = () => {
       });
     }
 
+    // Assignee filter
     if (filters.assignees.length > 0) {
       result = result.filter((task) => {
+        // Handle different assignee data structures
         if (task.assignees && Array.isArray(task.assignees)) {
           return task.assignees.some((assignee) =>
             filters.assignees.includes(assignee)
@@ -273,92 +396,30 @@ const KanbanBoard = () => {
     setFilteredTasks(result);
   }, [tasksData, searchTerm, filters]);
 
-  useEffect(() => {
-    if (!projectId) {
-      setError("No project ID provided");
-      setLoading(false);
-      return;
-    }
+  // Notification display
+  const showNotification = useCallback((message, type = "info") => {
+    setNotification({ open: true, message, type });
+  }, []);
 
-    const fetchTasks = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get(
-          `${API_BASE_URL}/api/projects/${projectId}/tasks`
-        );
-        const formattedTasks = response.data.map((task) => ({
-          ...task,
-          column: task.status || task.column_status
-        }));
-        setTasksData(formattedTasks);
-      } catch (err) {
-        setError(err.message || "Failed to fetch tasks");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTasks();
-  }, [projectId]);
-
-  useEffect(() => {
-    if (projectId) {
-      axios
-        .get(`${API_BASE_URL}/api/projects/${projectId}`)
-        .then((response) => {
-          if (response.data.success) {
-            setProjectTitle(response.data.data.title);
-          }
-        })
-        .catch((error) => {
-          console.error("Error fetching project details:", error);
-        });
-    }
-  }, [projectId, API_BASE_URL]);
-
-  const fetchTasks = async () => {
-    try {
-      setLoading(true);
-      let endpoint = "/api/tasks";
-      if (projectId) {
-        endpoint = `/api/projects/${projectId}/tasks`;
-      }
-      const response = await axios.get(`${API_BASE_URL}${endpoint}`);
-      const formattedTasks = response.data.map((task) => ({
-        ...task,
-        column: task.column_status || task.status
-      }));
-      setTasksData(formattedTasks);
-      setError(null);
-    } catch (err) {
-      setError("Failed to load tasks. Please try again later.");
-    } finally {
-      setLoading(false);
-    }
+  const handleCloseNotification = () => {
+    setNotification((prev) => ({ ...prev, open: false }));
   };
 
+  // Task operations
   const saveTask = async (taskData) => {
     try {
       if (!projectId) {
         showNotification("Project ID is required", "error");
         return;
       }
-      const apiPayload = {
-        title: taskData.title,
-        description: taskData.description || "",
-        priority: taskData.priority || "low",
-        status: taskData.column || "todo",
-        due_date: taskData.dueDate,
-        project_id: projectId,
-        assignees: taskData.assignees
-      };
-      if (taskData.id) {
-        await axios.put(`${API_BASE_URL}/api/tasks/${taskData.id}`, apiPayload);
-        showNotification("Task updated successfully", "success");
-      } else {
-        await axios.post(`${API_BASE_URL}/api/tasks`, apiPayload);
-        showNotification("Task created successfully", "success");
-      }
+      
+      await TaskService.saveTask(taskData, projectId);
+      
+      showNotification(
+        taskData.id ? "Task updated successfully" : "Task created successfully", 
+        "success"
+      );
+      
       await fetchTasks();
       setShowModal(false);
     } catch (err) {
@@ -374,8 +435,9 @@ const KanbanBoard = () => {
       showNotification("You do not have permission to move tasks", "error");
       return;
     }
+    
     try {
-      // Optimistic update local tasks state
+      // Optimistic update
       setTasksData(prevTasks =>
         prevTasks.map(task =>
           task.id === taskId
@@ -384,19 +446,18 @@ const KanbanBoard = () => {
         )
       );
       
-      // Call API to update task column
-      await axios.patch(`${API_BASE_URL}/api/tasks/${taskId}/column`, { column: newColumn, status: newColumn });
+      // Update task status
+      await TaskService.moveTask(taskId, newColumn);
       
-      // Call API to update project status
-      await axios.patch(`${API_BASE_URL}/api/projects/${projectId}/update-status`);
+      // Update project status
+      await TaskService.updateProjectStatus(projectId);
       
       // Fetch updated project
-      const projectRes = await axios.get(`${API_BASE_URL}/api/projects/${projectId}`);
-      const updatedProject = projectRes.data.data;
+      await fetchProjectData();
       
       showNotification("Task moved successfully", "success");
     } catch (err) {
-      // Refresh task list on error
+      // Revert on error
       fetchTasks();
       showNotification(
         "Failed to move task: " + (err.response?.data?.error || err.message),
@@ -404,13 +465,10 @@ const KanbanBoard = () => {
       );
     }
   };
-  
-  
-  
 
   const deleteTask = async (taskId) => {
     try {
-      await axios.delete(`${API_BASE_URL}/api/tasks/${taskId}`);
+      await TaskService.deleteTask(taskId);
       showNotification("Task deleted successfully", "success");
       fetchTasks();
     } catch (err) {
@@ -421,41 +479,52 @@ const KanbanBoard = () => {
     }
   };
 
-  const showNotification = (message, type = "info") => {
-    setNotification({ open: true, message, type });
-  };
-
-  const handleCloseNotification = () => {
-    setNotification((prev) => ({ ...prev, open: false }));
-  };
-
-  // เพิ่ม handleTaskClick เพื่อตรวจสอบสิทธิ์ในการแก้ไข task
+  // UI handlers
   const handleTaskClick = (taskId) => {
-    if (canEditTask(projectId)) {
-      setModalMode("edit");
-    } else {
-      setModalMode("view");
-    }
+    setModalMode(canEditTask(projectId) ? "edit" : "view");
     setCurrentTaskId(taskId);
     setShowModal(true);
   };
 
   const addCard = (columnName) => {
-    setSelectedColumn(columnName);
-    setCurrentTaskId(null);
-    // สำหรับผู้ใช้ที่ไม่มีสิทธิ์แก้ไขไม่ควรอนุญาตให้สร้าง task
     if (!canCreateTask(projectId)) {
       showNotification("You do not have permission to create tasks", "error");
       return;
     }
+    
+    setSelectedColumn(columnName);
+    setCurrentTaskId(null);
     setModalMode("edit");
     setShowModal(true);
   };
 
   const getTaskById = (taskId) => {
-    return tasksData.find((task) => task.id === taskId); // Remove parseInt
+    return tasksData.find((task) => task.id === taskId);
   };
 
+  const handleTaskRestored = () => {
+    fetchTasks();
+  };
+
+  const handleClearAllFilters = () => {
+    setFilters({ priority: [], assignees: [], dueDate: "all", status: [] });
+  };
+
+  const handleRemoveFilter = (type, value) => {
+    if (type === "all") {
+      handleClearAllFilters();
+    } else {
+      setFilters((prev) => ({
+        ...prev,
+        [type]:
+          type === "dueDate"
+            ? "all"
+            : prev[type].filter((item) => item !== value)
+      }));
+    }
+  };
+
+  // Error state
   if (error && tasksData.length === 0) {
     return (
       <Box
@@ -463,13 +532,18 @@ const KanbanBoard = () => {
         sx={{ display: "flex", justifyContent: "center", alignItems: "center" }}
       >
         <Typography color="error">{error}</Typography>
-        <button onClick={fetchTasks} style={{ marginLeft: "10px" }}>
+        <Button 
+          variant="contained" 
+          onClick={fetchTasks} 
+          sx={{ marginLeft: "10px" }}
+        >
           Try Again
-        </button>
+        </Button>
       </Box>
     );
   }
 
+  // Loading state
   if (loading && tasksData.length === 0) {
     return (
       <Box
@@ -488,58 +562,91 @@ const KanbanBoard = () => {
 
   return (
     <Box className="kanban-root">
+      {/* Header Section */}
       <header className="header">
-        <div className="header-left">
-          <h1>
-            {projectId
-              ? projectTitle
-                ? `${projectTitle} Kanban Board`
-                : "Loading..."
-              : "My Kanban Board"}
-          </h1>
-        </div>
-        <div className="header-right">
-          <SearchInput
-            value={searchTerm}
-            onChange={setSearchTerm}
-            onClear={() => setSearchTerm("")}
-          />
-          <FilterButton filters={filters} onFilterChange={setFilters} />
-          {canManageRoles(projectId) && (
-            <SettingsMenu onOpenRoleManagement={() => setShowRoleManagement(true)} />
-          )}
-          {canCreateTask(projectId) && (
-            <button
-              onClick={() => {
-                setCurrentTaskId(null);
-                setSelectedColumn("todo");
-                setModalMode("edit");
-                setShowModal(true);
-              }}
-            >
-              + Add New Task
-            </button>
-          )}
-        </div>
-      </header>
+  <div className="header-left">
+    <h1>
+      {projectId
+        ? projectTitle
+          ? `${projectTitle} Kanban Board`
+          : "Loading..."
+        : "My Kanban Board"}
+    </h1>
+  </div>
+  
+  <div className="header-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <SearchInput
+      value={searchTerm}
+      onChange={setSearchTerm}
+      onClear={() => setSearchTerm("")}
+    />
+    {canViewArchiveTask(projectId) && (
+    <Button
+      variant="contained"
+      size="small"
+      onClick={() => setShowTaskArchiveModal(true)}
+      sx={{
+        textTransform: 'none',
+        fontWeight: 500,
+        fontSize: '0.8rem',
+        backgroundColor: '#5e4cd7',
+        color: 'white',
+        '&:hover': {
+          backgroundColor: '#4e3fc5',
+        },
+        borderRadius: '4px',
+        padding: '6px 12px',
+        boxShadow: 'none'
+      }}
+    >
+      View Archived Tasks
+    </Button>
+    )}
+    <FilterButton 
+      filters={filters} 
+      onFilterChange={setFilters} 
+    />
+    {canManageRoles(projectId) && (
+      <SettingsMenu onOpenRoleManagement={() => setShowRoleManagement(true)} />
+    )}
+    
+    {canCreateTask(projectId) && (
+      <Button
+        variant="contained"
+        size="small"
+        onClick={() => {
+          setCurrentTaskId(null);
+          setSelectedColumn("todo");
+          setModalMode("edit");
+          setShowModal(true);
+        }}
+        sx={{
+          textTransform: 'none',
+          fontWeight: 500,
+          fontSize: '0.8rem',
+          backgroundColor: '#5e4cd7',
+          color: 'white',
+          '&:hover': {
+            backgroundColor: '#4e3fc5',
+          },
+          borderRadius: '4px',
+          padding: '6px 12px',
+          boxShadow: 'none'
+        }}
+      >
+        + Add New Task
+      </Button>
+    )}
+  </div>
+</header>
 
+      {/* Active Filters */}
       <ActiveFilterChips
         filters={filters}
-        onRemoveFilter={(type, value) => {
-          if (type === "all") {
-            setFilters({ priority: [], assignees: [], dueDate: "all", status: [] });
-          } else {
-            setFilters((prev) => ({
-              ...prev,
-              [type]:
-                type === "dueDate"
-                  ? "all"
-                  : prev[type].filter((item) => item !== value)
-            }));
-          }
-        }}
+        onRemoveFilter={handleRemoveFilter}
       />
 
+      {/* Kanban Board */}
       <KanbanBoardView
         projectId={projectId} 
         tasks={filteredTasks}
@@ -549,6 +656,7 @@ const KanbanBoard = () => {
         onDeleteTask={deleteTask}
       />
 
+      {/* Task Modal */}
       {showModal && (
         <div className="kanban-modal">
           <div className="modal-content">
@@ -566,7 +674,6 @@ const KanbanBoard = () => {
                 ×
               </button>
             </div>
-
             <TaskModal
               onClose={() => {
                 setShowModal(false);
@@ -580,7 +687,7 @@ const KanbanBoard = () => {
               }
               isEdit={modalMode === "edit"}
               projectId={projectId}
-              modalMode={modalMode} // ส่ง prop นี้ไปให้ TaskModal เพื่อจัดการโหมด view-only ถ้าจำเป็น
+              modalMode={modalMode}
             />
 
             <div className="modal-actions">
@@ -617,6 +724,25 @@ const KanbanBoard = () => {
         </div>
       )}
 
+      {/* Archive Modal */}
+      {showTaskArchiveModal && (
+        <TaskArchiveModal
+          open={showTaskArchiveModal}
+          onClose={() => setShowTaskArchiveModal(false)}
+          projectId={projectId}
+          onTaskRestored={handleTaskRestored}
+        />
+      )}
+
+      {/* Role Management Modal */}
+      <RoleManagementModal
+        open={showRoleManagement}
+        onClose={() => setShowRoleManagement(false)}
+        projectId={projectId}
+        API_BASE_URL={TaskService.API_BASE_URL}
+      />
+
+      {/* Notifications */}
       <Snackbar
         open={notification.open}
         autoHideDuration={6000}
@@ -627,13 +753,6 @@ const KanbanBoard = () => {
           {notification.message}
         </Alert>
       </Snackbar>
-
-      <RoleManagementModal
-        open={showRoleManagement}
-        onClose={() => setShowRoleManagement(false)}
-        projectId={projectId}
-        API_BASE_URL={API_BASE_URL}
-      />
     </Box>
   );
 };

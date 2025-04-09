@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import {
   AppBar,
   Toolbar,
@@ -31,9 +31,12 @@ import ClearAllIcon from "@mui/icons-material/ClearAll";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { supabase } from "../../utils/supabaseClient";
+import { UserContext } from "../../context/Usercontext";  // import context
 
 const TopBar = () => {
   const navigate = useNavigate();
+  const { customUser } = useContext(UserContext); // ดึง customUser จาก context
+
   const [anchorEl, setAnchorEl] = useState(null);
   const [profileAnchorEl, setProfileAnchorEl] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -42,9 +45,8 @@ const TopBar = () => {
 
   const url = import.meta.env.VITE_BACKEND_URL || "http://localhost:8081";
 
-  // Fetch notifications
+  // Fetch notifications (mock data)
   useEffect(() => {
-    // Mock data - in production, replace with API call
     const mockNotifications = [
       { id: 1, message: "New message from John", time: "5 mins ago", type: "message", read: false },
       { id: 2, message: "Project deadline approaching", time: "1 day ago", type: "alert", read: false },
@@ -52,34 +54,11 @@ const TopBar = () => {
       { id: 4, message: "Task 'Update documentation' was assigned to you", time: "3 hours ago", type: "assignment", read: true },
       { id: 5, message: "Jane commented on your task", time: "1 day ago", type: "message", read: true },
     ];
-    
     setNotifications(mockNotifications);
-    
-    // Count unread notifications
     const unread = mockNotifications.filter(notification => !notification.read).length;
     setUnreadCount(unread);
-    
-    // In a real app, you would fetch from an API:
-    // const fetchNotifications = async () => {
-    //   setLoading(true);
-    //   try {
-    //     const authToken = localStorage.getItem("authToken");
-    //     const response = await axios.get(`${url}/api/notifications`, {
-    //       headers: { Authorization: `Bearer ${authToken}` },
-    //     });
-    //     setNotifications(response.data);
-    //     const unread = response.data.filter(notif => !notif.read).length;
-    //     setUnreadCount(unread);
-    //   } catch (error) {
-    //     console.error("Failed to fetch notifications:", error);
-    //   } finally {
-    //     setLoading(false);
-    //   }
-    // };
-    // fetchNotifications();
   }, []);
 
-  // Function to get icon based on notification type
   const getNotificationIcon = (type) => {
     switch (type) {
       case "message":
@@ -95,65 +74,31 @@ const TopBar = () => {
     }
   };
 
-  // Mark notification as read
   const markAsRead = (id) => {
-    // Update local state
-    const updatedNotifications = notifications.map(notif => 
+    const updatedNotifications = notifications.map(notif =>
       notif.id === id ? { ...notif, read: true } : notif
     );
     setNotifications(updatedNotifications);
-    
-    // Update unread count
     const unread = updatedNotifications.filter(notification => !notification.read).length;
     setUnreadCount(unread);
-    
-    // In a real app, update on the server:
-    // try {
-    //   const authToken = localStorage.getItem("authToken");
-    //   await axios.put(`${url}/api/notifications/${id}/read`, {}, {
-    //     headers: { Authorization: `Bearer ${authToken}` },
-    //   });
-    // } catch (error) {
-    //   console.error("Failed to mark notification as read:", error);
-    // }
   };
 
-  // Mark all notifications as read
   const markAllAsRead = () => {
-    const updatedNotifications = notifications.map(notif => ({
-      ...notif,
-      read: true
-    }));
-    
+    const updatedNotifications = notifications.map(notif => ({ ...notif, read: true }));
     setNotifications(updatedNotifications);
     setUnreadCount(0);
-    
-    // In a real app, update on the server:
-    // try {
-    //   const authToken = localStorage.getItem("authToken");
-    //   await axios.put(`${url}/api/notifications/read-all`, {}, {
-    //     headers: { Authorization: `Bearer ${authToken}` },
-    //   });
-    // } catch (error) {
-    //   console.error("Failed to mark all notifications as read:", error);
-    // }
   };
 
-  // Handle notification click
   const handleNotificationClick = (event) => {
     setAnchorEl(event.currentTarget);
   };
 
-  // Close notification menu
   const handleClose = () => {
     setAnchorEl(null);
   };
 
-  // Handle clicking on a notification
   const handleNotificationItemClick = (id, type) => {
     markAsRead(id);
-    
-    // Navigate based on notification type
     switch (type) {
       case "message":
         navigate("/messages");
@@ -168,11 +113,9 @@ const TopBar = () => {
       default:
         break;
     }
-    
     handleClose();
   };
 
-  // Profile dropdown handlers
   const handleProfileClick = (event) => {
     setProfileAnchorEl(event.currentTarget);
   };
@@ -188,20 +131,14 @@ const TopBar = () => {
 
   const handleLogout = async () => {
     try {
-      // Logout from Supabase
       const { error: supabaseError } = await supabase.auth.signOut();
       if (supabaseError) {
         console.error("❌ Supabase Logout Error:", supabaseError);
-      } else {
-        console.log("✅ Supabase Logout Success");
       }
-
-      // Clear all local storage and session data
       localStorage.clear();
       sessionStorage.clear();
       document.cookie = "authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
       console.log("localStorage and session cleared");
-      
       const authToken = localStorage.getItem("authToken");
       if (authToken) {
         try {
@@ -213,17 +150,12 @@ const TopBar = () => {
           console.error("❌ API Logout Error:", apiError);
         }
       }
-
-      // Prevent back navigation after logout
       window.history.pushState(null, "", "/");
       window.history.replaceState(null, "", "/");
       window.onpopstate = () => {
         window.history.pushState(null, "", "/");
       };
-
-      // Redirect to login page
       navigate("/", { replace: true });
-
     } catch (error) {
       console.error("❌ Logout Error:", error);
       alert("Logout failed. Please try again.");
@@ -234,14 +166,37 @@ const TopBar = () => {
   const profileOpen = Boolean(profileAnchorEl);
   const id = open ? "notification-popover" : undefined;
 
-  // Group notifications by date
+  // Group notifications by time
   const todayNotifications = notifications.filter(
     n => n.time.includes("mins") || n.time.includes("hours")
   );
-  
   const earlierNotifications = notifications.filter(
     n => n.time.includes("day") || n.time.includes("week")
   );
+
+  // Function to generate initials for avatar
+  const getInitials = (email) => {
+    if (!email) return "U";
+    const parts = email.split('@')[0].split(/[._-]/);
+    if (parts.length > 1) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return email.substring(0, 2).toUpperCase();
+  };
+
+  // Get display name (username from email or full name if available)
+  const getDisplayName = () => {
+    if (customUser?.name) return customUser.name;
+    if (customUser?.email) {
+      const username = customUser.email.split('@')[0];
+      // Convert username like "john.doe" or "john_doe" to "John Doe"
+      return username
+        .split(/[._-]/)
+        .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+    }
+    return "User";
+  };
 
   return (
     <AppBar
@@ -264,9 +219,50 @@ const TopBar = () => {
             JiraDST
           </Typography>
         </Box>
-
         <Box display="flex" alignItems="center" gap={2}>
-          {/* Notification Button with Badge */}
+          {/* User info with avatar and name/email */}
+{/* User info with avatar and full email */}
+{customUser?.email && (
+  <Box 
+    display="flex" 
+    alignItems="center" 
+    gap={1.5}
+    onClick={handleProfileClick}
+    sx={{
+      padding: "6px 12px",
+      borderRadius: "24px",
+      border: "1px solid #eaeaea",
+      transition: "all 0.2s",
+      cursor: "pointer",
+      '&:hover': {
+        backgroundColor: "#f5f6fa",
+        boxShadow: "0px 1px 3px rgba(0,0,0,0.05)"
+      }
+    }}
+  >
+    <Avatar 
+      sx={{ 
+        width: 32, 
+        height: 32, 
+        bgcolor: "#4F46E5", 
+        fontSize: "14px",
+        fontWeight: "bold" 
+      }}
+    >
+      {getInitials(customUser.email)}
+    </Avatar>
+    <Typography 
+      variant="body2" 
+      sx={{ 
+        color: "#333",
+        fontWeight: 500,
+        display: { xs: 'none', sm: 'block' }  // Hide on mobile
+      }}
+    >
+      {customUser.email}
+    </Typography>
+  </Box>
+)}        
           <Tooltip title="Notifications">
             <IconButton onClick={handleNotificationClick} size="medium">
               <Badge badgeContent={unreadCount} color="error" max={99}>
@@ -274,8 +270,6 @@ const TopBar = () => {
               </Badge>
             </IconButton>
           </Tooltip>
-
-          {/* Notification Popover */}
           <Popover
             id={id}
             open={open}
@@ -296,7 +290,7 @@ const TopBar = () => {
                 maxHeight: "400px",
                 borderRadius: 1,
                 overflow: "hidden",
-              }
+              },
             }}
           >
             <Paper
@@ -306,12 +300,11 @@ const TopBar = () => {
               }}
               elevation={0}
             >
-              {/* Notification Header */}
-              <Box 
-                sx={{ 
-                  px: 2, 
-                  py: 1.5, 
-                  display: "flex", 
+              <Box
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                   borderBottom: "1px solid #eaeaea",
@@ -329,8 +322,6 @@ const TopBar = () => {
                   </Tooltip>
                 )}
               </Box>
-
-              {/* Notification List */}
               {notifications.length === 0 ? (
                 <Box sx={{ p: 3, textAlign: "center" }}>
                   <Typography variant="body2" color="textSecondary">
@@ -340,31 +331,50 @@ const TopBar = () => {
               ) : (
                 <List sx={{ p: 0 }} dense>
                   {todayNotifications.length > 0 && (
-                    <ListSubheader sx={{ backgroundColor: "#f5f5f5", lineHeight: "30px" }}>
+                    <ListSubheader
+                      sx={{ backgroundColor: "#f5f5f5", lineHeight: "30px" }}
+                    >
                       Today
                     </ListSubheader>
                   )}
-                  
                   {todayNotifications.map((notification) => (
                     <ListItemButton
                       key={notification.id}
-                      onClick={() => handleNotificationItemClick(notification.id, notification.type)}
+                      onClick={() =>
+                        handleNotificationItemClick(
+                          notification.id,
+                          notification.type
+                        )
+                      }
                       sx={{
-                        backgroundColor: !notification.read ? "rgba(25, 118, 210, 0.08)" : "transparent",
+                        backgroundColor: !notification.read
+                          ? "rgba(25, 118, 210, 0.08)"
+                          : "transparent",
                         "&:hover": {
-                          backgroundColor: !notification.read ? "rgba(25, 118, 210, 0.12)" : "rgba(0, 0, 0, 0.04)",
+                          backgroundColor: !notification.read
+                            ? "rgba(25, 118, 210, 0.12)"
+                            : "rgba(0, 0, 0, 0.04)",
                         },
                         borderBottom: "1px solid #f0f0f0",
                       }}
                     >
                       <ListItemAvatar>
-                        <Avatar sx={{ bgcolor: notification.read ? "action.selected" : "primary.light" }}>
+                        <Avatar
+                          sx={{
+                            bgcolor: notification.read
+                              ? "action.selected"
+                              : "primary.light",
+                          }}
+                        >
                           {getNotificationIcon(notification.type)}
                         </Avatar>
                       </ListItemAvatar>
                       <ListItemText
                         primary={
-                          <Typography variant="body2" fontWeight={!notification.read ? 600 : 400}>
+                          <Typography
+                            variant="body2"
+                            fontWeight={!notification.read ? 600 : 400}
+                          >
                             {notification.message}
                           </Typography>
                         }
@@ -372,33 +382,51 @@ const TopBar = () => {
                       />
                     </ListItemButton>
                   ))}
-
                   {earlierNotifications.length > 0 && (
-                    <ListSubheader sx={{ backgroundColor: "#f5f5f5", lineHeight: "30px" }}>
+                    <ListSubheader
+                      sx={{ backgroundColor: "#f5f5f5", lineHeight: "30px" }}
+                    >
                       Earlier
                     </ListSubheader>
                   )}
-                  
                   {earlierNotifications.map((notification) => (
                     <ListItemButton
                       key={notification.id}
-                      onClick={() => handleNotificationItemClick(notification.id, notification.type)}
+                      onClick={() =>
+                        handleNotificationItemClick(
+                          notification.id,
+                          notification.type
+                        )
+                      }
                       sx={{
-                        backgroundColor: !notification.read ? "rgba(25, 118, 210, 0.08)" : "transparent",
+                        backgroundColor: !notification.read
+                          ? "rgba(25, 118, 210, 0.08)"
+                          : "transparent",
                         "&:hover": {
-                          backgroundColor: !notification.read ? "rgba(25, 118, 210, 0.12)" : "rgba(0, 0, 0, 0.04)",
+                          backgroundColor: !notification.read
+                            ? "rgba(25, 118, 210, 0.12)"
+                            : "rgba(0, 0, 0, 0.04)",
                         },
                         borderBottom: "1px solid #f0f0f0",
                       }}
                     >
                       <ListItemAvatar>
-                        <Avatar sx={{ bgcolor: notification.read ? "action.selected" : "primary.light" }}>
+                        <Avatar
+                          sx={{
+                            bgcolor: notification.read
+                              ? "action.selected"
+                              : "primary.light",
+                          }}
+                        >
                           {getNotificationIcon(notification.type)}
                         </Avatar>
                       </ListItemAvatar>
                       <ListItemText
                         primary={
-                          <Typography variant="body2" fontWeight={!notification.read ? 600 : 400}>
+                          <Typography
+                            variant="body2"
+                            fontWeight={!notification.read ? 600 : 400}
+                          >
                             {notification.message}
                           </Typography>
                         }
@@ -408,8 +436,6 @@ const TopBar = () => {
                   ))}
                 </List>
               )}
-              
-              {/* View All Link */}
               {notifications.length > 0 && (
                 <Box
                   sx={{
@@ -433,15 +459,6 @@ const TopBar = () => {
               )}
             </Paper>
           </Popover>
-
-          {/* Profile Button */}
-          <Tooltip title="Account">
-            <IconButton onClick={handleProfileClick}>
-              <AccountCircleIcon sx={{ cursor: "pointer", width: "32px", height: "32px", color: "#555" }} />
-            </IconButton>
-          </Tooltip>
-
-          {/* Profile Dropdown Menu */}
           <Menu
             anchorEl={profileAnchorEl}
             open={profileOpen}
@@ -450,14 +467,14 @@ const TopBar = () => {
             transformOrigin={{ vertical: "top", horizontal: "right" }}
             PaperProps={{
               elevation: 3,
-              sx: { 
+              sx: {
                 minWidth: "180px",
                 mt: 0.5,
                 "& .MuiMenuItem-root": {
                   py: 1,
                   px: 2,
                 },
-              }
+              },
             }}
           >
             <MenuItem onClick={handleEditProfile}>Edit Profile</MenuItem>

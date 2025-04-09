@@ -1,8 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useRBAC } from '../../../context/RBAC';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  Typography,
+  IconButton,
+  Divider
+} from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
 
 const TaskCard = ({ projectId,task, onDragStart, onEditTask, onDeleteTask, isDone }) => {
   const { canCreateTask, canEditTask, canDeleteTask, canMoveTask } = useRBAC();
+  const [deleteConfirmation, setDeleteConfirmation] = useState({
+    open: false
+  });
+
   const formatDate = (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
@@ -47,12 +62,23 @@ const TaskCard = ({ projectId,task, onDragStart, onEditTask, onDeleteTask, isDon
     return email.split('@')[0];
   };
 
-  const handleDelete = (e) => {
-    e.stopPropagation();
-    if (window.confirm("Are you sure you want to delete this task?")) {
-      onDeleteTask(task.id);
-    }
-  };
+const initiateDelete = (e) => {
+  e.stopPropagation();
+  setDeleteConfirmation({ open: true });
+};
+
+const confirmDelete = (e) => {
+  if (e) e.stopPropagation();
+  if (onDeleteTask) {
+    onDeleteTask(task.id);
+  }
+  closeDeleteConfirmation();
+};
+
+const closeDeleteConfirmation = (e) => {
+  if (e) e.stopPropagation();
+  setDeleteConfirmation({ open: false });
+};
 
   const assignees = getAssignees();
   const hasAssignees = assignees.length > 0;
@@ -73,7 +99,7 @@ const TaskCard = ({ projectId,task, onDragStart, onEditTask, onDeleteTask, isDon
     >
       <div className="card-actions">
       { canDeleteTask(projectId) && (
-        <button className="btn delete-btn" onClick={handleDelete}>
+        <button className="btn delete-btn" onClick={initiateDelete}>
           🗑️
         </button>
         )}
@@ -115,7 +141,65 @@ const TaskCard = ({ projectId,task, onDragStart, onEditTask, onDeleteTask, isDon
           </span>
         </div>
       </div>
+      <Dialog
+      open={deleteConfirmation.open}
+      onClose={closeDeleteConfirmation}
+      onClick={(e) => e.stopPropagation()}
+      sx={{
+        '& .MuiDialog-paper': {
+          borderRadius: '8px',
+          maxWidth: '400px'
+        }
+      }}
+    >
+      <DialogTitle sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        p: 2
+      }}>
+        <Typography variant="h6" sx={{ fontWeight: 500 }}>
+          Archive Task
+        </Typography>
+        <IconButton onClick={closeDeleteConfirmation} size="small">
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <Divider />
+      <DialogContent sx={{ p: 2 }}>
+        <Typography variant="body1">
+          Are you sure you want to archive this task? You can restore it later from the archive.
+        </Typography>
+      </DialogContent>
+      <Divider />
+      <DialogActions sx={{ p: 1.5, justifyContent: 'space-between' }}>
+        <Button 
+          variant="outlined" 
+          size="small" 
+          onClick={closeDeleteConfirmation}
+          sx={{ 
+            textTransform: 'none',
+            fontWeight: 500
+          }}
+        >
+          Cancel
+        </Button>
+        <Button 
+          variant="contained" 
+          size="small" 
+          color="error"
+          onClick={confirmDelete}
+          sx={{ 
+            textTransform: 'none',
+            fontWeight: 500
+          }}
+        >
+          Archive Task
+        </Button>
+      </DialogActions>
+    </Dialog>
     </div>
+    
   );
 };
 

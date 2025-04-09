@@ -177,18 +177,44 @@ export const updateTaskColumn = async (req, res) => {
 // Delete a task
 export const deleteTask = async (req, res) => {
   try {
-    const id = req.params.id;
-    
-    const [result] = await db.query(Task.deleteTask, [id]);
+    const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: "Task ID is required" });
+    }
+
+    const [result] = await db.query(
+      "UPDATE tasks SET deleted_at = NOW() WHERE id = ?",
+      [id]
+    );
     
     if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Task not found' });
+      return res.status(404).json({ error: "Task not found or already archived" });
     }
     
-    res.status(200).json({ message: 'Task deleted successfully' });
+    return res.status(200).json({ message: "Task archived successfully" });
   } catch (error) {
-    console.error('Error deleting task:', error);
-    res.status(500).json({ error: 'Failed to delete task' });
+    console.error("Error archiving task:", error);
+    return res.status(500).json({ error: "Failed to archive task" });
+  }
+};
+
+
+export const restoreTask = async (req, res) => {
+  try {
+    const id = req.params.id;
+    const [result] = await db.query(
+      "UPDATE tasks SET deleted_at = NULL WHERE id = ?",
+      [id]
+    );
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Task not found" });
+    }
+    
+    res.status(200).json({ message: "Task restored successfully" });
+  } catch (error) {
+    console.error("Error restoring task:", error);
+    res.status(500).json({ error: "Failed to restore task" });
   }
 };
 
@@ -204,3 +230,43 @@ export const getTasksByProject = async (req, res) => {
       res.status(500).json({ error: 'Failed to fetch project tasks' });
     }
   };
+
+  export const purgeTask = async (req, res) => {
+    const { id } = req.params;
+    try {
+      // ตรวจสอบว่ามี task อยู่ในฐานข้อมูลที่ตรงกับ id หรือไม่
+      const [existing] = await db.query("SELECT * FROM tasks WHERE id = ?", [id]);
+      if (!existing.length) {
+        return res.status(404).json({ success: false, error: "Task not found" });
+      }
+  
+      // ลบ task ออกจากฐานข้อมูลอย่างถาวร
+      const [result] = await db.query("DELETE FROM tasks WHERE id = ?", [id]);
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ success: false, error: "Task not found" });
+      }
+      return res.status(200).json({ success: true, message: "Task purged successfully" });
+    } catch (error) {
+      console.error("Error purging task:", error);
+      return res.status(500).json({ success: false, error: "Failed to purge task" });
+    }
+  };
+
+  export const getArchivedTasks = async (req, res) => {
+    try {
+      const projectId = req.query.projectId;
+      if (!projectId) {
+        return res.status(400).json({ success: false, error: "Project ID is required" });
+      }
+      
+      const sql = "SELECT * FROM tasks WHERE project_id = ? AND deleted_at IS NOT NULL";
+      const [rows] = await db.query(sql, [projectId]);
+      
+      return res.status(200).json({ success: true, data: rows });
+    } catch (error) {
+      console.error("Error fetching archived tasks:", error);
+      return res.status(500).json({ success: false, error: "Failed to fetch archived tasks" });
+    }
+  };
+  
+  

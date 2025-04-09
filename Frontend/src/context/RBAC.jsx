@@ -19,7 +19,8 @@ const PERMISSIONS = {
   CREATE_TASK: 'create_task',
   EDIT_TASK: 'edit_task',
   DELETE_TASK: 'delete_task',
-  MOVE_TASK: 'move_task'
+  MOVE_TASK: 'move_task',
+  ARCHIVE_TASK: 'archive_task'
 };
 
 // Permission mapping based on roles
@@ -33,7 +34,8 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.CREATE_TASK,
     PERMISSIONS.EDIT_TASK,
     PERMISSIONS.DELETE_TASK,
-    PERMISSIONS.MOVE_TASK
+    PERMISSIONS.MOVE_TASK,
+    PERMISSIONS.ARCHIVE_TASK
   ],
   [ROLES.EDIT]: [
     PERMISSIONS.VIEW_PROJECT,
@@ -42,7 +44,8 @@ const ROLE_PERMISSIONS = {
     PERMISSIONS.CREATE_TASK,
     PERMISSIONS.EDIT_TASK,
     PERMISSIONS.DELETE_TASK,
-    PERMISSIONS.MOVE_TASK
+    PERMISSIONS.MOVE_TASK,
+    PERMISSIONS.ARCHIVE_TASK
   ],
   [ROLES.VIEW_ONLY]: [
     PERMISSIONS.VIEW_PROJECT,
@@ -223,6 +226,10 @@ export const RBACProvider = ({ children }) => {
     return hasPermission(PERMISSIONS.MOVE_TASK, projectId);
   };
 
+  const canViewArchiveTask = (projectId) => {
+    return hasPermission(PERMISSIONS.ARCHIVE_TASK, projectId);
+  }
+
   return (
     <RBACContext.Provider 
       value={{
@@ -240,7 +247,8 @@ export const RBACProvider = ({ children }) => {
         canEditTask,
         canDeleteTask,
         canMoveTask,
-        fetchProjectRole
+        fetchProjectRole,
+        canViewArchiveTask
       }}
     >
       {children}

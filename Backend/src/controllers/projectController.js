@@ -2,8 +2,14 @@ import db from "../config/database.js";
 import Project from "../models/projectModel.js";
 
 // ดึงข้อมูลโปรเจคทั้งหมดสำหรับ user ที่ล็อกอิน
+// ดึงข้อมูลโปรเจคทั้งหมดสำหรับ user ที่ล็อกอิน
 export const getAllProjects = async (req, res) => {
   const userId = req.query.userId;
+  
+  if (!userId) {
+    return res.status(400).json({ success: false, error: "User ID is required" });
+  }
+  
   try {
     let rows = [];
     if (userId) {
@@ -11,15 +17,18 @@ export const getAllProjects = async (req, res) => {
         SELECT DISTINCT p.*
         FROM projects p
         LEFT JOIN projectmembers pm ON p.project_id = pm.project_id
-        WHERE p.creator_id = ? OR pm.user_id = ?
+        WHERE (p.creator_id = ? OR pm.user_id = ?)
+          AND p.deleted_at IS NULL
       `;
       [rows] = await db.query(sql, [userId, userId]);
     } else {
       [rows] = await db.query(Project.getAllProjects);
     }
+    
     if (rows.length === 0) {
       return res.status(200).json({ success: true, data: [] });
     }
+    
     const projects = rows.map(project => ({
       ...project,
       tasks: project.tasks_completed,
@@ -28,6 +37,7 @@ export const getAllProjects = async (req, res) => {
       startDate: project.start_date,
       team: []
     }));
+    
     return res.status(200).json({ success: true, data: projects });
   } catch (error) {
     console.error("Error fetching projects:", error);
@@ -224,22 +234,50 @@ export const updateProjectStatus = async (req, res) => {
 
 
 // ลบโปรเจค
+// ตัวอย่างสำหรับโปรเจกต์
 export const deleteProject = async (req, res) => {
-  const { project_id } = req.params;   // เปลี่ยนจาก id เป็น project_id
+  const { project_id } = req.params;
   try {
-    const [result] = await db.query(
-      "DELETE FROM projects WHERE project_id = ?",
-      [project_id]
-    );
+    await db.query("UPDATE projects SET deleted_at = NOW() WHERE project_id = ?", [project_id]);
+    return res.status(200).json({ success: true, message: "Project archived successfully" });
+  } catch (error) {
+    console.error("Error archiving project:", error);
+    return res.status(500).json({ success: false, error: "Database error" });
+  }
+};
+
+export const restoreProject = async (req, res) => {
+  const { project_id } = req.params;
+  try {
+    await db.query("UPDATE projects SET deleted_at = NULL WHERE project_id = ?", [project_id]);
+    return res.status(200).json({ success: true, message: "Project restored successfully" });
+  } catch (error) {
+    console.error("Error restoring project:", error);
+    return res.status(500).json({ success: false, error: "Database error" });
+  }
+};
+
+export const purgeProject = async (req, res) => {
+  const { project_id } = req.params;
+  try {
+    // ตรวจสอบว่ามีโปรเจกต์อยู่ในฐานข้อมูลที่ตรงกับ project_id หรือไม่
+    const [existing] = await db.query("SELECT * FROM projects WHERE project_id = ?", [project_id]);
+    if (!existing.length) {
+      return res.status(404).json({ success: false, error: "Project not found" });
+    }
+
+    // ลบโปรเจกต์ออกจากฐานข้อมูลอย่างถาวร
+    const [result] = await db.query("DELETE FROM projects WHERE project_id = ?", [project_id]);
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, error: "Project not found" });
     }
-    return res.status(200).json({ success: true, message: "Project deleted successfully" });
+    return res.status(200).json({ success: true, message: "Project purged successfully" });
   } catch (error) {
-    console.error("Database delete error:", error);
-    return res.status(500).json({ success: false, error: "Database delete error" });
+    console.error("Error purging project:", error);
+    return res.status(500).json({ success: false, error: "Failed to purge project" });
   }
 };
+
 
 export const getProjectTaskCounts = async (req, res) => {
   const userId = req.query.userId;
@@ -304,6 +342,27 @@ export const updateProjectUserRole = async (req, res) => {
   } catch (error) {
     console.error("Error updating user role:", error);
     return res.status(500).json({ success: false, error: "เกิดข้อผิดพลาดของฐานข้อมูล" });
+  }
+};
+
+export const getArchivedProjects = async (req, res) => {
+  const userId = req.query.userId;
+  if (!userId) {
+    return res.status(400).json({ success: false, error: "User ID is required" });
+  }
+  try {
+    const sql = `
+      SELECT DISTINCT p.*
+      FROM projects p
+      LEFT JOIN projectmembers pm ON p.project_id = pm.project_id
+      WHERE p.deleted_at IS NOT NULL
+        AND (p.creator_id = ? OR (pm.user_id = ? AND pm.role = 'admin'))
+    `;
+    const [rows] = await db.query(sql, [userId, userId]);
+    return res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Error fetching archived projects:", error);
+    return res.status(500).json({ success: false, error: "Failed to fetch archived projects" });
   }
 };
 
