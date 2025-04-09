@@ -1,67 +1,255 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { UserContext } from '../../../context/Usercontext';
+import axios from 'axios';
 
 const Dashboard = () => {
-  // State สำหรับวันที่ active ใน calendar
+  const navigate = useNavigate();
+  const ctx = useContext(UserContext);
+  const currentUserId = ctx?.customUser?.user_id;
+  const currentUserEmail = ctx?.customUser?.email;
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [projects, setProjects] = useState([
-    { 
-      id: 1, 
-      name: 'Website Redesign', 
-      status: 'In Progress', 
-      progress: 65, 
-      dueDate: '2025-04-15',
-      team: [
-        { id: 1, name: 'Sarah Miller', avatar: '/api/placeholder/30/30' },
-        { id: 2, name: 'John Cooper', avatar: '/api/placeholder/30/30' },
-        { id: 3, name: 'Alex Wong', avatar: '/api/placeholder/30/30' }
-      ]
-    },
-    { 
-      id: 2, 
-      name: 'Mobile App Design', 
-      status: 'Planning', 
-      progress: 25, 
-      dueDate: '2025-05-10',
-      team: [
-        { id: 2, name: 'John Cooper', avatar: '/api/placeholder/30/30' },
-        { id: 4, name: 'Maria Garcia', avatar: '/api/placeholder/30/30' }
-      ]
-    },
-    { 
-      id: 3, 
-      name: 'API Integration', 
-      status: 'Completed', 
-      progress: 100, 
-      dueDate: '2025-03-22',
-      team: [
-        { id: 5, name: 'David Kim', avatar: '/api/placeholder/30/30' },
-        { id: 1, name: 'Sarah Miller', avatar: '/api/placeholder/30/30' }
-      ]
-    }
-  ]);
-  
-  const [activities, setActivities] = useState([
-    { id: 1, user: 'Sarah Miller', action: 'completed the task', subject: 'Update homepage hero section', time: '2 hours ago' },
-    { id: 2, user: 'John Cooper', action: 'added a comment on', subject: 'Mobile App Design', time: '4 hours ago' },
-    { id: 3, user: 'Alex Wong', action: 'created a new task', subject: 'API Documentation', time: '1 day ago' },
-    { id: 4, user: 'Maria Garcia', action: 'updated the status of', subject: 'User Testing', time: '2 days ago' }
-  ]);
-  
-  const [upcomingTasks, setUpcomingTasks] = useState([
-    { id: 1, title: 'Review design system documentation', priority: 'High', dueDate: '2025-03-31', completed: false },
-    { id: 2, title: 'Team meeting - Sprint planning', priority: 'Medium', dueDate: '2025-04-01', completed: false },
-    { id: 3, title: 'Complete user flow diagrams', priority: 'Medium', dueDate: '2025-04-02', completed: false },
-    { id: 4, title: 'Finalize API specifications', priority: 'High', dueDate: '2025-04-03', completed: false }
-  ]);
+  const [projects, setProjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState({
+    totalProjects: 0,
+    completedTasks: '0/0',
+    highPriorityCount: 0,
+    dueThisWeek: 0,
 
-  // State สำหรับ hover effect ต่างๆ
+  });
+  const [taskStats, setTaskStats] = useState({
+    activeTasksCount: 0,
+    completedTasksCount: 0,
+    totalTasksCount: 0
+  });
+  const [myTasks, setMyTasks] = useState([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
   const [hoveredRow, setHoveredRow] = useState(null);
-  const [hoveredActivity, setHoveredActivity] = useState(null);
-  const [hoveredTask, setHoveredTask] = useState(null);
   const [hoveredCard, setHoveredCard] = useState(null);
   const [hoveredDay, setHoveredDay] = useState(null);
 
-  // ฟังก์ชันสำหรับนำทาง calendar
+
+  const processTeamData = (team) => {
+    if (!team) return [];
+    const getInitials = (nameOrEmail) => {
+      if (!nameOrEmail) return '?';
+      if (nameOrEmail.includes('@')) {
+        const username = nameOrEmail.split('@')[0];
+        const initials = username
+          .split(/[^a-zA-Z]/)
+          .filter(part => part.length > 0)
+          .map(part => part[0].toUpperCase())
+          .slice(0, 2)
+          .join('');
+
+        return initials || username[0]?.toUpperCase() || '?';
+      }
+      const parts = nameOrEmail.split(/\s+/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      return nameOrEmail[0]?.toUpperCase() || '?';
+    };
+    if (Array.isArray(team)) {
+      return team.map(member => {
+        const email = typeof member === 'object' ? member.email : member;
+        const name = typeof member === 'object' ? (member.name || member.email) : member;
+
+        return {
+          id: email,
+          name: name,
+          initials: getInitials(name),
+        };
+      });
+    }
+    if (typeof team === 'string') {
+      return team.split(',').map(email => ({
+        id: email.trim(),
+        name: email.trim(),
+        initials: getInitials(email.trim()),
+      }));
+    }
+    if (typeof team === 'object' && team !== null) {
+      return Object.values(team).map(member => {
+        const email = typeof member === 'object' ? member.email : member;
+        const name = typeof member === 'object' ? (member.name || member.email) : member;
+
+        return {
+          id: email,
+          name: name,
+          initials: getInitials(name),
+        };
+      });
+    }
+    return [];
+  };
+
+  const fetchProjectsAndCounts = useCallback(async () => {
+    if (!currentUserId) return;
+
+    try {
+      setLoading(true);
+      const projRes = await axios.get(`${API_BASE_URL}/api/dashboard?userId=${currentUserId}`);
+      const projectsData = projRes.data.data.map(p => {
+        return {
+          ...p,
+          id: p.project_id,
+          name: p.title,
+          status: p.status || 'In Progress',
+          progress: 0,
+          dueDate: p.due_date ? p.due_date.split(' ')[0] : '',
+          startdate: p.start_date ? p.start_date.split(' ')[0] : '',
+          tasks: 0,
+          totalTasks: 0,
+          // Use the safe team processing function
+          team: processTeamData(p.team)
+        };
+      });
+
+      const countsRes = await axios.get(`${API_BASE_URL}/api/projects/taskCounts?userId=${currentUserId}`);
+      const counts = countsRes.data.data;
+
+      const merged = projectsData.map(p => {
+        const c = counts.find(x => x.project_id === p.project_id);
+        const totalTasks = c?.totalTasks || 0;
+        const tasksCompleted = c?.tasksCompleted || 0;
+        const progress = totalTasks > 0 ? Math.round((tasksCompleted / totalTasks) * 100) : 0;
+
+        return {
+          ...p,
+          totalTasks,
+          tasks: tasksCompleted,
+          progress
+        };
+      });
+      setProjects(merged);
+      updateStats(merged);
+    } catch (err) {
+      console.error("Error fetching projects:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUserId, API_BASE_URL]);
+
+  const fetchMyTasks = useCallback(async () => {
+    if (!currentUserEmail) return;
+    
+    try {
+      setLoadingTasks(true);      
+      const res = await axios.get(`${API_BASE_URL}/api/dashboard/assigned-tasks?userEmail=${currentUserEmail}`);
+      if (res.data.success) {
+        const formattedTasks = res.data.data.map(task => ({
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          status: task.status,
+          priority: task.priority || 'Medium',
+          dueDate: task.due_date,
+          projectId: task.project_id,
+          projectName: task.project_name || 'Unknown Project'
+        }));
+        
+        setMyTasks(formattedTasks);
+      } else {
+        console.warn("API call successful but returned error:", res.data.error);
+      }
+    } catch (error) {
+      console.error("Error fetching my tasks:", error);
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [API_BASE_URL, currentUserEmail]);
+  
+  useEffect(() => {
+    if (currentUserEmail) {
+      fetchMyTasks();
+      const intervalId = setInterval(fetchMyTasks, 30000);
+      return () => clearInterval(intervalId);
+    }
+  }, [currentUserEmail, fetchMyTasks]);
+
+  const goToTask = (projectId) => {
+    navigate(`/task/${projectId}`);
+  };
+
+  // Update dashboard statistics
+  const updateStats = useCallback((projectsData) => {
+    const totalProjects = projectsData.length;
+    const completedTasks = projectsData.reduce((sum, project) => sum + (project.tasks || 0), 0);
+    const totalTasks = projectsData.reduce((sum, project) => sum + (project.totalTasks || 0), 0);
+    const completedTasksString = `${completedTasks}/${totalTasks}`;
+
+    const highPriorityCount = projectsData.filter(project => project.priority === 'high').length;
+
+    const today = new Date();
+    const oneWeekLater = new Date(today);
+    oneWeekLater.setDate(today.getDate() + 7);
+    const dueThisWeek = projectsData.filter(project => {
+      const dueDate = new Date(project.dueDate);
+      return dueDate >= today && dueDate <= oneWeekLater;
+    }).length;
+
+    setStats({
+      totalProjects,
+      completedTasks: completedTasksString,
+      highPriorityCount,
+      dueThisWeek
+    });
+  }, []);
+
+  // Fetch projects on component mount
+  useEffect(() => {
+    if (currentUserId) {
+      fetchProjectsAndCounts();
+      const intervalId = setInterval(fetchProjectsAndCounts, 30000);
+      return () => clearInterval(intervalId);
+    }
+  }, [currentUserId, fetchProjectsAndCounts]);
+
+  const fetchActiveTasksCount = useCallback(async () => {
+    if (!currentUserEmail) return;
+    try {
+
+      const res = await axios.get(`${API_BASE_URL}/api/dashboard/active-tasks?userEmail=${currentUserEmail}`);
+
+      if (res.data.success) {
+        const data = res.data.data;
+        const totalTasks = data.totalTasks || 0;
+        const tasksCompleted = data.completedTasks || 0; // Note: check if this field name matches your API
+        const activeTasks = data.activeTasks || 0; // Get activeTasks directly from API
+
+        // Update the separate task stats state
+        const newTaskStats = {
+          activeTasksCount: activeTasks,
+          completedTasksCount: tasksCompleted,
+          totalTasksCount: totalTasks
+        };
+        setTaskStats(newTaskStats);
+      } else {
+        console.warn("API call successful but returned error:", res.data.error);
+      }
+    } catch (error) {
+      console.error("Error fetching active tasks count:", error);
+      console.error("Error details:", {
+        message: error.message,
+        response: error.response?.data
+      });
+    }
+  }, [API_BASE_URL, currentUserEmail]);
+
+  // ตัวอย่างการเรียกใช้งาน fetchActiveTasksCount พร้อมกับการเรียกข้อมูล projects ที่มีอยู่แล้ว
+  useEffect(() => {
+    if (currentUserEmail) {
+      fetchActiveTasksCount();
+      const intervalId = setInterval(fetchActiveTasksCount, 30000);
+      return () => clearInterval(intervalId);
+    }
+  }, [currentUserEmail, fetchActiveTasksCount]);
+
+
+  // Calendar navigation functions
   const nextMonth = () => {
     const date = new Date(currentMonth);
     date.setMonth(date.getMonth() + 1);
@@ -74,56 +262,55 @@ const Dashboard = () => {
     setCurrentMonth(date);
   };
 
-  // ฟังก์ชันสำหรับแสดงชื่อเดือนและปี
+  // Format month and year
   const formatMonthYear = (date) => {
     return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   };
 
-  // ฟังก์ชันสำหรับรับวันที่ในเดือน
+  // Get days in month for calendar
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayOfMonth = new Date(year, month, 1).getDay();
-    
+
     const daysArray = [];
-    // เพิ่ม cell ว่างสำหรับวันที่ก่อนวันที่ 1 ของเดือน
+    // Add empty cells for days before the 1st of the month
     for (let i = 0; i < firstDayOfMonth; i++) {
       daysArray.push({ day: '', date: null });
     }
-    // เพิ่มวันในเดือน
+    // Add days in month
     for (let i = 1; i <= daysInMonth; i++) {
       const dateObj = new Date(year, month, i);
-      daysArray.push({ 
-        day: i, 
+      daysArray.push({
+        day: i,
         date: dateObj,
         isToday: new Date().toDateString() === dateObj.toDateString(),
-        hasEvent: i === 15 || i === 22 || i === 29 // ตัวอย่าง dummy event
+        hasEvent: i === 15 || i === 22 || i === 29 // Example events
       });
     }
     return daysArray;
   };
 
-  // ฟังก์ชันสำหรับ toggle task completion
-  const toggleTaskCompletion = (taskId) => {
-    setUpcomingTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId ? { ...task, completed: !task.completed } : task
-      )
-    );
-  };
-
-  // ฟังก์ชันสำหรับ trigger OAuth flow (placeholder) เพื่อเชื่อมต่อกับ Google Calendar
+  // Calendar integration placeholder functions
   const connectGoogleCalendar = () => {
     console.log("Trigger OAuth flow for Google Calendar");
-    // นำไปต่อยอดเรียก OAuth flow สำหรับ Google Calendar
   };
 
-  // ฟังก์ชันสำหรับ trigger OAuth flow (placeholder) เพื่อเชื่อมต่อกับ Microsoft Calendar
   const connectMicrosoftCalendar = () => {
     console.log("Trigger OAuth flow for Microsoft Calendar");
-    // นำไปต่อยอดเรียก OAuth flow สำหรับ Microsoft Calendar
   };
+
+  // Navigate to project page
+  const goToProjectsPage = () => {
+    navigate('/projects');
+  };
+
+  // Navigate to specific project
+  const goToProject = (projectId) => {
+    navigate(`/task/${projectId}`);
+  };
+
 
   return (
     <div style={{
@@ -133,21 +320,21 @@ const Dashboard = () => {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
       <header style={{ marginBottom: '24px' }}>
-        <h1 style={{ 
-          fontSize: '24px', 
-          fontWeight: 700, 
+        <h1 style={{
+          fontSize: '24px',
+          fontWeight: 700,
           marginBottom: '8px',
           color: '#111827'
         }}>Welcome back!</h1>
-        <p style={{ 
-          color: '#6b7280', 
-          margin: 0 
+        <p style={{
+          color: '#6b7280',
+          margin: 0
         }}>Here's what's happening with your projects today.</p>
       </header>
-      
-      {/* ปุ่มสำหรับเชื่อมต่อ Calendar */}
+
+      {/* Calendar Connection Buttons */}
       <div style={{ marginBottom: '24px', display: 'flex', gap: '16px' }}>
-        <button 
+        <button
           onClick={connectGoogleCalendar}
           style={{
             padding: '8px 16px',
@@ -163,7 +350,7 @@ const Dashboard = () => {
         >
           Connect Google Calendar
         </button>
-        <button 
+        <button
           onClick={connectMicrosoftCalendar}
           style={{
             padding: '8px 16px',
@@ -180,24 +367,29 @@ const Dashboard = () => {
           Connect Microsoft Calendar
         </button>
       </div>
-      
-      <div style={{ 
+
+      <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
         gap: '16px',
         marginBottom: '24px'
       }}>
         {/* Project Stats */}
-        <div style={{ 
-          backgroundColor: 'white',
-          borderRadius: '8px',
-          boxShadow: hoveredCard === 'projects' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)',
-          padding: '16px',
-          transition: 'box-shadow 0.3s ease-in-out'
-        }}
-        onMouseEnter={() => setHoveredCard('projects')}
-        onMouseLeave={() => setHoveredCard(null)}>
-          <div style={{ 
+        <div
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            boxShadow: hoveredCard === 'projects' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)',
+            padding: '16px',
+            transition: 'box-shadow 0.3s ease-in-out, transform 0.3s',
+            transform: hoveredCard === 'projects' ? 'translateY(-4px)' : 'translateY(0)',
+            cursor: 'pointer'
+          }}
+          onMouseEnter={() => setHoveredCard('projects')}
+          onMouseLeave={() => setHoveredCard(null)}
+          onClick={goToProjectsPage}
+        >
+          <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -206,7 +398,7 @@ const Dashboard = () => {
             fontWeight: 500
           }}>
             <span>Total Projects</span>
-            <div style={{ 
+            <div style={{
               width: '40px',
               height: '40px',
               backgroundColor: '#e6f7ff',
@@ -220,32 +412,33 @@ const Dashboard = () => {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline' }}>
-            <h2 style={{ 
+            <h2 style={{
               fontSize: '28px',
               fontWeight: 700,
               margin: 0,
               marginRight: '12px'
-            }}>{projects.length}</h2>
-            <span style={{ 
+            }}>{stats.totalProjects}</h2>
+            <span style={{
               fontSize: '12px',
               padding: '4px 8px',
               borderRadius: '16px',
               backgroundColor: '#dcfce7',
               color: '#16a34a'
-            }}>↑ 12% from last month</span>
+            }}>View Projects Page</span>
           </div>
         </div>
-        
-        <div style={{ 
+        {/* Active Tasks Card */}
+        <div style={{
           backgroundColor: 'white',
           borderRadius: '8px',
           boxShadow: hoveredCard === 'tasks' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)',
           padding: '16px',
-          transition: 'box-shadow 0.3s ease-in-out'
+          transition: 'box-shadow 0.3s ease-in-out, transform 0.3s',
+          transform: hoveredCard === 'tasks' ? 'translateY(-4px)' : 'translateY(0)'
         }}
-        onMouseEnter={() => setHoveredCard('tasks')}
-        onMouseLeave={() => setHoveredCard(null)}>
-          <div style={{ 
+          onMouseEnter={() => setHoveredCard('tasks')}
+          onMouseLeave={() => setHoveredCard(null)}>
+          <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -254,7 +447,7 @@ const Dashboard = () => {
             fontWeight: 500
           }}>
             <span>Active Tasks</span>
-            <div style={{ 
+            <div style={{
               width: '40px',
               height: '40px',
               backgroundColor: '#f3e8ff',
@@ -267,33 +460,58 @@ const Dashboard = () => {
               <span role="img" aria-label="clock">⏰</span>
             </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'baseline' }}>
-            <h2 style={{ 
+          <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: '8px' }}>
+            <h2 style={{
               fontSize: '28px',
               fontWeight: 700,
               margin: 0,
               marginRight: '12px'
-            }}>{upcomingTasks.length}</h2>
-            <span style={{ 
+            }}>{taskStats.activeTasksCount}</h2>
+            <span style={{
               fontSize: '12px',
               padding: '4px 8px',
               borderRadius: '16px',
-              backgroundColor: '#dcfce7',
-              color: '#16a34a'
-            }}>↑ 8% from last week</span>
+              backgroundColor: '#f3e8ff',
+              color: '#9333ea'
+            }}>Tasks in Progress</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{
+              fontSize: '14px',
+              color: '#6b7280',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <span>Completed: </span>
+              <span style={{
+                color: '#16a34a',
+                fontWeight: 500
+              }}>{taskStats.completedTasksCount || 0}</span>
+            </div>
+            <div style={{
+              fontSize: '14px',
+              color: '#6b7280',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <span>Total: </span>
+              <span style={{ fontWeight: 500 }}>{taskStats.totalTasksCount || 0}</span>
+            </div>
           </div>
         </div>
-        
-        <div style={{ 
+
+        <div style={{
           backgroundColor: 'white',
           borderRadius: '8px',
           boxShadow: hoveredCard === 'calendar' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)',
           padding: '16px',
           transition: 'box-shadow 0.3s ease-in-out'
         }}
-        onMouseEnter={() => setHoveredCard('calendar')}
-        onMouseLeave={() => setHoveredCard(null)}>
-          <div style={{ 
+          onMouseEnter={() => setHoveredCard('calendar')}
+          onMouseLeave={() => setHoveredCard(null)}>
+          <div style={{
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -306,8 +524,8 @@ const Dashboard = () => {
               {formatMonthYear(currentMonth)}
             </span>
             <div style={{ display: 'flex', gap: '4px' }}>
-              <button 
-                onClick={prevMonth} 
+              <button
+                onClick={prevMonth}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -323,8 +541,8 @@ const Dashboard = () => {
                 onMouseEnter={() => setHoveredDay('prev')}
                 onMouseLeave={() => setHoveredDay(null)}
               >◀</button>
-              <button 
-                onClick={nextMonth} 
+              <button
+                onClick={nextMonth}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -342,15 +560,15 @@ const Dashboard = () => {
               >▶</button>
             </div>
           </div>
-          
+
           <div style={{ marginTop: '8px' }}>
-            <div style={{ 
+            <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(7, 1fr)',
               gap: '4px'
             }}>
               {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
-                <div key={i} style={{ 
+                <div key={i} style={{
                   textAlign: 'center',
                   padding: '6px',
                   fontSize: '12px',
@@ -361,16 +579,16 @@ const Dashboard = () => {
                 </div>
               ))}
             </div>
-            
-            <div style={{ 
+
+            <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(7, 1fr)',
               gap: '4px'
             }}>
               {getDaysInMonth(currentMonth).map((day, i) => (
-                <div 
-                  key={i} 
-                  style={{ 
+                <div
+                  key={i}
+                  style={{
                     textAlign: 'center',
                     padding: '6px',
                     position: 'relative',
@@ -385,7 +603,7 @@ const Dashboard = () => {
                   onMouseLeave={() => setHoveredDay(null)}
                 >
                   {day.day}
-                  {day.hasEvent && <div style={{ 
+                  {day.hasEvent && <div style={{
                     position: 'absolute',
                     width: '4px',
                     height: '4px',
@@ -401,47 +619,52 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
-      
+
       {/* Projects Table */}
-      <div style={{ 
+      <div style={{
         backgroundColor: 'white',
         borderRadius: '8px',
         boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
         marginBottom: '24px'
       }}>
-        <div style={{ 
+        <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '16px',
           borderBottom: '1px solid #e5e7eb'
         }}>
-          <h2 style={{ 
+          <h2 style={{
             fontSize: '18px',
             fontWeight: 700,
             margin: 0
           }}>Recent Projects</h2>
-          <button style={{ 
-            backgroundColor: '#eff6ff',
-            color: '#3b82f6',
-            border: 'none',
-            padding: '4px 12px',
-            borderRadius: '16px',
-            fontSize: '12px',
-            cursor: 'pointer',
-            transition: 'background-color 0.2s'
-          }}>View All</button>
+          <button
+            onClick={goToProjectsPage}
+            style={{
+              backgroundColor: '#eff6ff',
+              color: '#3b82f6',
+              border: 'none',
+              padding: '4px 12px',
+              borderRadius: '16px',
+              fontSize: '12px',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s'
+            }}
+          >
+            View All
+          </button>
         </div>
-        
+
         {projects.length > 0 ? (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ 
+            <table style={{
               width: '100%',
               borderCollapse: 'collapse'
             }}>
               <thead>
                 <tr>
-                  <th style={{ 
+                  <th style={{
                     textAlign: 'left',
                     padding: '12px 16px',
                     fontWeight: 500,
@@ -449,7 +672,7 @@ const Dashboard = () => {
                     backgroundColor: '#f9fafb',
                     borderBottom: '1px solid #e5e7eb'
                   }}>Project Name</th>
-                  <th style={{ 
+                  <th style={{
                     textAlign: 'left',
                     padding: '12px 16px',
                     fontWeight: 500,
@@ -457,7 +680,7 @@ const Dashboard = () => {
                     backgroundColor: '#f9fafb',
                     borderBottom: '1px solid #e5e7eb'
                   }}>Status</th>
-                  <th style={{ 
+                  <th style={{
                     textAlign: 'left',
                     padding: '12px 16px',
                     fontWeight: 500,
@@ -465,7 +688,7 @@ const Dashboard = () => {
                     backgroundColor: '#f9fafb',
                     borderBottom: '1px solid #e5e7eb'
                   }}>Progress</th>
-                  <th style={{ 
+                  <th style={{
                     textAlign: 'left',
                     padding: '12px 16px',
                     fontWeight: 500,
@@ -473,7 +696,7 @@ const Dashboard = () => {
                     backgroundColor: '#f9fafb',
                     borderBottom: '1px solid #e5e7eb'
                   }}>Due Date</th>
-                  <th style={{ 
+                  <th style={{
                     textAlign: 'left',
                     padding: '12px 16px',
                     fontWeight: 500,
@@ -484,9 +707,9 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {projects.map((project) => (
-                  <tr 
-                    key={project.id} 
+                {projects.slice(0, 3).map((project) => (
+                  <tr
+                    key={project.id}
                     style={{
                       transition: 'background-color 0.2s',
                       backgroundColor: hoveredRow === project.id ? '#f9fafb' : 'transparent',
@@ -494,40 +717,41 @@ const Dashboard = () => {
                     }}
                     onMouseEnter={() => setHoveredRow(project.id)}
                     onMouseLeave={() => setHoveredRow(null)}
+                    onClick={() => goToProject(project.project_id)}
                   >
-                    <td style={{ 
+                    <td style={{
                       padding: '16px',
                       borderBottom: '1px solid #e5e7eb',
                       fontWeight: 500
                     }}>{project.name}</td>
-                    <td style={{ 
+                    <td style={{
                       padding: '16px',
                       borderBottom: '1px solid #e5e7eb'
                     }}>
-                      <span style={{ 
+                      <span style={{
                         display: 'inline-block',
                         padding: '4px 8px',
                         borderRadius: '16px',
                         fontSize: '12px',
                         fontWeight: 500,
-                        backgroundColor: project.status === 'In Progress' ? '#e6f7ff' : 
-                                        project.status === 'Planning' ? '#f3e8ff' : 
-                                        project.status === 'Completed' ? '#dcfce7' : 
-                                        project.status === 'On Hold' ? '#fef9c3' : '#f3f4f6',
-                        color: project.status === 'In Progress' ? '#0072e5' : 
-                              project.status === 'Planning' ? '#9333ea' : 
-                              project.status === 'Completed' ? '#16a34a' : 
-                              project.status === 'On Hold' ? '#ca8a04' : '#4b5563'
+                        backgroundColor: project.status === 'inprogress' ? '#e6f7ff' :
+                          project.status === 'planning' ? '#f3e8ff' :
+                            project.status === 'done' ? '#dcfce7' :
+                              project.status === 'review' ? '#fef9c3' : '#f3f4f6',
+                        color: project.status === 'inprogress' ? '#0072e5' :
+                          project.status === 'planning' ? '#9333ea' :
+                            project.status === 'done' ? '#16a34a' :
+                              project.status === 'review' ? '#ca8a04' : '#4b5563'
                       }}>
                         {project.status}
                       </span>
                     </td>
-                    <td style={{ 
+                    <td style={{
                       padding: '16px',
                       borderBottom: '1px solid #e5e7eb'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <div style={{ 
+                        <div style={{
                           height: '6px',
                           width: '100%',
                           backgroundColor: '#e5e7eb',
@@ -535,78 +759,83 @@ const Dashboard = () => {
                           marginRight: '8px',
                           overflow: 'hidden'
                         }}>
-                          <div style={{ 
+                          <div style={{
                             height: '100%',
                             width: `${project.progress}%`,
                             borderRadius: '3px',
-                            backgroundColor: project.progress < 30 ? '#ef4444' : 
-                                            project.progress < 70 ? '#f59e0b' : '#10b981'
+                            backgroundColor: project.progress < 30 ? '#ef4444' :
+                              project.progress < 70 ? '#f59e0b' : '#10b981'
                           }}></div>
                         </div>
-                        <span style={{ 
+                        <span style={{
                           fontSize: '14px',
                           color: '#4b5563'
                         }}>{project.progress}%</span>
                       </div>
                     </td>
-                    <td style={{ 
+                    <td style={{
                       padding: '16px',
                       borderBottom: '1px solid #e5e7eb'
                     }}>
-                      {new Date(project.dueDate).toLocaleDateString('en-US', { 
-                        month: 'short', 
+                      {project.dueDate ? new Date(project.dueDate).toLocaleDateString('en-US', {
+                        month: 'short',
                         day: 'numeric',
                         year: 'numeric'
-                      })}
+                      }) : 'No due date'}
                     </td>
-                    <td style={{ 
+                    <td style={{
                       padding: '16px',
                       borderBottom: '1px solid #e5e7eb'
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center' }}>
-                        {project.team.slice(0, 3).map((member, index) => (
-                          <div 
-                            key={member.id} 
-                            style={{ 
-                              width: '32px',
-                              height: '32px',
-                              borderRadius: '50%',
-                              backgroundColor: '#e5e7eb',
-                              border: '2px solid white',
-                              overflow: 'hidden',
-                              position: 'relative',
-                              zIndex: project.team.length - index,
-                              marginLeft: index > 0 ? '-8px' : '0'
-                            }}
-                          >
-                            <img 
-                              src={member.avatar} 
-                              alt={member.name} 
-                              style={{ 
-                                width: '100%',
-                                height: '100%',
-                                objectFit: 'cover'
-                              }} 
-                            />
-                          </div>
-                        ))}
-                        {project.team.length > 3 && (
-                          <div style={{ 
-                            width: '32px',
-                            height: '32px',
-                            borderRadius: '50%',
-                            backgroundColor: '#e5e7eb',
-                            border: '2px solid white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: '#4b5563',
-                            fontSize: '12px',
-                            fontWeight: 500,
-                            marginLeft: '-8px'
-                          }}>
-                            +{project.team.length - 3}
-                          </div>
+                        {Array.isArray(project.team) && project.team.length > 0 ? (
+                          <>
+                            {project.team.slice(0, 3).map((member, index) => (
+                              <div
+                                key={member.id}
+                                style={{
+                                  width: '32px',
+                                  height: '32px',
+                                  borderRadius: '50%',
+                                  backgroundColor: '#e5e7eb',  // You can also randomize this color based on the initials
+                                  border: '2px solid white',
+                                  overflow: 'hidden',
+                                  position: 'relative',
+                                  zIndex: project.team.length - index,
+                                  marginLeft: index > 0 ? '-8px' : '0',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '12px',
+                                  fontWeight: 'bold',
+                                  color: '#4b5563'
+                                }}
+                                title={member.name}
+                              >
+                                {member.initials || '?'}
+                              </div>
+                            ))}
+                            {project.team.length > 3 && (
+                              <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                backgroundColor: '#e5e7eb',
+                                border: '2px solid white',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#4b5563',
+                                fontSize: '12px',
+                                fontWeight: 500,
+                                marginLeft: '-8px'
+                              }}>
+                                +{project.team.length - 3}
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span style={{ color: '#9ca3af', fontSize: '14px' }}>No team members</span>
                         )}
                       </div>
                     </td>
@@ -616,187 +845,282 @@ const Dashboard = () => {
             </table>
           </div>
         ) : (
-          <div style={{ 
+          <div style={{
             padding: '32px',
             textAlign: 'center',
             color: '#6b7280'
           }}>
-            <p>No projects available</p>
+            {loading ? (
+              <p>Loading projects...</p>
+            ) : (
+              <div>
+                <p>No projects available</p>
+                <button
+                  onClick={goToProjectsPage}
+                  style={{
+                    marginTop: '16px',
+                    padding: '8px 16px',
+                    backgroundColor: '#2563EB',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Create Your First Project
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
-      
-      <div style={{ 
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(450px, 1fr))',
-        gap: '16px'
+
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        marginBottom: '24px'
       }}>
-        {/* Activity Feed */}
-        <div style={{ 
-          backgroundColor: 'white',
-          borderRadius: '8px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-          height: '100%'
-        }}>
-          <div style={{ 
-            padding: '16px',
-            borderBottom: '1px solid #e5e7eb'
-          }}>
-            <h2 style={{ 
-              fontSize: '18px',
-              fontWeight: 700,
-              margin: 0
-            }}>Recent Activity</h2>
-          </div>
-          
-          <ul style={{ 
-            listStyle: 'none',
-            padding: 0,
-            margin: 0
-          }}>
-            {activities.map((activity, index) => (
-              <li 
-                key={activity.id} 
-                style={{ 
-                  padding: '12px 16px',
-                  transition: 'background-color 0.2s',
-                  backgroundColor: hoveredActivity === activity.id ? '#f9fafb' : 'transparent'
-                }}
-                onMouseEnter={() => setHoveredActivity(activity.id)}
-                onMouseLeave={() => setHoveredActivity(null)}
-              >
-                <div style={{ 
+{/* My Tasks - Styled to match Recent Projects */}
+<div style={{
+  backgroundColor: 'white',
+  borderRadius: '8px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+  marginBottom: '24px'
+}}>
+  <div style={{
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '16px',
+    borderBottom: '1px solid #e5e7eb'
+  }}>
+    <h2 style={{
+      fontSize: '18px',
+      fontWeight: 700,
+      margin: 0
+    }}>My Tasks</h2>
+    <a
+      href="#"
+      onClick={(e) => { e.preventDefault(); goToProjectsPage(); }}
+      style={{
+        color: '#3b82f6',
+        fontSize: '14px',
+        textDecoration: 'none',
+        fontWeight: 500
+      }}
+    >
+      View All
+    </a>
+  </div>
+  
+  {loadingTasks ? (
+    <div style={{ 
+      padding: '24px', 
+      textAlign: 'center',
+      color: '#6b7280' 
+    }}>
+      Loading your tasks...
+    </div>
+  ) : myTasks.length > 0 ? (
+    <div style={{ overflowX: 'auto' }}>
+      <table style={{
+        width: '100%',
+        borderCollapse: 'collapse',
+        tableLayout: 'fixed' /* Added fixed layout */
+      }}>
+        <thead>
+          <tr>
+            <th style={{
+              width: '25%', /* Added width */
+              textAlign: 'left',
+              padding: '12px 16px',
+              fontWeight: 500,
+              color: '#4b5563',
+              backgroundColor: '#f9fafb',
+              borderBottom: '1px solid #e5e7eb'
+            }}>Task Name</th>
+            <th style={{
+              width: '25%', /* Added width */
+              textAlign: 'left',
+              padding: '12px 16px',
+              fontWeight: 500,
+              color: '#4b5563',
+              backgroundColor: '#f9fafb',
+              borderBottom: '1px solid #e5e7eb'
+            }}>Project Name</th>
+            <th style={{
+              width: '15%', /* Added width */
+              textAlign: 'center', /* Changed to center */
+              padding: '12px 16px',
+              fontWeight: 500,
+              color: '#4b5563',
+              backgroundColor: '#f9fafb',
+              borderBottom: '1px solid #e5e7eb'
+            }}>Priority</th>
+            <th style={{
+              width: '15%', /* Added width */
+              textAlign: 'center', /* Changed to center */
+              padding: '12px 16px',
+              fontWeight: 500,
+              color: '#4b5563',
+              backgroundColor: '#f9fafb',
+              borderBottom: '1px solid #e5e7eb'
+            }}>Task Status</th>
+            <th style={{
+              width: '20%', /* Added width */
+              textAlign: 'left',
+              padding: '12px 16px',
+              fontWeight: 500,
+              color: '#4b5563',
+              backgroundColor: '#f9fafb',
+              borderBottom: '1px solid #e5e7eb'
+            }}>Due Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {myTasks.map((task) => (
+            <tr
+                    key={task.id}
+                    style={{
+                      transition: 'background-color 0.2s',
+                      backgroundColor: hoveredRow === task.id ? '#f9fafb' : 'transparent',
+                      cursor: 'pointer'
+                    }}
+                    onMouseEnter={() => setHoveredRow(task.id)}
+                    onMouseLeave={() => setHoveredRow(null)}
+                    onClick={() => goToTask(task.projectId)}
+                  >
+              <td style={{
+                width: '25%', /* Added width */
+                padding: '16px',
+                borderBottom: '1px solid #e5e7eb',
+                fontWeight: 500,
+                color: task.status === 'completed' || task.status === 'done' ? '#9ca3af' : '#111827',
+                textDecoration: task.status === 'completed' || task.status === 'done' ? 'line-through' : 'none'
+              }}>
+                {task.title}
+              </td>
+              <td style={{
+                width: '25%', /* Added width */
+                padding: '16px',
+                borderBottom: '1px solid #e5e7eb',
+                color: '#6b7280',
+                fontSize: '14px'
+              }}>
+                <div style={{
                   display: 'flex',
-                  flexDirection: 'column',
+                  alignItems: 'center',
                   gap: '4px'
                 }}>
-                  <div style={{ 
+                  <span role="img" aria-label="folder" style={{ fontSize: '14px' }}>📁</span>
+                  {task.projectName}
+                </div>
+              </td>
+              <td style={{
+                width: '15%', /* Added width */
+                padding: '16px',
+                borderBottom: '1px solid #e5e7eb',
+                textAlign: 'center'
+              }}>
+                <span style={{
+                  display: 'inline-block',
+                  padding: '4px 8px',
+                  borderRadius: '16px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  backgroundColor: task.priority === 'High' || task.priority === 'high' ? '#fee2e2' :
+                    task.priority === 'Medium' || task.priority === 'medium' ? '#fef9c3' :
+                      task.priority === 'Low' || task.priority === 'low' ? '#dcfce7' : '#f3f4f6',
+                  color: task.priority === 'High' || task.priority === 'high' ? '#dc2626' :
+                    task.priority === 'Medium' || task.priority === 'medium' ? '#ca8a04' :
+                      task.priority === 'Low' || task.priority === 'low' ? '#16a34a' : '#4b5563'
+                }}>
+                  {task.priority}
+                </span>
+              </td>
+              <td style={{
+                width: '15%', /* Added width */
+                padding: '16px',
+                borderBottom: '1px solid #e5e7eb',
+                textAlign: 'center'
+              }}>
+                <span style={{
+                  display: 'inline-block',
+                  padding: '4px 8px',
+                  borderRadius: '16px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  backgroundColor: 
+                    task.status === 'To Do' || task.status === 'todo' ? '#f3f4f6' :
+                    task.status === 'In Progress' || task.status === 'inprogress' ? '#fef9c3' :
+                    task.status === 'Review' || task.status === 'review' ? '#e6f7ff' :
+                    task.status === 'Done' || task.status === 'done' ? '#dcfce7' : 
+                    '#f3f4f6',
+                  color: 
+                    task.status === 'To Do' || task.status === 'todo' ? '#6b7280' :
+                    task.status === 'In Progress' || task.status === 'inprogress' ? '#ca8a04' :
+                    task.status === 'Review' || task.status === 'review' ? '#0072e5' :
+                    task.status === 'Done' || task.status === 'done' ? '#16a34a' : 
+                    '#4b5563'
+                }}>
+                  {task.status}
+                </span>
+              </td>
+              <td style={{
+                width: '20%', /* Added width */
+                padding: '16px',
+                borderBottom: '1px solid #e5e7eb',
+                color: '#6b7280',
+                fontSize: '14px'
+              }}>
+                {task.dueDate && (
+                  <div style={{
                     display: 'flex',
-                    flexWrap: 'wrap',
+                    alignItems: 'center',
                     gap: '4px'
                   }}>
-                    <span style={{ fontWeight: 500 }}>{activity.user}</span>
-                    <span style={{ color: '#6b7280' }}>{activity.action}</span>
-                    <span style={{ 
-                      fontWeight: 500,
-                      color: '#2563eb',
-                      cursor: 'pointer',
-                      textDecoration: hoveredActivity === activity.id ? 'underline' : 'none'
-                    }}>{activity.subject}</span>
-                  </div>
-                  <div style={{ 
-                    fontSize: '12px',
-                    color: '#9ca3af'
-                  }}>{activity.time}</div>
-                </div>
-                {index < activities.length - 1 && (
-                  <div style={{ 
-                    marginTop: '12px',
-                    borderBottom: '1px solid #e5e7eb'
-                  }}></div>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-        
-        {/* Upcoming Tasks */}
-        <div style={{ 
-          backgroundColor: 'white',
-          borderRadius: '8px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-          height: '100%'
-        }}>
-          <div style={{ 
-            padding: '16px',
-            borderBottom: '1px solid #e5e7eb'
-          }}>
-            <h2 style={{ 
-              fontSize: '18px',
-              fontWeight: 700,
-              margin: 0
-            }}>Upcoming Tasks</h2>
-          </div>
-          
-          <ul style={{ 
-            listStyle: 'none',
-            padding: 0,
-            margin: 0
-          }}>
-            {upcomingTasks.map((task, index) => (
-              <li 
-                key={task.id} 
-                style={{ 
-                  padding: '12px 16px',
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  transition: 'background-color 0.2s',
-                  backgroundColor: hoveredTask === task.id ? '#f9fafb' : 'transparent'
-                }}
-                onMouseEnter={() => setHoveredTask(task.id)}
-                onMouseLeave={() => setHoveredTask(null)}
-              >
-                <input 
-                  type="checkbox" 
-                  checked={task.completed}
-                  onChange={() => toggleTaskCompletion(task.id)}
-                  style={{ 
-                    marginTop: '3px',
-                    marginRight: '12px'
-                  }}
-                />
-                
-                <div style={{ flex: 1 }}>
-                  <div style={{ 
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '4px'
-                  }}>
-                    <span style={{ 
-                      fontWeight: 500,
-                      textDecoration: task.completed ? 'line-through' : 'none',
-                      color: task.completed ? '#9ca3af' : 'inherit'
-                    }}>
-                      {task.title}
-                    </span>
-                    <span style={{ 
-                      display: 'inline-block',
-                      padding: '4px 8px',
-                      borderRadius: '16px',
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      backgroundColor: task.priority === 'High' ? '#fee2e2' : 
-                                      task.priority === 'Medium' ? '#fef9c3' : 
-                                      task.priority === 'Low' ? '#dcfce7' : '#f3f4f6',
-                      color: task.priority === 'High' ? '#dc2626' : 
-                            task.priority === 'Medium' ? '#ca8a04' : 
-                            task.priority === 'Low' ? '#16a34a' : '#4b5563'
-                    }}>
-                      {task.priority}
-                    </span>
-                  </div>
-                  
-                  <div style={{ 
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontSize: '12px',
-                    color: '#9ca3af',
-                    marginTop: '4px'
-                  }}>
-                    <span role="img" aria-label="calendar" style={{ fontSize: '16px' }}>📅</span>
-                    Due {new Date(task.dueDate).toLocaleDateString('en-US', { 
-                      month: 'short', 
+                    <span role="img" aria-label="calendar" style={{ fontSize: '14px' }}>📅</span>
+                    Due {new Date(task.dueDate).toLocaleDateString('en-US', {
+                      month: 'short',
                       day: 'numeric'
                     })}
                   </div>
-                </div>
-                
-              </li>
-            ))}
-          </ul>
-        </div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  ) : (
+    <div style={{ 
+      padding: '32px', 
+      textAlign: 'center',
+      color: '#6b7280' 
+    }}>
+      <p>You don't have any assigned tasks</p>
+      <button
+        onClick={goToProjectsPage}
+        style={{
+          marginTop: '8px',
+          padding: '8px 16px',
+          backgroundColor: '#2563EB',
+          color: 'white',
+          border: 'none',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: 600,
+          cursor: 'pointer'
+        }}
+      >
+        Browse Projects
+      </button>
+    </div>
+  )}
+</div>
       </div>
     </div>
   );
