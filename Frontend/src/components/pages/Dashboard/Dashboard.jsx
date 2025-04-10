@@ -88,7 +88,7 @@ const Dashboard = () => {
 
   const fetchProjectsAndCounts = useCallback(async () => {
     if (!currentUserId) return;
-
+  
     try {
       setLoading(true);
       const projRes = await axios.get(`${API_BASE_URL}/api/dashboard?userId=${currentUserId}`);
@@ -100,23 +100,22 @@ const Dashboard = () => {
           status: p.status || 'In Progress',
           progress: 0,
           dueDate: p.due_date ? p.due_date.split(' ')[0] : '',
-          startdate: p.start_date ? p.start_date.split(' ')[0] : '',
+          startdate: p.start_date ? p.start_date.split(' ')[0] : '', // ใช้เป็นวันที่สร้าง
           tasks: 0,
           totalTasks: 0,
-          // Use the safe team processing function
           team: processTeamData(p.team)
         };
       });
-
+  
       const countsRes = await axios.get(`${API_BASE_URL}/api/projects/taskCounts?userId=${currentUserId}`);
       const counts = countsRes.data.data;
-
+  
       const merged = projectsData.map(p => {
         const c = counts.find(x => x.project_id === p.project_id);
         const totalTasks = c?.totalTasks || 0;
         const tasksCompleted = c?.tasksCompleted || 0;
         const progress = totalTasks > 0 ? Math.round((tasksCompleted / totalTasks) * 100) : 0;
-
+  
         return {
           ...p,
           totalTasks,
@@ -124,6 +123,10 @@ const Dashboard = () => {
           progress
         };
       });
+  
+      // เรียงลำดับ projects โดยใช้วันที่ใน property startdate (ใหม่สุดก่อน)
+      merged.sort((a, b) => new Date(b.startdate) - new Date(a.startdate));
+  
       setProjects(merged);
       updateStats(merged);
     } catch (err) {
@@ -132,6 +135,7 @@ const Dashboard = () => {
       setLoading(false);
     }
   }, [currentUserId, API_BASE_URL]);
+  
 
   const fetchMyTasks = useCallback(async () => {
     if (!currentUserEmail) return;

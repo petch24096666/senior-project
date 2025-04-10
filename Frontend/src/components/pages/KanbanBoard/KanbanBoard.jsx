@@ -22,6 +22,8 @@ import RoleManagementModal from "./RoleManagementModal";
 import { useRBAC } from "../../../context/RBAC";
 import './KanbanBoard.css';
 import TaskArchiveModal from './TaskArchiveModal';
+import { useContext } from 'react';
+import { UserContext } from '../../../context/Usercontext';
 
 // API service to centralize API calls
 const TaskService = {
@@ -232,8 +234,8 @@ const KanbanBoardView = ({
 // Main KanbanBoard component
 const KanbanBoard = () => {
   const { projectId } = useParams();
-  const { canEditTask, canCreateTask, canMoveTask, canManageRoles,canViewArchiveTask } = useRBAC();
-  
+  const { canEditTask, canCreateTask, canMoveTask, canManageRoles,canViewArchiveTask} = useRBAC();
+  const { customUser } = useContext(UserContext);
   // Modal states
   const [showModal, setShowModal] = useState(false);
   const [showTaskArchiveModal, setShowTaskArchiveModal] = useState(false);
@@ -688,6 +690,7 @@ const KanbanBoard = () => {
               isEdit={modalMode === "edit"}
               projectId={projectId}
               modalMode={modalMode}
+              currentUser={customUser}
             />
 
             <div className="modal-actions">

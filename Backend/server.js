@@ -7,6 +7,7 @@ import db from "./src/config/database.js";
 import { google } from "googleapis";
 import taskRoutes from "./src/routes/taskRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
+import commentRoutes from "./src/routes/commentRoutes.js"
 
 dotenv.config();
 
@@ -22,7 +23,7 @@ app.use(cors({
 app.use(userRoutes);
 app.use(projectRoutes);
 app.use(taskRoutes);
-
+app.use('/api', commentRoutes);
 // Mount dashboardRoutes ด้วย prefix "/api/projects/dashboard"
 // จากนั้น URL ที่ใช้จะเป็น http://localhost:8081/api/projects/dashboard?userId=xxx
 app.use("/api/dashboard", dashboardRoutes);
