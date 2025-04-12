@@ -4,10 +4,10 @@ import dotenv from "dotenv";
 import projectRoutes from "./src/routes/projectRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import db from "./src/config/database.js";
-import { google } from "googleapis";
 import taskRoutes from "./src/routes/taskRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
-import commentRoutes from "./src/routes/commentRoutes.js"
+import commentRoutes from "./src/routes/commentRoutes.js";
+import zoomRoutes from "./src/routes/zoomAuth.js";
 
 dotenv.config();
 
@@ -27,6 +27,7 @@ app.use('/api', commentRoutes);
 // Mount dashboardRoutes ด้วย prefix "/api/projects/dashboard"
 // จากนั้น URL ที่ใช้จะเป็น http://localhost:8081/api/projects/dashboard?userId=xxx
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/zoom", zoomRoutes);
 
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
@@ -41,5 +42,5 @@ app.use("/api/dashboard", dashboardRoutes);
 
 const PORT = process.env.PORT || 8081;
 app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`)
 });

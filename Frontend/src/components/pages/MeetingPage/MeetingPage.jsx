@@ -1,854 +1,420 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import './MeetingPage.css';
+import { 
+  Calendar, 
+  Clock, 
+  Video, 
+  Link2, 
+  Check, 
+  ChevronDown, 
+  MessageCircle,
+  AlertCircle,
+  Users,
+  Bell,
+  Repeat,
+  Loader
+} from 'lucide-react';
 
-const MeetingApp = () => {
-  // State for managing meetings
-  const [meetings, setMeetings] = useState([
+// Configuration Constants
+const MEETING_CONFIGURATIONS = {
+  platforms: [
     { 
-      id: 1, 
-      title: 'Weekly Team Standup', 
-      date: '2025-03-29', 
-      startTime: '09:00', 
-      endTime: '09:30',
-      participants: ['Jessica Williams', 'Michael Chen', 'Sarah Johnson'],
-      description: 'Regular team sync to discuss progress and blockers',
-      meetingCode: 'MEET-4321'
+      id: 'zoom', 
+      name: 'Zoom', 
+      icon: '🖥️', 
+      description: 'Best for large meetings' 
     },
     { 
-      id: 2, 
-      title: 'Product Review', 
-      date: '2025-03-29', 
-      startTime: '13:00', 
-      endTime: '14:00',
-      participants: ['David Miller', 'Emily Davis', 'Jessica Williams'],
-      description: 'Review the latest product features and gather feedback',
-      meetingCode: 'MEET-8765'
+      id: 'webex', 
+      name: 'Webex', 
+      icon: '🌐', 
+      description: 'Cisco enterprise solution' 
     },
     { 
-      id: 3, 
-      title: 'Client Presentation', 
-      date: '2025-03-30', 
-      startTime: '11:00', 
-      endTime: '12:00',
-      participants: ['Sarah Johnson', 'Michael Chen'],
-      description: 'Present the new website design to the client',
-      meetingCode: 'MEET-9876'
+      id: 'teams', 
+      name: 'Microsoft Teams', 
+      icon: '👥', 
+      description: 'Integrated with Office 365' 
+    },
+    { 
+      id: 'meet', 
+      name: 'Google Meet', 
+      icon: '🎥', 
+      description: 'Simple Google integration' 
     }
-  ]);
-  
-  // State for create meeting form
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newMeeting, setNewMeeting] = useState({
+  ],
+  frequencies: [
+    { value: 'once', label: 'One-time Meeting' },
+    { value: 'daily', label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' }
+  ],
+  reminders: [
+    { value: '15', label: '15 minutes before' },
+    { value: '30', label: '30 minutes before' },
+    { value: '60', label: '1 hour before' },
+    { value: '120', label: '2 hours before' }
+  ],
+  durations: [
+    { value: '15', label: '15 minutes' },
+    { value: '30', label: '30 minutes' },
+    { value: '45', label: '45 minutes' },
+    { value: '60', label: '1 hour' },
+    { value: '90', label: '1.5 hours' },
+    { value: '120', label: '2 hours' }
+  ]
+};
+
+// Main Meeting Scheduler Component
+const MeetingScheduler = () => {
+  // State Management
+  const [meetingDetails, setMeetingDetails] = useState({
     title: '',
     date: '',
-    startTime: '',
-    endTime: '',
-    participants: '',
-    description: ''
+    time: '',
+    duration: '60',
+    platform: '',
+    frequency: 'once',
+    reminderTime: '15',
+    description: '',
+    participants: ''
   });
-  
-  // State for join meeting popup
-  const [showJoinPopup, setShowJoinPopup] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
-  const [activeTab, setActiveTab] = useState('upcoming');
-  const [showMeetingDetails, setShowMeetingDetails] = useState(null);
-  
-  // Handle form input changes
-  const handleInputChange = (e) => {
+
+  const [validationErrors, setValidationErrors] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formTouched, setFormTouched] = useState(false);
+
+  // Set default date to today
+  useEffect(() => {
+    const meetingDefaultday = new Date();
+    const meetingDefaultTime = new Date();
+    const formattedDate = meetingDefaultday.toISOString().split('T')[0];
+    const formattedTime = meetingDefaultTime.toTimeString().slice(0, 5);   // HH:mm
+    setMeetingDetails(prev => ({
+      ...prev,
+      date: formattedDate,
+      time: formattedTime
+    }));
+  }, []);
+
+  // Validation Logic
+  const validateForm = useCallback(() => {
+    const errors = {};
+    
+    if (!meetingDetails.title.trim()) {
+      errors.title = 'Meeting title is required';
+    }
+    
+    if (!meetingDetails.date) {
+      errors.date = 'Date is required';
+    } else {
+      const selectedDate = new Date(meetingDetails.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (selectedDate < today) {
+        errors.date = 'Date cannot be in the past';
+      }
+    }
+    
+    if (!meetingDetails.time) {
+      errors.time = 'Time is required';
+    }
+    
+    if (!meetingDetails.platform) {
+      errors.platform = 'Please select a meeting platform';
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  }, [meetingDetails]);
+
+  // Event Handlers
+  const handleInputChange = useCallback((e) => {
     const { name, value } = e.target;
-    setNewMeeting({
-      ...newMeeting,
+    setMeetingDetails(prev => ({
+      ...prev,
       [name]: value
-    });
-  };
-  
-  // Create new meeting
-  const handleCreateMeeting = (e) => {
+    }));
+    setFormTouched(true);
+  }, []);
+
+  const handlePlatformSelect = useCallback((platformId) => {
+    setMeetingDetails(prev => ({
+      ...prev,
+      platform: platformId
+    }));
+    setFormTouched(true);
+  }, []);
+
+  const handleSubmit = useCallback((e) => {
     e.preventDefault();
     
-    // Generate random meeting code
-    const meetingCode = 'MEET-' + Math.floor(1000 + Math.random() * 9000);
-    
-    const participantList = newMeeting.participants
-      .split(',')
-      .map(p => p.trim())
-      .filter(p => p !== '');
-    
-    const createdMeeting = {
-      id: meetings.length + 1,
-      title: newMeeting.title,
-      date: newMeeting.date,
-      startTime: newMeeting.startTime,
-      endTime: newMeeting.endTime,
-      participants: participantList,
-      description: newMeeting.description,
-      meetingCode: meetingCode
-    };
-    
-    setMeetings([...meetings, createdMeeting]);
-    
-    // Reset form
-    setNewMeeting({
-      title: '',
-      date: '',
-      startTime: '',
-      endTime: '',
-      participants: '',
-      description: ''
-    });
-    
-    setShowCreateForm(false);
-    
-    // Show meeting details of the newly created meeting
-    setShowMeetingDetails(createdMeeting);
-  };
-  
-  // Join meeting
-  const handleJoinMeeting = () => {
-    const meeting = meetings.find(m => m.meetingCode === joinCode);
-    
-    if (meeting) {
-      setShowJoinPopup(false);
-      setShowMeetingDetails(meeting);
-    } else {
-      alert('Meeting not found. Please check the code and try again.');
-    }
-  };
-  
-  // Get today's date in YYYY-MM-DD format
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Filter meetings based on active tab
-  const filteredMeetings = meetings.filter(meeting => {
-    if (activeTab === 'upcoming') {
-      return new Date(meeting.date) >= new Date(today);
-    } else if (activeTab === 'past') {
-      return new Date(meeting.date) < new Date(today);
-    }
-    return true;
-  });
-  
-  // Format date for display
-  const formatDate = (dateString) => {
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
-  };
-  
-  return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      height: '100vh', 
-      fontFamily: 'Arial, sans-serif' 
-    }}>
-      {/* Header */}
-      <header style={{ 
-        backgroundColor: '#3b82f6', 
-        color: 'white', 
-        padding: '16px 24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <h1 style={{ margin: 0, fontSize: '24px' }}>MeetingMaster</h1>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button 
-            style={{
-              backgroundColor: 'white',
-              color: '#3b82f6',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '8px 16px',
-              fontWeight: 'bold',
-              cursor: 'pointer'
-            }}
-            onClick={() => setShowJoinPopup(true)}
-          >
-            Join Meeting
-          </button>
-          <button 
-            style={{
-              backgroundColor: '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '8px 16px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px'
-            }}
-            onClick={() => setShowCreateForm(true)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Create Meeting
-          </button>
-        </div>
-      </header>
+    if (validateForm()) {
+      setIsSubmitting(true);
       
-      {/* Main Content */}
-      <main style={{ 
-        flex: 1, 
-        padding: '20px', 
-        backgroundColor: '#f5f7fb',
-        overflow: 'auto'
-      }}>
-        {/* Tabs */}
-        <div style={{ 
-          display: 'flex', 
-          borderBottom: '1px solid #e5e7eb', 
-          marginBottom: '20px' 
-        }}>
-          <button 
-            style={{
-              padding: '10px 16px',
-              backgroundColor: activeTab === 'upcoming' ? '#3b82f6' : 'transparent',
-              color: activeTab === 'upcoming' ? 'white' : '#4b5563',
-              border: 'none',
-              borderRadius: '4px 4px 0 0',
-              fontWeight: 'bold',
-              cursor: 'pointer'
-            }}
-            onClick={() => setActiveTab('upcoming')}
-          >
-            Upcoming Meetings
-          </button>
-          <button 
-            style={{
-              padding: '10px 16px',
-              backgroundColor: activeTab === 'past' ? '#3b82f6' : 'transparent',
-              color: activeTab === 'past' ? 'white' : '#4b5563',
-              border: 'none',
-              borderRadius: '4px 4px 0 0',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              marginLeft: '5px'
-            }}
-            onClick={() => setActiveTab('past')}
-          >
-            Past Meetings
-          </button>
-        </div>
+      // Simulate API call or processing
+      setTimeout(() => {
+        console.log('Meeting submitted:', meetingDetails);
+        setIsSubmitting(false);
         
-        {/* Meeting List */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: '20px'
-        }}>
-          {filteredMeetings.map(meeting => (
-            <div 
-              key={meeting.id} 
-              style={{
-                backgroundColor: 'white',
-                borderRadius: '8px',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-                padding: '16px',
-                cursor: 'pointer'
-              }}
-              onClick={() => setShowMeetingDetails(meeting)}
+        // Show success message (in a real app, you would use a toast notification)
+        alert('Meeting successfully scheduled!');
+        
+        // Reset form
+        setMeetingDetails({
+          title: '',
+          date: new Date().toISOString().split('T')[0],
+          time: '',
+          duration: '60',
+          platform: '',
+          frequency: 'once',
+          reminderTime: '15',
+          description: '',
+          participants: ''
+        });
+        setFormTouched(false);
+      }, 1500);
+    }
+  }, [validateForm, meetingDetails]);
+
+  // Form validation on touched fields
+  useEffect(() => {
+    if (formTouched) {
+      validateForm();
+    }
+  }, [meetingDetails, formTouched, validateForm]);
+
+  // Memoized Rendering Helpers
+  const PlatformOptions = useMemo(() => 
+    MEETING_CONFIGURATIONS.platforms.map((platform) => (
+      <div 
+        key={platform.id}
+        className={`platform-card ${
+          meetingDetails.platform === platform.id ? 'selected' : ''
+        }`}
+        onClick={() => handlePlatformSelect(platform.id)}
+      >
+        <div className="platform-icon">{platform.icon}</div>
+        <div className="platform-details">
+          <span className="platform-name">{platform.name}</span>
+          <span className="platform-description">
+            {platform.description}
+          </span>
+        </div>
+      </div>
+    )), 
+    [meetingDetails.platform, handlePlatformSelect]
+  );
+
+  // Format meeting duration for display
+  const formattedDuration = useMemo(() => {
+    const duration = MEETING_CONFIGURATIONS.durations.find(
+      d => d.value === meetingDetails.duration
+    );
+    return duration ? duration.label : '';
+  }, [meetingDetails.duration]);
+
+  return (
+    <div className="meeting-scheduler-container">
+      <form onSubmit={handleSubmit} className="meeting-form">
+        <div className="form-header">
+          <h1>Schedule Your Meeting</h1>
+          <p>Create and manage your meetings seamlessly</p>
+        </div>
+
+        {/* Meeting Title */}
+        <div className="form-group">
+          <label htmlFor="title" className="form-label">
+            <MessageCircle size={16} /> Meeting Title
+          </label>
+          <input
+            id="title"
+            type="text"
+            name="title"
+            value={meetingDetails.title}
+            onChange={handleInputChange}
+            placeholder="Enter a descriptive title"
+            className={`form-input ${validationErrors.title ? 'error' : ''}`}
+          />
+          {validationErrors.title && (
+            <span className="error-message">
+              <AlertCircle size={12} /> {validationErrors.title}
+            </span>
+          )}
+        </div>
+
+        {/* Date, Time, Duration Row */}
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="date" className="form-label">
+              <Calendar size={16} className="date-time-icon" /> Date
+            </label>
+            <input
+              id="date"
+              type="date"
+              name="date"
+              value={meetingDetails.date}
+              onChange={handleInputChange}
+              className={`form-input ${validationErrors.date ? 'error' : ''}`}
+              min={new Date().toISOString().split('T')[0]}
+            />
+            {validationErrors.date && (
+              <span className="error-message">
+                <AlertCircle size={12} /> {validationErrors.date}
+              </span>
+            )}
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="time" className="form-label">
+              <Clock size={16} className="date-time-icon" /> Time
+            </label>
+            <input
+              id="time"
+              type="time"
+              name="time"
+              value={meetingDetails.time}
+              onChange={handleInputChange}
+              className={`form-input ${validationErrors.time ? 'error' : ''}`}
+            />
+            {validationErrors.time && (
+              <span className="error-message">
+                <AlertCircle size={12} /> {validationErrors.time}
+              </span>
+            )}
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="duration" className="form-label">
+              <Clock size={16} className="date-time-icon" /> Duration
+            </label>
+            <select
+              id="duration"
+              name="duration"
+              value={meetingDetails.duration}
+              onChange={handleInputChange}
+              className="form-input"
             >
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center' 
-              }}>
-                <h3 style={{ 
-                  margin: '0 0 8px 0', 
-                  color: '#1f2937',
-                  fontSize: '18px'
-                }}>
-                  {meeting.title}
-                </h3>
-                <span style={{
-                  backgroundColor: '#e5e7eb',
-                  color: '#4b5563',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '12px'
-                }}>
-                  {meeting.meetingCode}
-                </span>
-              </div>
-              
-              <p style={{ 
-                margin: '0 0 8px 0', 
-                color: '#4b5563',
-                fontWeight: 'bold'
-              }}>
-                {formatDate(meeting.date)}
-              </p>
-              
-              <p style={{ 
-                margin: '0 0 8px 0', 
-                color: '#6b7280',
-                fontSize: '14px'
-              }}>
-                {meeting.startTime} - {meeting.endTime}
-              </p>
-              
-              <div style={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: '5px', 
-                marginTop: '10px' 
-              }}>
-                {meeting.participants.slice(0, 3).map((participant, index) => (
-                  <span 
-                    key={index}
-                    style={{
-                      backgroundColor: '#f3f4f6',
-                      color: '#4b5563',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}
-                  >
-                    {participant}
-                  </span>
-                ))}
-                {meeting.participants.length > 3 && (
-                  <span 
-                    style={{
-                      backgroundColor: '#f3f4f6',
-                      color: '#4b5563',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}
-                  >
-                    +{meeting.participants.length - 3} more
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </main>
-      
-      {/* Create Meeting Form */}
-      {showCreateForm && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 10
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '90%',
-            maxWidth: '500px',
-            padding: '20px',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '20px'
-            }}>
-              <h2 style={{ margin: 0, color: '#1f2937' }}>Create New Meeting</h2>
-              <button 
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  color: '#6b7280'
-                }}
-                onClick={() => setShowCreateForm(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <form onSubmit={handleCreateMeeting}>
-              <div style={{ marginBottom: '15px' }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    marginBottom: '5px', 
-                    color: '#4b5563', 
-                    fontWeight: 'bold' 
-                  }}
-                >
-                  Meeting Title
-                </label>
-                <input 
-                  type="text"
-                  name="title"
-                  value={newMeeting.title}
-                  onChange={handleInputChange}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px'
-                  }}
-                />
-              </div>
-              
-              <div style={{ marginBottom: '15px' }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    marginBottom: '5px', 
-                    color: '#4b5563', 
-                    fontWeight: 'bold' 
-                  }}
-                >
-                  Date
-                </label>
-                <input 
-                  type="date"
-                  name="date"
-                  value={newMeeting.date}
-                  onChange={handleInputChange}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px'
-                  }}
-                />
-              </div>
-              
-              <div style={{ 
-                display: 'flex', 
-                gap: '10px', 
-                marginBottom: '15px' 
-              }}>
-                <div style={{ flex: 1 }}>
-                  <label 
-                    style={{ 
-                      display: 'block', 
-                      marginBottom: '5px', 
-                      color: '#4b5563', 
-                      fontWeight: 'bold' 
-                    }}
-                  >
-                    Start Time
-                  </label>
-                  <input 
-                    type="time"
-                    name="startTime"
-                    value={newMeeting.startTime}
-                    onChange={handleInputChange}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px'
-                    }}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label 
-                    style={{ 
-                      display: 'block', 
-                      marginBottom: '5px', 
-                      color: '#4b5563', 
-                      fontWeight: 'bold' 
-                    }}
-                  >
-                    End Time
-                  </label>
-                  <input 
-                    type="time"
-                    name="endTime"
-                    value={newMeeting.endTime}
-                    onChange={handleInputChange}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px'
-                    }}
-                  />
-                </div>
-              </div>
-              
-              <div style={{ marginBottom: '15px' }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    marginBottom: '5px', 
-                    color: '#4b5563', 
-                    fontWeight: 'bold' 
-                  }}
-                >
-                  Participants (comma separated)
-                </label>
-                <input 
-                  type="text"
-                  name="participants"
-                  value={newMeeting.participants}
-                  onChange={handleInputChange}
-                  placeholder="e.g. John Doe, Jane Smith"
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px'
-                  }}
-                />
-              </div>
-              
-              <div style={{ marginBottom: '20px' }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    marginBottom: '5px', 
-                    color: '#4b5563', 
-                    fontWeight: 'bold' 
-                  }}
-                >
-                  Description
-                </label>
-                <textarea 
-                  name="description"
-                  value={newMeeting.description}
-                  onChange={handleInputChange}
-                  rows="3"
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    resize: 'vertical'
-                  }}
-                />
-              </div>
-              
-              <button 
-                type="submit"
-                style={{
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '10px 16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  width: '100%'
-                }}
-              >
-                Create Meeting
-              </button>
-            </form>
+              {MEETING_CONFIGURATIONS.durations.map(duration => (
+                <option key={duration.value} value={duration.value}>
+                  {duration.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
-      )}
-      
-      {/* Join Meeting Popup */}
-      {showJoinPopup && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 10
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '90%',
-            maxWidth: '400px',
-            padding: '20px',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '20px'
-            }}>
-              <h2 style={{ margin: 0, color: '#1f2937' }}>Join Meeting</h2>
-              <button 
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  color: '#6b7280'
-                }}
-                onClick={() => setShowJoinPopup(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label 
-                style={{ 
-                  display: 'block', 
-                  marginBottom: '5px', 
-                  color: '#4b5563', 
-                  fontWeight: 'bold' 
-                }}
-              >
-                Meeting Code
-              </label>
-              <input 
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
-                placeholder="Enter meeting code (e.g. MEET-1234)"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '4px'
-                }}
-              />
-            </div>
-            
-            <button 
-              onClick={handleJoinMeeting}
-              style={{
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '10px 16px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                width: '100%'
-              }}
+
+        {/* Platform Selection */}
+        <div className="form-group platform-selection">
+          <label className="form-label">
+            <Video size={16} /> Choose Meeting Platform
+          </label>
+          <div className="platform-grid">
+            {PlatformOptions}
+          </div>
+          {validationErrors.platform && (
+            <span className="error-message">
+              <AlertCircle size={12} /> {validationErrors.platform}
+            </span>
+          )}
+        </div>
+
+        <div className="section-divider"></div>
+
+        {/* Additional Options */}
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="frequency" className="form-label">
+              <Repeat size={16} /> Frequency
+            </label>
+            <select
+              id="frequency"
+              name="frequency"
+              value={meetingDetails.frequency}
+              onChange={handleInputChange}
+              className="form-input"
             >
-              Join
-            </button>
+              {MEETING_CONFIGURATIONS.frequencies.map(freq => (
+                <option key={freq.value} value={freq.value}>
+                  {freq.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="reminderTime" className="form-label">
+              <Bell size={16} /> Reminder
+            </label>
+            <select
+              id="reminderTime"
+              name="reminderTime"
+              value={meetingDetails.reminderTime}
+              onChange={handleInputChange}
+              className="form-input"
+            >
+              {MEETING_CONFIGURATIONS.reminders.map(reminder => (
+                <option key={reminder.value} value={reminder.value}>
+                  {reminder.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="participants" className="form-label">
+              <Users size={16} /> Participants
+            </label>
+            <input
+              id="participants"
+              type="text"
+              name="participants"
+              value={meetingDetails.participants}
+              onChange={handleInputChange}
+              placeholder="Email addresses (optional)"
+              className="form-input"
+            />
           </div>
         </div>
-      )}
-      
-      {/* Meeting Details */}
-      {showMeetingDetails && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 10
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '90%',
-            maxWidth: '600px',
-            padding: '20px',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '20px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <h2 style={{ margin: 0, color: '#1f2937' }}>Meeting Details</h2>
-                <span style={{
-                  backgroundColor: '#e5e7eb',
-                  color: '#4b5563',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '12px'
-                }}>
-                  {showMeetingDetails.meetingCode}
-                </span>
-              </div>
-              <button 
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  color: '#6b7280'
-                }}
-                onClick={() => setShowMeetingDetails(null)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div style={{
-              padding: '15px',
-              backgroundColor: '#f9fafb',
-              borderRadius: '8px',
-              marginBottom: '20px'
-            }}>
-              <h3 style={{ margin: '0 0 10px 0', color: '#1f2937' }}>
-                {showMeetingDetails.title}
-              </h3>
-              
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                color: '#4b5563',
-                marginBottom: '5px'
-              }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                  <line x1="16" y1="2" x2="16" y2="6"></line>
-                  <line x1="8" y1="2" x2="8" y2="6"></line>
-                  <line x1="3" y1="10" x2="21" y2="10"></line>
-                </svg>
-                <span>{formatDate(showMeetingDetails.date)}</span>
-              </div>
-              
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                color: '#4b5563',
-                marginBottom: '5px'
-              }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                <span>{showMeetingDetails.startTime} - {showMeetingDetails.endTime}</span>
-              </div>
-              
-              {showMeetingDetails.description && (
-                <div style={{
-                  marginTop: '10px',
-                  padding: '10px',
-                  backgroundColor: 'white',
-                  borderRadius: '4px',
-                  border: '1px solid #e5e7eb'
-                }}>
-                  <p style={{ margin: 0, color: '#6b7280' }}>
-                    {showMeetingDetails.description}
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <h4 style={{ 
-                margin: '0 0 10px 0', 
-                color: '#1f2937',
-                fontSize: '16px',
-                fontWeight: 'bold'
-              }}>
-                Participants ({showMeetingDetails.participants.length})
-              </h4>
-              
-              <div style={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: '8px' 
-              }}>
-                {showMeetingDetails.participants.map((participant, index) => (
-                  <div 
-                    key={index}
-                    style={{
-                      backgroundColor: '#f3f4f6',
-                      color: '#4b5563',
-                      padding: '6px 12px',
-                      borderRadius: '20px',
-                      fontSize: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px'
-                    }}
-                  >
-                    <div style={{
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '50%',
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '12px',
-                      fontWeight: 'bold'
-                    }}>
-                      {participant.charAt(0)}
-                    </div>
-                    {participant}
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between' 
-            }}>
-              <button 
-                onClick={() => {
-                  setShowMeetingDetails(null);
-                  // In a real app, this would delete the meeting
-                }}
-                style={{
-                  backgroundColor: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '10px 16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                Delete Meeting
-              </button>
-              <button 
-                onClick={() => {
-                  alert(`Joining meeting: ${showMeetingDetails.meetingCode}`);
-                  // In a real app, this would start the meeting
-                }}
-                style={{
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '10px 16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px'
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
-                Start Meeting
-              </button>
-            </div>
-          </div>
+
+        {/* Description */}
+        <div className="form-group">
+          <label htmlFor="description" className="form-label">
+            <Link2 size={16} /> Description (Optional)
+          </label>
+          <textarea
+            id="description"
+            name="description"
+            value={meetingDetails.description}
+            onChange={handleInputChange}
+            placeholder="Add agenda, notes, or any additional information"
+            className="form-input textarea"
+            rows="3"
+          />
         </div>
-      )}
+
+        {/* Submit Button */}
+        <button 
+          type="submit" 
+          className="submit-button"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader size={16} className="loading-spinner" />
+              Creating Meeting...
+            </>
+          ) : (
+            <>
+              Create Meeting
+              <Check size={16} />
+            </>
+          )}
+        </button>
+      </form>
     </div>
   );
 };
 
-export default MeetingApp;
+export default MeetingScheduler;

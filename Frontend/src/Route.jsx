@@ -10,8 +10,7 @@ import ForgotpasswordPage from "./components/pages/SignUpSignInPage/ForgotPasswo
 import CalendarApp from "./components/pages/CalendarPage/ModernCalendar";
 import ProfilePage from "./components/pages/EditProfilePage/EditProfilePage";
 import BookingPage from "./components/pages/BookingPage/BookingPage";
-import MessagePage from "./components/pages/MessagePage/MessagePage";
-import MeetingApp from "./components/pages/MeetingPage/MeetingPage";
+import MeetingPage from './components/pages/MeetingPage/MeetingPage';
 import TaskPage from "./components/pages/TaskPage/TaskPage";
 import ResetPassword from "./components/pages/SignUpSignInPage/ResetPassword ";
 
@@ -33,10 +32,9 @@ function App() {
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="mytasks" element={<TaskPage />} />
                 <Route path="projects" element={<ProjectPage />} />
-                <Route path="meeting" element={<MeetingApp />} />
+                <Route path="meeting" element={<MeetingPage />} />
                 <Route path="calendar" element={<CalendarApp />} />
                 <Route path="profile" element={<ProfilePage />} />
-                <Route path="messages" element={<MessagePage />} />
                 <Route path="booking" element={<BookingPage />} />
                 <Route path="/task/:projectId" element={<KanbanBoard />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
