@@ -1,0 +1,172 @@
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import { v4 as uuidv4 } from "uuid";
+import {
+  createBookingModel,
+  getAllBookingModel,
+  getBookingByIdModel,
+  updateBookingModel,
+  deleteBookingModel
+} from "../models/bookingModel.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// CREATE BOOKING
+export const createBooking = async (req, res) => {
+  try {
+    const {
+      booking_id,
+      booking_title,
+      booking_description,
+      booking_type,
+      booking_startdate,
+      booking_enddate,
+      booking_starttime,
+      booking_endtime,
+      team
+    } = req.body;
+
+    let booking_image = null;
+
+    if (req.file) {
+      const fileExt = path.extname(req.file.originalname);
+      const filename = `${uuidv4()}${fileExt}`;
+      const savePath = path.join(__dirname, "../uploads", filename);
+      fs.writeFileSync(savePath, req.file.buffer); // เขียนไฟล์จริง
+      booking_image = filename; // เก็บชื่อใหม่
+    }
+
+    const booking_status = "Available";
+
+    const bookingData = {
+      booking_id,
+      booking_title,
+      booking_description,
+      booking_type,
+      booking_startdate,
+      booking_enddate,
+      booking_starttime,
+      booking_endtime,
+      booking_image,
+      booking_status
+    };
+
+    const result = await createBookingModel(bookingData);
+
+    res.status(201).json({ success: true, message: "Booking created", result });
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    res.status(500).json({ success: false, error: "Internal server error" });
+  }
+};
+
+
+// UPDATE BOOKING
+export const updateBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      booking_title,
+      booking_description,
+      booking_type,
+      booking_startdate,
+      booking_enddate,
+      booking_starttime,
+      booking_endtime,
+      booking_status
+    } = req.body;
+
+    const existingBooking = await getBookingByIdModel(id);
+    let booking_image = existingBooking.booking_image;
+
+    // ✅ กรณีอัปโหลดใหม่
+    if (req.file && req.file.originalname) {
+      if (booking_image) {
+        const oldImagePath = path.join(__dirname, "../uploads", booking_image);
+        if (fs.existsSync(oldImagePath)) {
+          fs.unlinkSync(oldImagePath);
+        }
+      }
+
+      const fileExt = path.extname(req.file.originalname);
+      const filename = `${uuidv4()}${fileExt}`;
+      const savePath = path.join(__dirname, "../uploads", filename);
+
+      fs.writeFileSync(savePath, req.file.buffer);
+      booking_image = filename;
+    }
+
+    const updated = await updateBookingModel(id, {
+      booking_title,
+      booking_description,
+      booking_type,
+      booking_startdate,
+      booking_enddate,
+      booking_starttime,
+      booking_endtime,
+      booking_status,
+      booking_image
+    });
+
+    res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Update booking error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// DELETE BOOKING
+export const deleteBooking = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const booking = await getBookingByIdModel(id);
+    if (!booking) {
+      return res.status(404).json({ success: false, error: "Booking not found" });
+    }
+
+    // ✅ ถ้ามี booking_image ให้ลบไฟล์
+    if (booking.booking_image) {
+      const imgPath = path.join(__dirname, "../uploads", booking.booking_image);
+      console.log("🔍 Trying to delete image:", imgPath);
+
+      if (fs.existsSync(imgPath)) {
+        fs.unlinkSync(imgPath);
+        console.log("✅ Deleted image:", imgPath);
+      } else {
+        console.warn("⚠️ Image file not found:", imgPath);
+      }
+    }
+
+    // ✅ ลบข้อมูลจาก DB
+    const deleted = await deleteBookingModel(id);
+    res.status(200).json({ success: true, data: deleted });
+
+  } catch (error) {
+    console.error("❌ Failed to delete booking:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getAllBooking = async (req, res) => {
+  try {
+    const data = await getAllBookingModel(); // ← ดึงข้อมูลทั้งหมดจาก model
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error("Get all bookings error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getBookingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const data = await getBookingByIdModel(id);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error("Get booking by ID error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
