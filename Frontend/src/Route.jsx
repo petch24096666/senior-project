@@ -11,6 +11,7 @@ import CalendarApp from "./components/pages/CalendarPage/ModernCalendar";
 import ProfilePage from "./components/pages/EditProfilePage/EditProfilePage";
 import BookingPage from "./components/pages/BookingPage/BookingPage";
 import MeetingPage from './components/pages/MeetingPage/MeetingPage';
+import MeetingList from './components/pages/MeetingPage/MeetingList';
 import TaskPage from "./components/pages/TaskPage/TaskPage";
 import ResetPassword from "./components/pages/SignUpSignInPage/ResetPassword ";
 
@@ -33,6 +34,7 @@ function App() {
                 <Route path="mytasks" element={<TaskPage />} />
                 <Route path="projects" element={<ProjectPage />} />
                 <Route path="meeting" element={<MeetingPage />} />
+                <Route path="meeting/list" element={<MeetingList />} />
                 <Route path="calendar" element={<CalendarApp />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="booking" element={<BookingPage />} />
