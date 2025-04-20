@@ -1,7 +1,7 @@
 // controllers/taskController.js
 import Task from '../models/taskModel.js';
 import db from '../config/database.js';
-
+import { v4 as uuidv4 } from 'uuid';
 // Get all tasks
 export const getAllTasks = async (req, res) => {
   try {
@@ -32,64 +32,74 @@ export const getTaskById = async (req, res) => {
   }
 };
 
-// Create a new task
-// controllers/taskController.js
 export const createTask = async (req, res) => {
   try {
+    // 1) ต้องดึงทุกฟิลด์ที่ต้องการจาก req.body
     const {
-      title, description, priority,
-      status, due_date, project_id,
-      assignees, assignee
+      title,
+      description,
+      priority,
+      status,
+      due_date,
+      project_id,
+      assignees
     } = req.body;
+
+    // 2) ตรวจสอบว่ามี title จริงหรือไม่ (ถ้าต้องการให้ title เป็น required)
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
 
     if (!project_id) {
       return res.status(400).json({ error: 'Project ID is required' });
     }
 
-    // Normalize assignees into array
+    // 3) Normalize assignees เป็น array เสมอ
     const list = Array.isArray(assignees)
       ? assignees
-      : Array.isArray(assignee)
-        ? assignee
-        : typeof assignee === 'string'
-          ? assignee.split(',').map(s => s.trim()).filter(Boolean)
-          : [];
+      : typeof assignees === 'string'
+        ? assignees.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
 
     const assigneeString = list.join(',');
 
+    // 4) สร้าง UUID ขึ้นมาเอง และเตรียม params ให้ตรงกับ SQL ของ TaskModel
+    const taskId = uuidv4();
     const params = [
+      taskId,
       title,
       description || '',
-      priority || 'low',
-      status || 'todo',
-      due_date || null,
+      priority    || 'low',
+      status      || 'todo',
+      due_date    || null,
       project_id,
       assigneeString
     ];
 
-    const [result] = await db.query(Task.createTask, params);
+    await db.query(Task.createTask, params);
 
+    // 6) ส่ง response กลับไป
     const newTask = {
-      id: result.insertId,
+      id:          taskId,
       title,
       description: description || '',
-      priority: priority || 'low',
-      status: status || 'todo',
-      due_date: due_date || null,
+      priority:    priority    || 'low',
+      status:      status      || 'todo',
+      due_date:    due_date    || null,
       project_id,
-      assignee: assigneeString
+      assignee:    assigneeString
     };
 
-    res.status(201).json(newTask);
+    return res.status(201).json(newTask);
+
   } catch (error) {
     console.error('Error creating task:', error);
-    res.status(500).json({ error: 'Failed to create task: ' + error.message });
+    return res
+      .status(500)
+      .json({ error: 'Failed to create task: ' + error.message });
   }
 };
 
-// Update an existing task
-// ตัวอย่างปรับ updateTask โดยใช้ due_date และ status (แทน dueDate และ column)
-// Controller
 export const updateTask = async (req, res) => {
   try {
     const id = req.params.id;

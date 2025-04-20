@@ -216,7 +216,7 @@ const TopBar = () => {
             style={{ width: 32, height: 32 }}
           />
           <Typography variant="h6" sx={{ color: "#4F46E5", fontWeight: 600 }}>
-            JiraDST
+          PMZone
           </Typography>
         </Box>
         <Box display="flex" alignItems="center" gap={2}>
