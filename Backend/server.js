@@ -7,11 +7,19 @@ import db from "./src/config/database.js";
 import { google } from "googleapis";
 import taskRoutes from "./src/routes/taskRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
-import commentRoutes from "./src/routes/commentRoutes.js"
+import commentRoutes from "./src/routes/commentRoutes.js";
+import bookingRoutes from './src/routes/bookingRoutes.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 dotenv.config();
 
 const app = express();
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Middleware
 app.use(express.json());
@@ -24,9 +32,11 @@ app.use(userRoutes);
 app.use(projectRoutes);
 app.use(taskRoutes);
 app.use('/api', commentRoutes);
+app.use('/api', bookingRoutes);
 // Mount dashboardRoutes ด้วย prefix "/api/projects/dashboard"
 // จากนั้น URL ที่ใช้จะเป็น http://localhost:8081/api/projects/dashboard?userId=xxx
 app.use("/api/dashboard", dashboardRoutes);
+app.use('/uploads', express.static(path.join(__dirname, 'src/uploads')));
 
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
