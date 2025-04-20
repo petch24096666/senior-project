@@ -7,7 +7,7 @@ import db from "./src/config/database.js";
 import taskRoutes from "./src/routes/taskRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
 import commentRoutes from "./src/routes/commentRoutes.js";
-import meetingRoutes from "./src/routes/meetingRoutes.js";
+import meetingRoutes from './src/routes/meetingRoutes.js';
 
 dotenv.config();
 
@@ -28,10 +28,13 @@ app.use('/api', commentRoutes);
 // จากนั้น URL ที่ใช้จะเป็น http://localhost:8081/api/projects/dashboard?userId=xxx
 app.use("/api/dashboard", dashboardRoutes);
 
-app.use("/api", meetingRoutes);
+app.use('/api/meeting', meetingRoutes); // ✅ path หลักเดียวกัน
+
 
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
+
+
 (async () => {
   try {
     await db.query("SELECT 1");

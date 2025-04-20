@@ -3,6 +3,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import './MeetingPage.css';
 import { UserContext } from '../../../context/Usercontext';
+import Autocomplete from '@mui/material/Autocomplete';
+import TextField from '@mui/material/TextField';
 import {
   Calendar,
   Clock,
@@ -26,9 +28,29 @@ const MeetingPage = () => {
     platform: '',
     frequency: 'once',
     reminderTime: '15',
-    participants: '',
+    participants: [],
     description: ''
   });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [emailSuggestions, setEmailSuggestions] = useState([]);
+
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (searchQuery.length < 1) return;
+      try {
+        const res = await axios.get(`/api/users/search?query=${searchQuery}`);
+        const emails = Array.isArray(res.data)
+          ? res.data
+          : []; // ✅ fallback ป้องกัน crash
+        setEmailSuggestions(emails);
+      } catch (err) {
+        console.error('Failed to fetch email suggestions:', err);
+        setEmailSuggestions([]); // ป้องกันไม่ให้เป็น undefined
+      }
+    };
+  
+    fetchSuggestions();
+  }, [searchQuery]);  
 
   const { customUser, loading } = useContext(UserContext);
 
@@ -73,7 +95,12 @@ const MeetingPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-  
+    
+    if (!formData.platform) {
+      alert("❌ Please select a meeting platform.");
+      return;
+    }
+
     try {
       const res = await axios.post('http://localhost:8081/api/meeting', {
         user_id: customUser.user_id, // ✅ เพิ่มตรงนี้
@@ -84,7 +111,7 @@ const MeetingPage = () => {
         platform: formData.platform,
         frequency: formData.frequency,
         reminderTime: formData.reminderTime,
-        participants: formData.participants,
+        participants: formData.participants, // 👈 แยก email เป็น array
         description: formData.description
       });
   
@@ -284,13 +311,23 @@ const MeetingPage = () => {
                 <Users size={16} className="form-icon" />
                 <span>Participants</span>
               </label>
-              <input
-                type="text"
-                name="participants"
+
+              <Autocomplete
+                multiple
+                freeSolo
+                options={emailSuggestions}
                 value={formData.participants}
-                onChange={handleInputChange}
-                placeholder="Email addresses (optional)"
-                className="form-input"
+                onChange={(e, newValue) =>
+                  setFormData({ ...formData, participants: newValue })
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="Email addresses (optional)"
+                    className="form-input"
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                )}
               />
             </div>
           </div>

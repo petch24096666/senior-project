@@ -1,23 +1,23 @@
-// src/routes/meetingRoutes.js
+// routes/meetingRoutes.js
 import express from "express";
-
 const router = express.Router();
-import { 
+import {
   redirectToZoom,
   handleZoomCallback,
-  createZoomMeeting,
+  createMeeting,
   getAllMeetings,
+  updateMeetingById,
   deleteMeetingById,
-  updateMeetingById
-} from "../controllers/meetingsController.js"; // ✅ แก้ path ตรงนี้
+  getMeetingsByUserId
+} from "../controllers/meetingsController.js";
 
+// OAuth Zoom
 router.get('/auth', redirectToZoom);
 router.get('/zoom/callback', handleZoomCallback);
-router.post('/meeting', createZoomMeeting);
 
-// ✅ เพิ่ม endpoint สำหรับ list / delete / update
-router.get('/meetings', getAllMeetings);
-router.delete('/meetings/:id', deleteMeetingById);
-router.patch('/meetings/:id', updateMeetingById);
+router.post('/meeting/list', createMeeting);
+router.get('/', getMeetingsByUserId);  // Changed to root route with query parameter
+router.patch('/meeting/list/:id', updateMeetingById);
+router.delete('/meeting/list/:id', deleteMeetingById);
 
 export default router;

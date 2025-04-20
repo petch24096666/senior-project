@@ -1,9 +1,9 @@
-// 1. src/components/pages/MeetingPage/MeetingList.jsx
 import React, { useEffect, useState, useContext } from 'react';
-import { getMeetings, deleteMeeting } from '../../../utils/api';
-import { UserContext } from '../../../context/Usercontext';
+import axios from 'axios';
+import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
-import './MeetingPage.css';
+import { UserContext } from "../../../context/Usercontext.jsx"; // ✅ ตรวจให้ตรงชื่อไฟล์จริง
+import './MeetingList.css';
 
 const MeetingList = () => {
   const { customUser } = useContext(UserContext);
@@ -11,48 +11,59 @@ const MeetingList = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (customUser) {
-      console.log("📡 Fetching meetings for user:", customUser.user_id);
-      getMeetings(customUser.user_id).then(setMeetings);
-    }
+    if (!customUser) return;
+    console.log("Current User:", customUser);
+    const fetchMeetings = async () => {
+      try {
+        console.log(`Fetching meetings for user ID: ${customUser.user_id}`);
+        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/meeting/list/${customUser.user_id}`);
+        console.log("Meetings fetched:", res.data);
+        setMeetings(res.data);
+      } catch (err) {
+        console.error('❌ Failed to fetch meetings:', err.response?.data || err.message);
+      }
+    };
+    fetchMeetings();
   }, [customUser]);
 
   const handleDelete = async (id) => {
-    await deleteMeeting(id);
-    setMeetings(prev => prev.filter(m => m.id !== id));
+    try {
+      await axios.delete(`${import.meta.env.VITE_API_BASE_URL}/api/meeting/${id}`);
+      setMeetings((prev) => prev.filter((m) => m.id !== id));
+    } catch (err) {
+      console.error('❌ Failed to delete meeting:', err);
+    }
+  };
+
+  const handleEdit = (meeting) => {
+    navigate(`/meeting/edit/${meeting.id}`, { state: meeting });
   };
 
   return (
-    <div className="meeting-form-container">
-      <div className="meeting-header">
-        <h2 className="meeting-title">Your Meetings</h2>
-        <p className="meeting-subtitle">Here are the meetings you’ve created</p>
-        <div className="purple-underline" />
-      </div>
-
-      <button
-        className="view-meeting-list-btn"
-        onClick={() => navigate('/meeting')}
-      >
-        ← Back to Create Meeting
-      </button>
-
-      <div className="meeting-form-wrapper">
-        {meetings.length === 0 ? (
-          <p>No meetings scheduled yet.</p>
-        ) : (
-          meetings.map(m => (
-            <div key={m.id} className="bg-white shadow rounded p-4 mb-4">
-              <h3 className="text-lg font-semibold">{m.title}</h3>
-              <p>{m.date} at {m.time} - {m.duration} mins</p>
-              <div className="flex gap-2 mt-2">
-                <button onClick={() => navigate(`/meeting/edit/${m.id}`)} className="text-blue-600">Edit</button>
-                <button onClick={() => handleDelete(m.id)} className="text-red-600">Delete</button>
-              </div>
+    <div className="meeting-list-container">
+      <h1>My Meetings</h1>
+        <button className="back-btn" onClick={() => navigate('/meeting')}>
+            ⬅️ Back to Create Meeting
+        </button>
+      {meetings.length === 0 ? (
+        <p>No meetings found.</p>
+      ) : (
+        meetings.map((meeting) => (
+          <div key={meeting.id} className="meeting-card">
+            <h3>{meeting.title}</h3>
+            <p>📅 {meeting.date} at {meeting.time}</p>
+            <p>⏱ {meeting.duration} minutes</p>
+            <p>📡 Platform: {meeting.platform}</p>
+            {meeting.join_url && (
+              <a href={meeting.join_url} target="_blank" rel="noopener noreferrer">🔗 Join Meeting</a>
+            )}
+            <div className="button-group">
+              <button className="edit-btn" onClick={() => handleEdit(meeting)}>✏️ Edit</button>
+              <button className="delete-btn" onClick={() => handleDelete(meeting.id)}>🗑 Delete</button>
             </div>
-          ))
-        )}
-      </div>
+          </div>
+        ))
+      )}
     </div>
   );
 };
