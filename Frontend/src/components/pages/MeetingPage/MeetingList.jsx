@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useContext } from 'react';
 import axios from 'axios';
-import dayjs from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import { UserContext } from "../../../context/Usercontext.jsx"; // ✅ ตรวจให้ตรงชื่อไฟล์จริง
 import './MeetingList.css';
@@ -16,7 +15,7 @@ const MeetingList = () => {
     const fetchMeetings = async () => {
       try {
         console.log(`Fetching meetings for user ID: ${customUser.user_id}`);
-        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/meeting/list/${customUser.user_id}`);
+        const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/api/meetings/${customUser.user_id}`);
         console.log("Meetings fetched:", res.data);
         setMeetings(res.data);
       } catch (err) {
@@ -28,7 +27,7 @@ const MeetingList = () => {
 
   const handleDelete = async (id) => {
     try {
-      await axios.delete(`${import.meta.env.VITE_API_BASE_URL}/api/meeting/${id}`);
+      await axios.delete(`${import.meta.env.VITE_API_BASE_URL}/api/meetings/${id}`);
       setMeetings((prev) => prev.filter((m) => m.id !== id));
     } catch (err) {
       console.error('❌ Failed to delete meeting:', err);
