@@ -37,9 +37,10 @@ router.get('/auth/microsoft', redirectToMicrosoft);
 router.get('/auth/microsoft/callback', handleMicrosoftCallback);
 
 // ✅ Meeting APIs
-router.post('/', createMeeting);
+router.post('/meeting', createMeeting);
 router.patch('/api/:id', updateMeetingById);
 router.delete('/api/:id', deleteMeetingById);
-router.get('/api/:userId', getMeetingsByUserId);
+router.get('/meetings/:userId', getMeetingsByUserId);
+
 
 export default router;

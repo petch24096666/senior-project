@@ -8,6 +8,7 @@ import taskRoutes from "./src/routes/taskRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
 import commentRoutes from "./src/routes/commentRoutes.js";
 import meetingRoutes from './src/routes/meetingRoutes.js';
+import { redirectToZoom, handleZoomCallback } from './src/controllers/meetingsController.js';
 
 dotenv.config();
 
@@ -24,17 +25,14 @@ app.use(userRoutes);
 app.use(projectRoutes);
 app.use(taskRoutes);
 app.use('/api', commentRoutes);
-// Mount dashboardRoutes ด้วย prefix "/api/projects/dashboard"
-// จากนั้น URL ที่ใช้จะเป็น http://localhost:8081/api/projects/dashboard?userId=xxx
 app.use("/api/dashboard", dashboardRoutes);
+app.use('/api', meetingRoutes); // ✅ path หลักเดียวกัน
 
-app.use('/api/meeting', meetingRoutes); // ✅ path หลักเดียวกัน
-
-
+// ✅ เพิ่ม Zoom OAuth Routes โดยตรง
+app.get('/auth/zoom', redirectToZoom);
+app.get('/auth/zoom/callback', handleZoomCallback);
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
-
-
 (async () => {
   try {
     await db.query("SELECT 1");
@@ -46,5 +44,5 @@ app.use('/api/meeting', meetingRoutes); // ✅ path หลักเดียว�
 
 const PORT = process.env.PORT || 8081;
 app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`)
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });

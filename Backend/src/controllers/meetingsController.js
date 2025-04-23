@@ -9,7 +9,7 @@ import { createMicrosoftTeamsMeeting } from './microsoftController.js';
 let accessToken = ''; // NOTE: ใน production ควรเก็บแบบปลอดภัย
 
 export const redirectToZoom = (req, res) => {
-  const authUrl = `https://zoom.us/oauth/authorize?response_type=code&client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${process.env.ZOOM_REDIRECT_URI}`;
+  const authUrl = `https://zoom.us/oauth/authorize?response_type=code&client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${process.env.ZOOM_REDIRECT_URI}&prompt=consent`;
   res.redirect(authUrl);
 };
 
