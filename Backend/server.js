@@ -9,6 +9,7 @@ import taskRoutes from "./src/routes/taskRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
 import commentRoutes from "./src/routes/commentRoutes.js";
 import bookingRoutes from './src/routes/bookingRoutes.js';
+import bookedRoutes from "./src/routes/bookedRoutes.js";
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -33,6 +34,8 @@ app.use(projectRoutes);
 app.use(taskRoutes);
 app.use('/api', commentRoutes);
 app.use('/api', bookingRoutes);
+app.use("/api", bookedRoutes);
+
 // Mount dashboardRoutes ด้วย prefix "/api/projects/dashboard"
 // จากนั้น URL ที่ใช้จะเป็น http://localhost:8081/api/projects/dashboard?userId=xxx
 app.use("/api/dashboard", dashboardRoutes);

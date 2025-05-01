@@ -93,3 +93,14 @@ export const deleteBookingModel = async (id) => {
   const [result] = await db.query("DELETE FROM booking WHERE booking_id = ?", [id]);
   return result;
 };
+
+export const updateBookingStatusModel = async (id, status) => {
+  const sql = `
+    UPDATE booking SET
+      booking_status = ?
+    WHERE booking_id = ?
+  `;
+  const [result] = await db.query(sql, [status, id]);
+  return result;
+};
+

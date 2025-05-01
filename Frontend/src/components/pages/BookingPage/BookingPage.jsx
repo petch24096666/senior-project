@@ -71,6 +71,20 @@ const BookingPage = () => {
   const handleCloseNotification = () => setNotification(prev => ({ ...prev, open: false }));
   const [selectedType, setSelectedType] = useState('');
   const [customType, setCustomType] = useState('');
+  const [showBookModal, setShowBookModal] = useState(false);
+  const [bookingToBook, setBookingToBook] = useState(null);
+  const [bookedSlots, setBookedSlots] = useState([]);
+  const [bookedTimes, setBookedTimes] = useState([]); // เก็บเวลาที่ถูกจองไว้
+  const [bookingReservation, setBookingReservation] = useState({
+    booked_id: '', // ไม่จำเป็นต้องกำหนดเองก็ได้
+    booked_startdate: '',
+    booked_enddate: '',
+    booked_starttime: '',
+    booked_endtime: '',
+    booking_id: '', // จะ set ตอนกดปุ่ม Book Now
+    user_id: currentUserId
+  });
+
 
   useEffect(() => {
     // Sync selectedType จาก state จริง
@@ -99,6 +113,29 @@ const BookingPage = () => {
         ...prev,
         booking_type: type
       }));
+    }
+  };
+
+  useEffect(() => {
+    if (bookingToBook && bookingReservation.booked_startdate) {
+      fetchBookedTimes(bookingToBook.booking_id, bookingReservation.booked_startdate);
+    }
+  }, [bookingToBook, bookingReservation.booked_startdate]);
+
+  const isTimeBooked = (time, type) => {
+    const timeValue = dayjs(`2000-01-01T${time}`);
+    return bookedTimes.some(({ booked_starttime, booked_endtime }) => {
+      const start = dayjs(`2000-01-01T${booked_starttime}`);
+      const end = dayjs(`2000-01-01T${booked_endtime}`);
+      return timeValue.isSame(start) || timeValue.isAfter(start) && timeValue.isBefore(end);
+    });
+  };
+
+  const fetchBookedTimes = async (bookingId, date) => {
+    const res = await fetch(`${API_BASE_URL}/api/booked/times?booking_id=${bookingId}&date=${date}`);
+    const data = await res.json();
+    if (data.success) {
+      setBookedTimes(data.data); // [{ booked_starttime: '10:00', booked_endtime: '12:00' }, ...]
     }
   };
 
@@ -715,7 +752,7 @@ const BookingPage = () => {
           padding: '60px 20px',
           backgroundColor: 'white',
           borderRadius: '12px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
+          boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
         }}>
           <h3 style={{
             color: '#4a5568',
@@ -735,7 +772,7 @@ const BookingPage = () => {
               padding: '8px 16px',
               borderRadius: '6px',
               cursor: 'pointer',
-              fontWeight: 500
+              fontWeight: 500,
             }}
           >
             Reset Filters
@@ -743,12 +780,10 @@ const BookingPage = () => {
         </div>
       );
     }
-
     return booking.map(item => {
       const typeStyle = getTypeColor(item.booking_type || '');
       const formattedDate = formatDate(item.booking_startdate);
       const imageUrl = item.booking_image ? `${API_BASE_URL}/uploads/${item.booking_image}` : null;
-
       return (
         <div
           key={item.booking_id}
@@ -762,6 +797,7 @@ const BookingPage = () => {
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'space-between',
+            animation: 'fadeIn 0.5s ease-out'
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
@@ -783,7 +819,7 @@ const BookingPage = () => {
                     backgroundColor: '#EDF2F7',
                     border: 'none',
                     borderRadius: '4px',
-                    cursor: 'pointer'
+                    cursor: 'pointer',
                   }}
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -815,20 +851,39 @@ const BookingPage = () => {
           </div>
 
           {imageUrl && (
-            <img
-              src={imageUrl}
-              alt="Booking"
-              style={{
-                width: '100%',
-                height: '160px',
-                objectFit: 'cover',
-                borderRadius: '8px',
-                marginTop: '12px',
-                marginBottom: '16px'
-              }}
-            />
+            <div style={{ position: 'relative', width: '100%', height: '160px', marginTop: '12px', marginBottom: '16px' }}>
+              <img
+                src={imageUrl}
+                alt="Booking"
+                style={{
+                  width: '100%',
+                  height: '160px',
+                  objectFit: 'cover',
+                  borderRadius: '8px',
+                  marginTop: '12px',
+                  marginBottom: '16px',
+                  animation: 'fadeIn 0.5s ease-out'
+                }}
+              />
+              <span style={{
+                position: 'absolute',
+                top: '-35px',
+                left: '-1px', // 👈 เปลี่ยนจาก right: '-1px'
+                backgroundColor: item.booking_status === 'Booked' ? '#ef4444' : '#10b981',
+                color: 'white',
+                padding: '4px 10px',
+                fontSize: '15px',
+                borderRadius: '999px',
+                fontWeight: 600,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                zIndex: 10,
+                animation: 'fadeIn 0.5s ease-out'
+              }}>
+                {item.booking_status}
+              </span>
+            </div>
           )}
-          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', margin: 0 }}>
+          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', margin: 0, marginTop: '16px' }}>
             {item.booking_title}
           </h3>
           <p style={{ fontSize: '14px', color: '#4b5563', marginTop: '16px', marginBottom: '16px' }}>
@@ -843,13 +898,28 @@ const BookingPage = () => {
             backgroundColor: typeStyle.light,
             color: typeStyle.text,
             width: 'fit-content',
-            marginBottom: '16px'
+            marginBottom: '16px',
+            animation: 'fadeIn 0.5s ease-out'
           }}>
             {item.booking_type}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'auto' }}>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
             <button
-              onClick={() => console.log(`Booking ${item.booking_id}`)}
+              onClick={() => {
+                setBookingToBook(item);
+                setBookingReservation({
+                  booked_startdate: '',
+                  booked_enddate: '',
+                  booked_starttime: '',
+                  booked_endtime: ''
+                });
+                setShowBookModal(true);
+                fetch(`${API_BASE_URL}/api/booked?booking_id=${item.booking_id}`)
+                  .then(res => res.json())
+                  .then(data => {
+                    setBookedSlots(data?.data || []);
+                  });
+              }}
               style={{
                 padding: '10px 100px',
                 backgroundColor: '#4f46e5',
@@ -860,6 +930,7 @@ const BookingPage = () => {
                 fontSize: '14px',
                 cursor: 'pointer',
                 transition: 'background-color 0.2s',
+                animation: 'fadeIn 0.5s ease-out'
               }}
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#4338ca'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
@@ -881,7 +952,7 @@ const BookingPage = () => {
           padding: '60px 20px',
           backgroundColor: 'white',
           borderRadius: '12px',
-          boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
+          boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
         }}>
           <h3 style={{ color: '#4a5568', fontSize: '18px', marginBottom: '12px' }}>No projects found</h3>
           <p style={{ color: '#718096', marginBottom: '24px' }}>Try adjusting your search or filter criteria</p>
@@ -920,7 +991,6 @@ const BookingPage = () => {
             alignItems: 'center',
             gap: '20px',
             transition: 'transform 0.2s, box-shadow 0.2s',
-            animation: 'fadeIn 0.5s ease-out'
           }}
         >
           <div style={{
@@ -1776,7 +1846,6 @@ const BookingPage = () => {
                     </div>
                   </div>
                 </div>
-
               </form>
             </div>
             <div style={{
@@ -1874,6 +1943,182 @@ const BookingPage = () => {
                 Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {showBookModal && bookingToBook && (
+        <div style={{
+          position: 'fixed',
+          zIndex: 100,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '12px',
+            width: '100%',
+            maxWidth: '500px'
+          }}>
+            <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>Reserve Booking Slot</h2>
+            <div style={{
+              display: 'flex',
+              gap: '16px',
+              marginBottom: '20px',
+              alignItems: 'flex-start',
+              backgroundColor: '#f9fafb',
+              padding: '16px',
+              borderRadius: '10px'
+            }}>
+              {/* รูปภาพห้อง */}
+              {bookingToBook.booking_image && (
+                <img
+                  src={`${API_BASE_URL}/uploads/${bookingToBook.booking_image}`}
+                  alt="Room"
+                  style={{
+                    width: '100px',
+                    height: '100px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0'
+                  }}
+                />
+              )}
+              {/* ข้อมูลห้อง */}
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px', color: '#1a202c' }}>
+                  {bookingToBook.booking_title}
+                </h3>
+                <p style={{ fontSize: '14px', margin: 0, color: '#4a5568' }}>
+                  {bookingToBook.booking_description}
+                </p>
+              </div>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const reservationData = {
+                ...bookingReservation,
+                booking_id: bookingToBook.booking_id,
+                user_id: currentUserId
+              };
+              fetch(`${API_BASE_URL}/api/booked`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reservationData)
+              })
+                .then(async res => {
+                  if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`API Error ${res.status}: ${text}`);
+                  }
+                  return res.json();
+                })
+                .then(result => {
+                  if (result.success) {
+                    // ✅ แก้เป็น PATCH พร้อม JSON body
+                    console.log("Booking ID to update:", bookingToBook.booking_id);
+                    fetch(`${API_BASE_URL}/api/booking/status/${bookingToBook.booking_id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ booking_status: 'Booked' })
+                    })
+                      .then(res => res.json())
+                      .then(updateResult => {
+                        if (updateResult.success) {
+                          showNotification("Reservation confirmed and status updated!", "success");
+                          setShowBookModal(false);
+                          fetchProjectsAndCounts();
+                        } else {
+                          showNotification("Reservation saved but status update failed", "warning");
+                        }
+                      });
+                  } else {
+                    showNotification("Error: " + result.error, "error");
+                  }
+                })
+                .catch(err => {
+                  console.error("Booking Error:", err);
+                  showNotification("Something went wrong: " + err.message, "error");
+                });
+            }}>
+              <label>Start Date</label>
+              <input type="date" required
+                value={bookingReservation.booked_startdate}
+                onChange={e => setBookingReservation(prev => ({ ...prev, booked_startdate: e.target.value }))}
+                style={{ width: '100%', marginBottom: '12px' }}
+              />
+
+              <label>End Date</label>
+              <input type="date" required
+                value={bookingReservation.booked_enddate}
+                onChange={e => setBookingReservation(prev => ({ ...prev, booked_enddate: e.target.value }))}
+                style={{ width: '100%', marginBottom: '12px' }}
+              />
+
+              <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>Start Time</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                {['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map(time => (
+                  <button
+                    key={time}
+                    type="button"
+                    disabled={isTimeBooked(time)}
+                    onClick={() => setBookingReservation(prev => ({ ...prev, booked_starttime: time }))}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '999px',
+                      border: '1px solid #d1d5db',
+                      backgroundColor: isTimeBooked(time)
+                        ? '#e5e7eb'
+                        : bookingReservation.booked_starttime === time ? '#e0e7ff' : 'transparent',
+                      color: isTimeBooked(time) ? '#9ca3af' : '#1f2937',
+                      fontWeight: 500,
+                      cursor: isTimeBooked(time) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {time}
+                  </button>
+                ))}
+              </div>
+
+              <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>End Time</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'].map(time => (
+                  <button
+                    key={time}
+                    type="button"
+                    disabled={isTimeBooked(time, 'end')}
+                    onClick={() => setBookingReservation(prev => ({ ...prev, booked_endtime: time }))}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '999px',
+                      border: '1px solid #d1d5db',
+                      backgroundColor: isTimeBooked(time, 'end')
+                        ? '#e5e7eb'
+                        : bookingReservation.booked_endtime === time
+                          ? '#e0e7ff'
+                          : 'transparent',
+                      color: isTimeBooked(time, 'end') ? '#9ca3af' : '#1f2937',
+                      fontWeight: 500,
+                      cursor: isTimeBooked(time, 'end') ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {time}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" onClick={() => setShowBookModal(false)}>Cancel</button>
+                <button type="submit" style={{ backgroundColor: '#4f46e5', color: 'white', padding: '8px 16px', borderRadius: '6px' }}>
+                  Confirm Booking
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

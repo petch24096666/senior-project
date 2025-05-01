@@ -6,7 +6,8 @@ import {
   getAllBooking,
   getBookingById,
   updateBooking,
-  deleteBooking
+  deleteBooking,
+  updateBookingStatus
 } from "../controllers/bookingController.js";
 
 const router = express.Router();
@@ -20,5 +21,6 @@ router.get("/booking", getAllBooking);
 router.get("/booking/:id", getBookingById);
 router.put("/booking/:id", upload.single("booking_image"), updateBooking);
 router.delete("/booking/:id", deleteBooking);
+router.patch("/booking/status/:id", updateBookingStatus);
 
 export default router;

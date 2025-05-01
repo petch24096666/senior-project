@@ -10,6 +10,8 @@ import {
   deleteBookingModel
 } from "../models/bookingModel.js";
 
+import { updateBookingStatusModel } from '../models/bookingModel.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -167,6 +169,18 @@ export const getBookingById = async (req, res) => {
     res.status(200).json({ success: true, data });
   } catch (error) {
     console.error("Get booking by ID error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+export const updateBookingStatus = async (req, res) => {
+  const { id } = req.params;
+  const { booking_status } = req.body;
+
+  try {
+    const result = await updateBookingStatusModel(id, booking_status);
+    res.json({ success: true, message: "Booking status updated", data: result });
+  } catch (error) {
+    console.error("Update Booking Status Error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
