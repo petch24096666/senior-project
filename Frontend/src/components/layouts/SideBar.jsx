@@ -91,31 +91,6 @@ const Sidebar = () => {
             />
           </ListItemButton>
         </ListItem>
-
-        <ListItem disablePadding>
-          <ListItemButton
-            component={Link}
-            to="/mytasks"
-            onClick={() => handleMenuClick("MyTasks")}
-            sx={{
-              color: activeMenu === "MyTasks" ? "#4F46E5" : "#374151",
-              "& .MuiListItemIcon-root": {
-                color: activeMenu === "MyTasks" ? "#4F46E5" : "#374151",
-              },
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: "40px" }}>
-              <FormatListBulletedIcon />
-            </ListItemIcon>
-            <ListItemText
-              primary="My Tasks"
-              primaryTypographyProps={{
-                sx: { fontSize: "16px" },
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
-
         <ListItem disablePadding>
           <ListItemButton
             component={Link}
