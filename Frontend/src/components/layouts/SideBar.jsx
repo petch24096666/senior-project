@@ -164,29 +164,6 @@ const Sidebar = () => {
             />
           </ListItemButton>
         </ListItem>
-        <ListItem disablePadding>
-          <ListItemButton
-            component={Link}
-            to="/messages"
-            onClick={() => handleMenuClick("Messages")}
-            sx={{
-              color: activeMenu === "Messages" ? "#4F46E5" : "#374151",
-              "& .MuiListItemIcon-root": {
-                color: activeMenu === "Messages" ? "#4F46E5" : "#374151",
-              },
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: "40px" }}>
-              <ChatBubbleIcon />
-            </ListItemIcon>
-            <ListItemText
-              primary="Messages"
-              primaryTypographyProps={{
-                sx: { fontSize: "16px" },
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
 
         <ListItem disablePadding>
           <ListItemButton

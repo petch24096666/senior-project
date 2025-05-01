@@ -4,10 +4,12 @@ import dotenv from "dotenv";
 import projectRoutes from "./src/routes/projectRoutes.js";
 import userRoutes from "./src/routes/userRoutes.js";
 import db from "./src/config/database.js";
-import { google } from "googleapis";
 import taskRoutes from "./src/routes/taskRoutes.js";
 import dashboardRoutes from "./src/routes/dashboardRoutes.js";
 import commentRoutes from "./src/routes/commentRoutes.js";
+import meetingRoutes from './src/routes/meetingRoutes.js';
+import userProfileRoutes from './src/controllers/UserProfileController.js';
+import calendarRoutes from "./src/routes/calendarpageRoutes.js";
 import bookingRoutes from './src/routes/bookingRoutes.js';
 import bookedRoutes from "./src/routes/bookedRoutes.js";
 import path from 'path';
@@ -30,14 +32,16 @@ app.use(cors({
 
 // Routes
 app.use(userRoutes);
+app.use(userProfileRoutes);
 app.use(projectRoutes);
 app.use(taskRoutes);
 app.use('/api', commentRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use('/api', meetingRoutes); // ✅ path หลักเดียวกัน
+app.use('/meeting', meetingRoutes);
+app.use('/api/calendar', calendarRoutes);
 app.use('/api', bookingRoutes);
 app.use("/api", bookedRoutes);
-
-// Mount dashboardRoutes ด้วย prefix "/api/projects/dashboard"
-// จากนั้น URL ที่ใช้จะเป็น http://localhost:8081/api/projects/dashboard?userId=xxx
 app.use("/api/dashboard", dashboardRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'src/uploads')));
 

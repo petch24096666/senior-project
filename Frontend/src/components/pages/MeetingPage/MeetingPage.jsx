@@ -1,854 +1,337 @@
-import React, { useState } from 'react';
+// src/frontend/pages/meeting/MeetingPage.jsx
 
-const MeetingApp = () => {
-  // State for managing meetings
-  const [meetings, setMeetings] = useState([
-    { 
-      id: 1, 
-      title: 'Weekly Team Standup', 
-      date: '2025-03-29', 
-      startTime: '09:00', 
-      endTime: '09:30',
-      participants: ['Jessica Williams', 'Michael Chen', 'Sarah Johnson'],
-      description: 'Regular team sync to discuss progress and blockers',
-      meetingCode: 'MEET-4321'
-    },
-    { 
-      id: 2, 
-      title: 'Product Review', 
-      date: '2025-03-29', 
-      startTime: '13:00', 
-      endTime: '14:00',
-      participants: ['David Miller', 'Emily Davis', 'Jessica Williams'],
-      description: 'Review the latest product features and gather feedback',
-      meetingCode: 'MEET-8765'
-    },
-    { 
-      id: 3, 
-      title: 'Client Presentation', 
-      date: '2025-03-30', 
-      startTime: '11:00', 
-      endTime: '12:00',
-      participants: ['Sarah Johnson', 'Michael Chen'],
-      description: 'Present the new website design to the client',
-      meetingCode: 'MEET-9876'
+import React, { useState, useEffect, useContext } from 'react';
+import { Plus, Edit, Trash2, Calendar, Clock, Video, Search, Filter, AlertCircle, ExternalLink } from 'lucide-react'; // <-- เพิ่ม ExternalLink
+import { UserContext } from '../../../context/Usercontext';
+import CreateMeetingModal from './CreateMeetingModal.jsx';
+import EditMeetingModal from './EditMeetingModal.jsx';
+import axios from 'axios';
+
+import './MeetingPage.css';
+
+const MeetingPage = () => {
+  const { customUser } = useContext(UserContext);
+  const [meetings, setMeetings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editMeetingData, setEditMeetingData] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [meetingToDelete, setMeetingToDelete] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [platformFilter, setPlatformFilter] = useState('All');
+  const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
+
+  const fetchMeetings = async () => {
+    if (!customUser) {
+      setLoading(false);
+      return;
     }
-  ]);
-  
-  // State for create meeting form
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newMeeting, setNewMeeting] = useState({
-    title: '',
-    date: '',
-    startTime: '',
-    endTime: '',
-    participants: '',
-    description: ''
-  });
-  
-  // State for join meeting popup
-  const [showJoinPopup, setShowJoinPopup] = useState(false);
-  const [joinCode, setJoinCode] = useState('');
-  const [activeTab, setActiveTab] = useState('upcoming');
-  const [showMeetingDetails, setShowMeetingDetails] = useState(null);
-  
-  // Handle form input changes
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setNewMeeting({
-      ...newMeeting,
-      [name]: value
-    });
+
+    try {
+      setLoading(true);
+      // *** แก้ไข Endpoint การ fetch list ให้ถูกต้องตาม backend route ***
+      // จาก meetingRoutes.js endpoint คือ /meeting และรับ userId เป็น query param
+      const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/meeting?userId=${customUser.user_id}`);
+      setMeetings(res.data); // response.data ควรจะเป็น array ของ meetings โดยตรง
+      setError(null);
+    } catch (err) {
+      console.error('Failed to fetch meetings:', err.response?.data || err.message || err);
+      setError('Failed to load your meetings. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
   };
-  
-  // Create new meeting
-  const handleCreateMeeting = (e) => {
-    e.preventDefault();
-    
-    // Generate random meeting code
-    const meetingCode = 'MEET-' + Math.floor(1000 + Math.random() * 9000);
-    
-    const participantList = newMeeting.participants
-      .split(',')
-      .map(p => p.trim())
-      .filter(p => p !== '');
-    
-    const createdMeeting = {
-      id: meetings.length + 1,
-      title: newMeeting.title,
-      date: newMeeting.date,
-      startTime: newMeeting.startTime,
-      endTime: newMeeting.endTime,
-      participants: participantList,
-      description: newMeeting.description,
-      meetingCode: meetingCode
-    };
-    
-    setMeetings([...meetings, createdMeeting]);
-    
-    // Reset form
-    setNewMeeting({
-      title: '',
-      date: '',
-      startTime: '',
-      endTime: '',
-      participants: '',
-      description: ''
-    });
-    
-    setShowCreateForm(false);
-    
-    // Show meeting details of the newly created meeting
-    setShowMeetingDetails(createdMeeting);
-  };
-  
-  // Join meeting
-  const handleJoinMeeting = () => {
-    const meeting = meetings.find(m => m.meetingCode === joinCode);
-    
-    if (meeting) {
-      setShowJoinPopup(false);
-      setShowMeetingDetails(meeting);
+
+  useEffect(() => {
+    if (customUser) { // เรียก fetchMeetings เมื่อ customUser พร้อมใช้งาน
+        fetchMeetings();
     } else {
-      alert('Meeting not found. Please check the code and try again.');
+        setLoading(false); // ถ้าไม่มี customUser ก็ไม่ต้อง loading
+    }
+  }, [customUser]); // Dependency คือ customUser
+
+  const openEditModal = (meeting) => {
+    setEditMeetingData(meeting);
+    setEditModalOpen(true);
+  };
+
+  const confirmDelete = (meeting) => {
+    setMeetingToDelete(meeting);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!meetingToDelete) return;
+
+    try {
+      // *** แก้ไข Endpoint การ delete ให้ถูกต้องตาม backend route ***
+      // จาก meetingRoutes.js endpoint คือ /meeting/:id
+      await axios.delete(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/meeting/${meetingToDelete.id}`);
+      showNotification('Meeting deleted successfully');
+      fetchMeetings(); // โหลดข้อมูลใหม่หลังลบ
+    } catch (err) {
+      console.error('Failed to delete meeting:', err.response?.data || err.message || err);
+      showNotification('Failed to delete meeting', 'error');
+    } finally {
+      setDeleteDialogOpen(false);
+      setMeetingToDelete(null); // เคลียร์ค่า meeting ที่จะลบ
     }
   };
-  
-  // Get today's date in YYYY-MM-DD format
-  const today = new Date().toISOString().split('T')[0];
-  
-  // Filter meetings based on active tab
+
   const filteredMeetings = meetings.filter(meeting => {
-    if (activeTab === 'upcoming') {
-      return new Date(meeting.date) >= new Date(today);
-    } else if (activeTab === 'past') {
-      return new Date(meeting.date) < new Date(today);
-    }
-    return true;
+    const title = meeting.title?.toLowerCase() || '';
+    const platform = meeting.platform?.toLowerCase() || '';
+
+    const matchesSearch = title.includes(searchTerm.toLowerCase());
+    const matchesPlatform = platformFilter === 'All' || platform === platformFilter.toLowerCase();
+    return matchesSearch && matchesPlatform;
   });
-  
-  // Format date for display
-  const formatDate = (dateString) => {
-    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-    return new Date(dateString).toLocaleDateString(undefined, options);
+
+  const showNotification = (message, type = 'success') => {
+    setNotification({ show: true, message, type });
+    setTimeout(() => {
+      setNotification({ show: false, message: '', type: 'success' });
+    }, 3000);
   };
-  
+
+  // --- *** แก้ไขการคำนวณ meetingStats ตรง microsoft *** ---
+  const meetingStats = {
+    total: meetings.length,
+    zoom: meetings.filter(m => m.platform?.toLowerCase() === 'zoom').length,
+    google: meetings.filter(m => m.platform?.toLowerCase() === 'google meet').length,
+    microsoft: meetings.filter(m => m.platform?.toLowerCase() === 'microsoft teams').length, // <-- แก้ไขตรงนี้
+  };
+  // --- *** สิ้นสุดการแก้ไข meetingStats *** ---
+
+
+  // Sort meetings by date and time (เรียงจากใกล้สุดไปไกลสุด)
+  const sortedMeetings = [...filteredMeetings].sort((a, b) => {
+      const dateA = a.date && a.time ? new Date(`${a.date}T${a.time}`) : 0;
+      const dateB = b.date && b.time ? new Date(`${b.date}T${b.time}`) : 0;
+      // จัดการกรณี date/time เป็น null หรือ invalid
+      if (!dateA && !dateB) return 0;
+      if (!dateA) return 1; // ให้ meeting ที่ไม่มีวันที่/เวลาไปอยู่ท้ายๆ
+      if (!dateB) return -1; // ให้ meeting ที่ไม่มีวันที่/เวลาไปอยู่ท้ายๆ
+      return dateA - dateB;
+  });
+
+
   return (
-    <div style={{ 
-      display: 'flex', 
-      flexDirection: 'column', 
-      height: '100vh', 
-      fontFamily: 'Arial, sans-serif' 
-    }}>
-      {/* Header */}
-      <header style={{ 
-        backgroundColor: '#3b82f6', 
-        color: 'white', 
-        padding: '16px 24px',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <h1 style={{ margin: 0, fontSize: '24px' }}>MeetingMaster</h1>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button 
-            style={{
-              backgroundColor: 'white',
-              color: '#3b82f6',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '8px 16px',
-              fontWeight: 'bold',
-              cursor: 'pointer'
-            }}
-            onClick={() => setShowJoinPopup(true)}
-          >
-            Join Meeting
-          </button>
-          <button 
-            style={{
-              backgroundColor: '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              padding: '8px 16px',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px'
-            }}
-            onClick={() => setShowCreateForm(true)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            Create Meeting
-          </button>
-        </div>
-      </header>
-      
-      {/* Main Content */}
-      <main style={{ 
-        flex: 1, 
-        padding: '20px', 
-        backgroundColor: '#f5f7fb',
-        overflow: 'auto'
-      }}>
-        {/* Tabs */}
-        <div style={{ 
-          display: 'flex', 
-          borderBottom: '1px solid #e5e7eb', 
-          marginBottom: '20px' 
-        }}>
-          <button 
-            style={{
-              padding: '10px 16px',
-              backgroundColor: activeTab === 'upcoming' ? '#3b82f6' : 'transparent',
-              color: activeTab === 'upcoming' ? 'white' : '#4b5563',
-              border: 'none',
-              borderRadius: '4px 4px 0 0',
-              fontWeight: 'bold',
-              cursor: 'pointer'
-            }}
-            onClick={() => setActiveTab('upcoming')}
-          >
-            Upcoming Meetings
-          </button>
-          <button 
-            style={{
-              padding: '10px 16px',
-              backgroundColor: activeTab === 'past' ? '#3b82f6' : 'transparent',
-              color: activeTab === 'past' ? 'white' : '#4b5563',
-              border: 'none',
-              borderRadius: '4px 4px 0 0',
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              marginLeft: '5px'
-            }}
-            onClick={() => setActiveTab('past')}
-          >
-            Past Meetings
-          </button>
-        </div>
-        
-        {/* Meeting List */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: '20px'
-        }}>
-          {filteredMeetings.map(meeting => (
-            <div 
-              key={meeting.id} 
-              style={{
-                backgroundColor: 'white',
-                borderRadius: '8px',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-                padding: '16px',
-                cursor: 'pointer'
-              }}
-              onClick={() => setShowMeetingDetails(meeting)}
-            >
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center' 
-              }}>
-                <h3 style={{ 
-                  margin: '0 0 8px 0', 
-                  color: '#1f2937',
-                  fontSize: '18px'
-                }}>
-                  {meeting.title}
-                </h3>
-                <span style={{
-                  backgroundColor: '#e5e7eb',
-                  color: '#4b5563',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '12px'
-                }}>
-                  {meeting.meetingCode}
-                </span>
-              </div>
-              
-              <p style={{ 
-                margin: '0 0 8px 0', 
-                color: '#4b5563',
-                fontWeight: 'bold'
-              }}>
-                {formatDate(meeting.date)}
-              </p>
-              
-              <p style={{ 
-                margin: '0 0 8px 0', 
-                color: '#6b7280',
-                fontSize: '14px'
-              }}>
-                {meeting.startTime} - {meeting.endTime}
-              </p>
-              
-              <div style={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: '5px', 
-                marginTop: '10px' 
-              }}>
-                {meeting.participants.slice(0, 3).map((participant, index) => (
-                  <span 
-                    key={index}
-                    style={{
-                      backgroundColor: '#f3f4f6',
-                      color: '#4b5563',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}
-                  >
-                    {participant}
-                  </span>
-                ))}
-                {meeting.participants.length > 3 && (
-                  <span 
-                    style={{
-                      backgroundColor: '#f3f4f6',
-                      color: '#4b5563',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}
-                  >
-                    +{meeting.participants.length - 3} more
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </main>
-      
-      {/* Create Meeting Form */}
-      {showCreateForm && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 10
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '90%',
-            maxWidth: '500px',
-            padding: '20px',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '20px'
-            }}>
-              <h2 style={{ margin: 0, color: '#1f2937' }}>Create New Meeting</h2>
-              <button 
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  color: '#6b7280'
-                }}
-                onClick={() => setShowCreateForm(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <form onSubmit={handleCreateMeeting}>
-              <div style={{ marginBottom: '15px' }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    marginBottom: '5px', 
-                    color: '#4b5563', 
-                    fontWeight: 'bold' 
-                  }}
-                >
-                  Meeting Title
-                </label>
-                <input 
-                  type="text"
-                  name="title"
-                  value={newMeeting.title}
-                  onChange={handleInputChange}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px'
-                  }}
-                />
-              </div>
-              
-              <div style={{ marginBottom: '15px' }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    marginBottom: '5px', 
-                    color: '#4b5563', 
-                    fontWeight: 'bold' 
-                  }}
-                >
-                  Date
-                </label>
-                <input 
-                  type="date"
-                  name="date"
-                  value={newMeeting.date}
-                  onChange={handleInputChange}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px'
-                  }}
-                />
-              </div>
-              
-              <div style={{ 
-                display: 'flex', 
-                gap: '10px', 
-                marginBottom: '15px' 
-              }}>
-                <div style={{ flex: 1 }}>
-                  <label 
-                    style={{ 
-                      display: 'block', 
-                      marginBottom: '5px', 
-                      color: '#4b5563', 
-                      fontWeight: 'bold' 
-                    }}
-                  >
-                    Start Time
-                  </label>
-                  <input 
-                    type="time"
-                    name="startTime"
-                    value={newMeeting.startTime}
-                    onChange={handleInputChange}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px'
-                    }}
-                  />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <label 
-                    style={{ 
-                      display: 'block', 
-                      marginBottom: '5px', 
-                      color: '#4b5563', 
-                      fontWeight: 'bold' 
-                    }}
-                  >
-                    End Time
-                  </label>
-                  <input 
-                    type="time"
-                    name="endTime"
-                    value={newMeeting.endTime}
-                    onChange={handleInputChange}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '4px'
-                    }}
-                  />
-                </div>
-              </div>
-              
-              <div style={{ marginBottom: '15px' }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    marginBottom: '5px', 
-                    color: '#4b5563', 
-                    fontWeight: 'bold' 
-                  }}
-                >
-                  Participants (comma separated)
-                </label>
-                <input 
-                  type="text"
-                  name="participants"
-                  value={newMeeting.participants}
-                  onChange={handleInputChange}
-                  placeholder="e.g. John Doe, Jane Smith"
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px'
-                  }}
-                />
-              </div>
-              
-              <div style={{ marginBottom: '20px' }}>
-                <label 
-                  style={{ 
-                    display: 'block', 
-                    marginBottom: '5px', 
-                    color: '#4b5563', 
-                    fontWeight: 'bold' 
-                  }}
-                >
-                  Description
-                </label>
-                <textarea 
-                  name="description"
-                  value={newMeeting.description}
-                  onChange={handleInputChange}
-                  rows="3"
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '4px',
-                    resize: 'vertical'
-                  }}
-                />
-              </div>
-              
-              <button 
-                type="submit"
-                style={{
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '10px 16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  width: '100%'
-                }}
-              >
-                Create Meeting
-              </button>
-            </form>
+    <div className="dashboard">
+      <div className="container">
+        {/* Header */}
+        <div className="header">
+          <div className="header-left">
+            <h1 className="page-title">Meetings</h1>
+            <p className="page-description">Overview and manage all your scheduled meetings</p>
           </div>
-        </div>
-      )}
-      
-      {/* Join Meeting Popup */}
-      {showJoinPopup && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 10
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '90%',
-            maxWidth: '400px',
-            padding: '20px',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '20px'
-            }}>
-              <h2 style={{ margin: 0, color: '#1f2937' }}>Join Meeting</h2>
-              <button 
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  color: '#6b7280'
-                }}
-                onClick={() => setShowJoinPopup(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label 
-                style={{ 
-                  display: 'block', 
-                  marginBottom: '5px', 
-                  color: '#4b5563', 
-                  fontWeight: 'bold' 
-                }}
-              >
-                Meeting Code
-              </label>
-              <input 
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
-                placeholder="Enter meeting code (e.g. MEET-1234)"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: '4px'
-                }}
-              />
-            </div>
-            
-            <button 
-              onClick={handleJoinMeeting}
-              style={{
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                padding: '10px 16px',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                width: '100%'
-              }}
-            >
-              Join
+          <div className="header-actions">
+            <button className="button button-primary" onClick={() => setIsCreateModalOpen(true)}>
+              <Plus size={18} /> Create Meeting
             </button>
           </div>
         </div>
-      )}
-      
-      {/* Meeting Details */}
-      {showMeetingDetails && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 10
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            width: '90%',
-            maxWidth: '600px',
-            padding: '20px',
-            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              marginBottom: '20px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <h2 style={{ margin: 0, color: '#1f2937' }}>Meeting Details</h2>
-                <span style={{
-                  backgroundColor: '#e5e7eb',
-                  color: '#4b5563',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  fontSize: '12px'
-                }}>
-                  {showMeetingDetails.meetingCode}
-                </span>
-              </div>
-              <button 
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '20px',
-                  cursor: 'pointer',
-                  color: '#6b7280'
-                }}
-                onClick={() => setShowMeetingDetails(null)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <div style={{
-              padding: '15px',
-              backgroundColor: '#f9fafb',
-              borderRadius: '8px',
-              marginBottom: '20px'
-            }}>
-              <h3 style={{ margin: '0 0 10px 0', color: '#1f2937' }}>
-                {showMeetingDetails.title}
-              </h3>
-              
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                color: '#4b5563',
-                marginBottom: '5px'
-              }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                  <line x1="16" y1="2" x2="16" y2="6"></line>
-                  <line x1="8" y1="2" x2="8" y2="6"></line>
-                  <line x1="3" y1="10" x2="21" y2="10"></line>
-                </svg>
-                <span>{formatDate(showMeetingDetails.date)}</span>
-              </div>
-              
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                color: '#4b5563',
-                marginBottom: '5px'
-              }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                <span>{showMeetingDetails.startTime} - {showMeetingDetails.endTime}</span>
-              </div>
-              
-              {showMeetingDetails.description && (
-                <div style={{
-                  marginTop: '10px',
-                  padding: '10px',
-                  backgroundColor: 'white',
-                  borderRadius: '4px',
-                  border: '1px solid #e5e7eb'
-                }}>
-                  <p style={{ margin: 0, color: '#6b7280' }}>
-                    {showMeetingDetails.description}
-                  </p>
-                </div>
-              )}
-            </div>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <h4 style={{ 
-                margin: '0 0 10px 0', 
-                color: '#1f2937',
-                fontSize: '16px',
-                fontWeight: 'bold'
-              }}>
-                Participants ({showMeetingDetails.participants.length})
-              </h4>
-              
-              <div style={{ 
-                display: 'flex', 
-                flexWrap: 'wrap', 
-                gap: '8px' 
-              }}>
-                {showMeetingDetails.participants.map((participant, index) => (
-                  <div 
-                    key={index}
-                    style={{
-                      backgroundColor: '#f3f4f6',
-                      color: '#4b5563',
-                      padding: '6px 12px',
-                      borderRadius: '20px',
-                      fontSize: '14px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px'
-                    }}
-                  >
-                    <div style={{
-                      width: '24px',
-                      height: '24px',
-                      borderRadius: '50%',
-                      backgroundColor: '#3b82f6',
-                      color: 'white',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '12px',
-                      fontWeight: 'bold'
-                    }}>
-                      {participant.charAt(0)}
-                    </div>
-                    {participant}
-                  </div>
-                ))}
+
+        {/* Notification */}
+        {notification.show && (
+          <div className={`notification notification-${notification.type}`}>
+            {notification.message}
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-card-content">
+              <div className="stat-icon stat-icon-purple"><Calendar size={24} /></div>
+              <div className="stat-details">
+                <h3 className="stat-label">Total Meetings</h3>
+                <p className="stat-value">{meetingStats.total}</p>
               </div>
             </div>
-            
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between' 
-            }}>
-              <button 
-                onClick={() => {
-                  setShowMeetingDetails(null);
-                  // In a real app, this would delete the meeting
-                }}
-                style={{
-                  backgroundColor: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '10px 16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer'
-                }}
-              >
-                Delete Meeting
-              </button>
-              <button 
-                onClick={() => {
-                  alert(`Joining meeting: ${showMeetingDetails.meetingCode}`);
-                  // In a real app, this would start the meeting
-                }}
-                style={{
-                  backgroundColor: '#10b981',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  padding: '10px 16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px'
-                }}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
-                Start Meeting
-              </button>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-content">
+              <div className="stat-icon stat-icon-green"><Video size={24} /></div> {/* เปลี่ยน Icon เป็น Video */}
+              <div className="stat-details">
+              <h3 className="stat-label">Zoom</h3>
+              <p className="stat-value">{meetingStats.zoom}</p>
+              </div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-content">
+              <div className="stat-icon stat-icon-blue"><Video size={24} /></div>
+              <div className="stat-details">
+                <h3 className="stat-label">Google Meet</h3>
+                <p className="stat-value">{meetingStats.google}</p>
+              </div>
+            </div>
+          </div>
+          <div className="stat-card">
+            <div className="stat-card-content">
+              <div className="stat-icon stat-icon-red"><Video size={24} /></div>
+              <div className="stat-details">
+                <h3 className="stat-label">Microsoft Teams</h3> {/* แก้ชื่อ Label */}
+                <p className="stat-value">{meetingStats.microsoft}</p>
+              </div>
             </div>
           </div>
         </div>
-      )}
+
+        {/* Filters */}
+        <div className="filters-container">
+          <div className="filters-content">
+            <div className="search-box">
+              <Search size={18} className="search-icon" />
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search meetings..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="filters-right">
+              <Filter size={18} className="filter-icon" />
+              <select
+                className="filter-select"
+                value={platformFilter}
+                onChange={(e) => setPlatformFilter(e.target.value)}
+              >
+                <option value="All">All Platforms</option>
+                <option value="Zoom">Zoom</option>
+                <option value="Google Meet">Google Meet</option>
+                <option value="Microsoft Teams">Microsoft Teams</option>
+                <option value="Webex">Webex</option> {/* เพิ่ม Webex ถ้าใช้ */}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Meeting Cards */}
+        {loading ? (
+          <div className="loading-state">
+            <div className="loading-spinner"></div>
+            <p>Loading your meetings...</p>
+          </div>
+        ) : error ? (
+          <div className="error-state">
+            <AlertCircle size={32} className="error-icon" />
+            <p className="error-message">{error}</p>
+            <button className="retry-button" onClick={fetchMeetings}>
+              Try Again
+            </button>
+          </div>
+        ) : sortedMeetings.length > 0 ? (
+          <div className="projects-grid"> {/* ใช้ projects-grid หรือ meetings-grid ตาม CSS */}
+            {sortedMeetings.map(meeting => (
+              <div key={meeting.id} className="project-card"> {/* ใช้ project-card หรือ meeting-card */}
+                <div className="project-card-content">
+                  <h3 className="project-title">{meeting.title}</h3>
+                  <p className="project-description">{meeting.description || 'No description provided'}</p>
+                  <div className="project-meta">
+                    <div className="meta-item">
+                      <Calendar size={16} className="meta-icon" />
+                      {meeting.date} at {meeting.time}
+                    </div>
+                    <div className="meta-item">
+                      <Clock size={16} className="meta-icon" />
+                      {meeting.duration} mins
+                    </div>
+                    <div className="meta-item">
+                      <Video size={16} className="meta-icon" />
+                      {meeting.platform}
+                    </div>
+                    {/* --- *** เพิ่มส่วนแสดง Link *** --- */}
+                    {meeting.join_url && meeting.join_url.startsWith('http') && ( // เช็คว่ามี URL และขึ้นต้นด้วย http
+                      <div className="meta-item meta-link">
+                        <ExternalLink size={16} className="meta-icon" />
+                        <a href={meeting.join_url} target="_blank" rel="noopener noreferrer" className="meeting-url">
+                          Join Meeting
+                        </a>
+                      </div>
+                    )}
+                    {/* --- *** สิ้นสุดส่วนแสดง Link *** --- */}
+                  </div>
+                  <div className="project-card-actions">
+                    <button className="action-button" onClick={() => openEditModal(meeting)}>
+                      <Edit size={16} />
+                    </button>
+                    <button className="action-button action-delete" onClick={() => confirmDelete(meeting)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-state-content">
+              <Calendar size={48} className="empty-icon" />
+              <h3 className="empty-title">No meetings found</h3>
+              <p className="empty-message">
+                {searchTerm || platformFilter !== 'All'
+                  ? 'Try adjusting your search or filter criteria'
+                  : 'Create your first meeting to get started'}
+              </p>
+              {!searchTerm && platformFilter === 'All' && (
+                <button className="button button-primary" onClick={() => setIsCreateModalOpen(true)}>
+                  <Plus size={18} /> Create Meeting
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Modals */}
+        {isCreateModalOpen && (
+          <CreateMeetingModal
+            onClose={() => setIsCreateModalOpen(false)}
+            onSuccess={() => {
+              fetchMeetings(); // โหลดข้อมูลใหม่หลังสร้างสำเร็จ
+              showNotification('Meeting created successfully');
+            }}
+          />
+        )}
+
+        {editModalOpen && (
+          <EditMeetingModal
+            open={editModalOpen}
+            handleClose={() => setEditModalOpen(false)}
+            meeting={editMeetingData}
+            refreshMeetings={() => {
+              fetchMeetings(); // โหลดข้อมูลใหม่หลังแก้ไขสำเร็จ
+              showNotification('Meeting updated successfully');
+            }}
+          />
+        )}
+
+        {/* Confirm Delete Modal */}
+        {deleteDialogOpen && (
+          <div className="modal-overlay">
+            <div className="confirm-dialog">
+              <h3 className="dialog-title">Confirm Deletion</h3>
+              <p className="dialog-message">
+                Are you sure you want to delete "{meetingToDelete?.title}"?
+              </p>
+              <div className="dialog-actions">
+                <button className="button button-secondary" onClick={() => setDeleteDialogOpen(false)}>
+                  Cancel
+                </button>
+                <button className="button button-danger" onClick={handleDelete}>
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
 
-export default MeetingApp;
+export default MeetingPage;

@@ -376,7 +376,30 @@
 .time-slots-container {
     flex: 1;
     overflow-y: auto;
+    position: relative;
 }
+
+.current-time-indicator {
+    position: absolute;
+    /* ชิดขอบขวาของ time-label และยาวไปทางขวา */
+    left: 70px; /* ควรเท่ากับความกว้างของ .time-label */
+    right: 0;
+    height: 2px; /* ความหนาของเส้น */
+    background-color: #EA4335; /* สีแดง หรือสีที่ต้องการ */
+    z-index: 15; /* ค่า z-index ควรอยู่เหนือพื้นหลังแต่ใต้ event ที่กำลังลาก */
+    pointer-events: none; /* ทำให้คลิกทะลุเส้นนี้ไปได้ */
+  }
+  
+  .current-time-indicator-dot {
+    position: absolute;
+    /* จัดตำแหน่งจุดให้อยู่ตรง بداية เส้น */
+    left: -4px;
+    top: -3px; /* ปรับให้อยู่กึ่งกลางแนวตั้งของเส้น */
+    width: 8px;
+    height: 8px;
+    background-color: #EA4335; /* สีเดียวกับเส้น */
+    border-radius: 50%; /* ทำให้เป็นวงกลม */
+  }
   
 .time-slot {
     display: flex;

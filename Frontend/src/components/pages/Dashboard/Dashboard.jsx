@@ -253,48 +253,50 @@ const Dashboard = () => {
   }, [currentUserEmail, fetchActiveTasksCount]);
 
 
-  // Calendar navigation functions
-  const nextMonth = () => {
-    const date = new Date(currentMonth);
-    date.setMonth(date.getMonth() + 1);
-    setCurrentMonth(date);
-  };
+// ฟังก์ชัน Calendar navigation (เหมือนเดิม)
+const nextMonth = () => {
+  setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+};
 
-  const prevMonth = () => {
-    const date = new Date(currentMonth);
-    date.setMonth(date.getMonth() - 1);
-    setCurrentMonth(date);
-  };
+const prevMonth = () => {
+   setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+};
 
-  // Format month and year
-  const formatMonthYear = (date) => {
-    return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-  };
+// ฟังก์ชัน Format month/year (เหมือนเดิม)
+const formatMonthYear = (date) => {
+  return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+};
 
-  // Get days in month for calendar
-  const getDaysInMonth = (date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const firstDayOfMonth = new Date(year, month, 1).getDay();
+// ฟังก์ชัน Get days in month (เหมือนเดิม)
+const getDaysInMonth = (date) => {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday, 1 = Monday...
 
-    const daysArray = [];
-    // Add empty cells for days before the 1st of the month
-    for (let i = 0; i < firstDayOfMonth; i++) {
-      daysArray.push({ day: '', date: null });
-    }
-    // Add days in month
-    for (let i = 1; i <= daysInMonth; i++) {
-      const dateObj = new Date(year, month, i);
-      daysArray.push({
-        day: i,
-        date: dateObj,
-        isToday: new Date().toDateString() === dateObj.toDateString(),
-        hasEvent: i === 15 || i === 22 || i === 29 // Example events
-      });
-    }
-    return daysArray;
-  };
+  const daysArray = [];
+  // Add empty cells for padding before the first day
+  for (let i = 0; i < firstDayOfMonth; i++) {
+    daysArray.push({ day: '', date: null, isToday: false, hasEvent: false });
+  }
+  // Add actual days of the month
+  const today = new Date();
+  for (let i = 1; i <= daysInMonth; i++) {
+    const dateObj = new Date(year, month, i);
+    daysArray.push({
+      day: i,
+      date: dateObj,
+      isToday: dateObj.toDateString() === today.toDateString(),
+      // *** หมายเหตุ: hasEvent ยังเป็น Static ต้องแก้ถ้าต้องการแสดง Event จริง ***
+      hasEvent: i % 7 === 0 // ตัวอย่าง: ใส่จุดทุกวันที่ 7
+    });
+  }
+  // Add empty cells for padding after the last day to fill the grid (optional)
+  // while (daysArray.length % 7 !== 0) {
+  //    daysArray.push({ day: '', date: null, isToday: false, hasEvent: false });
+  // }
+  return daysArray;
+};
 
   // Calendar integration placeholder functions
   const connectGoogleCalendar = () => {
@@ -506,117 +508,72 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div style={{
-          backgroundColor: 'white',
-          borderRadius: '8px',
-          boxShadow: hoveredCard === 'calendar' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)',
-          padding: '16px',
-          transition: 'box-shadow 0.3s ease-in-out'
-        }}
+        <div
+          style={{ backgroundColor: 'white', borderRadius: '8px', boxShadow: hoveredCard === 'calendar' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.12)', padding: '16px', transition: 'box-shadow 0.3s ease-in-out' }}
           onMouseEnter={() => setHoveredCard('calendar')}
-          onMouseLeave={() => setHoveredCard(null)}>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '16px',
-            color: '#4b5563',
-            fontWeight: 500
-          }}>
+          onMouseLeave={() => setHoveredCard(null)}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', color: '#4b5563', fontWeight: 500 }}>
+            {/* Month/Year Display */}
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <span role="img" aria-label="calendar">📅</span>
               {formatMonthYear(currentMonth)}
             </span>
+             {/* Prev/Next Buttons */}
             <div style={{ display: 'flex', gap: '4px' }}>
-              <button
-                onClick={prevMonth}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: hoveredDay === 'prev' ? '#f3f4f6' : 'transparent'
-                }}
-                onMouseEnter={() => setHoveredDay('prev')}
-                onMouseLeave={() => setHoveredDay(null)}
-              >◀</button>
-              <button
-                onClick={nextMonth}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: hoveredDay === 'next' ? '#f3f4f6' : 'transparent'
-                }}
-                onMouseEnter={() => setHoveredDay('next')}
-                onMouseLeave={() => setHoveredDay(null)}
-              >▶</button>
+              <button onClick={prevMonth} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px', backgroundColor: hoveredDay === 'prev' ? '#f3f4f6' : 'transparent' }} onMouseEnter={() => setHoveredDay('prev')} onMouseLeave={() => setHoveredDay(null)}>◀</button>
+              <button onClick={nextMonth} style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', borderRadius: '4px', backgroundColor: hoveredDay === 'next' ? '#f3f4f6' : 'transparent' }} onMouseEnter={() => setHoveredDay('next')} onMouseLeave={() => setHoveredDay(null)}>▶</button>
             </div>
           </div>
 
+          {/* Calendar Grid */}
           <div style={{ marginTop: '8px' }}>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '4px'
-            }}>
+            {/* Weekday Headers */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
               {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, i) => (
-                <div key={i} style={{
-                  textAlign: 'center',
-                  padding: '6px',
-                  fontSize: '12px',
-                  fontWeight: 500,
-                  color: '#6b7280'
-                }}>
-                  {day}
-                </div>
+                <div key={i} style={{ textAlign: 'center', padding: '6px', fontSize: '12px', fontWeight: 500, color: '#6b7280' }}>{day}</div>
               ))}
             </div>
-
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(7, 1fr)',
-              gap: '4px'
-            }}>
-              {getDaysInMonth(currentMonth).map((day, i) => (
+            {/* Days Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+              {getDaysInMonth(currentMonth).map((dayInfo, i) => (
                 <div
                   key={i}
                   style={{
                     textAlign: 'center',
                     padding: '6px',
                     position: 'relative',
-                    backgroundColor: day.isToday ? '#2563eb' : (hoveredDay === i && day.day) ? '#f3f4f6' : 'transparent',
-                    color: day.isToday ? 'white' : 'inherit',
-                    borderRadius: (day.isToday || (hoveredDay === i && day.day)) ? '50%' : 'none',
-                    fontWeight: day.hasEvent ? 500 : 400,
-                    cursor: day.day ? 'pointer' : 'default',
-                    visibility: day.day ? 'visible' : 'hidden'
+                    width: '32px', // Fixed width for day cell
+                    height: '32px', // Fixed height for day cell
+                    display: 'flex', // Center content
+                    alignItems: 'center', // Center content
+                    justifyContent: 'center', // Center content
+                    backgroundColor: dayInfo.isToday ? '#2563eb' : (hoveredDay === i && dayInfo.day) ? '#f3f4f6' : 'transparent',
+                    color: dayInfo.isToday ? 'white' : 'inherit',
+                    borderRadius: '50%', // Make it circular
+                    fontWeight: dayInfo.isToday ? 600 : (dayInfo.hasEvent ? 500 : 400),
+                    cursor: dayInfo.day ? 'pointer' : 'default',
+                    visibility: dayInfo.day ? 'visible' : 'hidden', // Hide padding days
+                    transition: 'background-color 0.2s' // Smooth hover effect
                   }}
-                  onMouseEnter={() => setHoveredDay(i)}
+                  onMouseEnter={() => dayInfo.day && setHoveredDay(i)} // Hover only on valid days
                   onMouseLeave={() => setHoveredDay(null)}
+                  // --- [เพิ่ม onClick Handler ตรงนี้] ---
+                  onClick={() => {
+                    if (dayInfo.date instanceof Date && !isNaN(dayInfo.date)) {
+                      const year = dayInfo.date.getFullYear();
+                      const month = (dayInfo.date.getMonth() + 1).toString().padStart(2, '0');
+                      const dateOfMonth = dayInfo.date.getDate().toString().padStart(2, '0');
+                      const dateString = `${year}-${month}-${dateOfMonth}`;
+                      // สมมติว่า Route ของ Calendar Page คือ /calendar
+                      navigate(`/calendar?date=${dateString}`);
+                    }
+                  }}
+                  // --- [สิ้นสุด onClick Handler] ---
                 >
-                  {day.day}
-                  {day.hasEvent && <div style={{
-                    position: 'absolute',
-                    width: '4px',
-                    height: '4px',
-                    backgroundColor: '#2563eb',
-                    borderRadius: '50%',
-                    bottom: '2px',
-                    left: '50%',
-                    transform: 'translateX(-50%)'
-                  }}></div>}
+                  {dayInfo.day}
+                  {/* Event Indicator Dot (Static for now) */}
+                  {dayInfo.hasEvent && <div style={{ position: 'absolute', width: '4px', height: '4px', backgroundColor: dayInfo.isToday ? 'white' : '#2563eb', borderRadius: '50%', bottom: '4px', left: '50%', transform: 'translateX(-50%)' }}></div>}
                 </div>
               ))}
             </div>

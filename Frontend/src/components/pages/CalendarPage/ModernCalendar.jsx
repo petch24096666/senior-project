@@ -1,44 +1,57 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation } from 'react-router-dom'; // <--- 1. เพิ่ม Import useLocation
 import './ModernCalendar.css';
 import Header from './Header';
-import Sidebar from './Sidebar';
+import Sidebar from './Sidebar'; // <-- ตรวจสอบว่า Import Sidebar แล้ว
 import DayView from './DayView';
 import WeekView from './WeekView';
 import MonthView from './MonthView';
 import EventModal from './EventModal';
 import CategoryModal from './CategoryModal';
+// --- !!! [สำคัญ] แก้ไข Path นี้ให้ถูกต้องตามโครงสร้างโปรเจกต์ Frontend ของคุณ !!! ---
+import { fetchEvents, createEvent, updateEvent, deleteEvent } from '../../../services/calendarAPI.js';
 
 const ModernCalendar = () => {
-  // States หลัก
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState('month'); // 'day', 'week', 'month'
-  
-  // States สำหรับ modal และการแก้ไข
+
+  const location = useLocation(); // <--- 2. เรียกใช้ useLocation ที่ Top Level
+
+  // --- ตรวจสอบว่าประกาศ getInitialDate และ getInitialViewMode ตรงนี้ ---
+  const getInitialDate = useCallback(() => {
+    const params = new URLSearchParams(location.search);
+    const dateParam = params.get('date');
+    if (dateParam) {
+      try {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+          const parsedDate = new Date(dateParam + 'T00:00:00Z');
+          if (!isNaN(parsedDate.getTime())) {
+            return parsedDate;
+          } else { console.warn("Invalid date parsed from URL:", dateParam); }
+        } else { console.warn("Invalid date format in URL:", dateParam); }
+      } catch (e) { console.error("Error parsing date param:", e); }
+    }
+    return new Date();
+  }, [location.search]);
+
+  const getInitialViewMode = useCallback(() => { // <--- ตรวจสอบว่าฟังก์ชันนี้ยังอยู่ และสะกดถูกต้อง
+    const params = new URLSearchParams(location.search);
+    return params.has('date') ? 'day' : 'month';
+  }, [location.search]);
+  // --- สิ้นสุดการประกาศ ---
+
+  // --- States (ใช้ Initializer functions แล้ว) ---
+  const [currentDate, setCurrentDate] = useState(getInitialDate);
+  const [selectedDate, setSelectedDate] = useState(getInitialDate);
+  // ตั้งค่าเริ่มต้นจาก URL แค่ครั้งเดียวตอน useState ทำงาน
+  const [viewMode, setViewMode] = useState(getInitialViewMode);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
-  
-  // Forms สำหรับ event และ category
   const [eventForm, setEventForm] = useState({
-    id: null,
-    title: '',
-    start: '',
-    end: '',
-    allDay: false,
-    description: '',
-    location: '',
-    color: '#3366FF'
+    title: '', start: '', end: '', allDay: false, description: '', location: '', color: '#3366FF'
   });
-  const [categoryForm, setCategoryForm] = useState({
-    id: '',
-    name: '',
-    color: '#3366FF'
-  });
-  
-  // ข้อมูล categories และ events เริ่มต้น
-  const [categories, setCategories] = useState([
+  const [categoryForm, setCategoryForm] = useState({ id: '', name: '', color: '#3366FF' });
+  const [categories, setCategories] = useState([ // ควรจะ Fetch จาก API ในอนาคต
     { id: 'work', name: 'Work', color: '#3366FF' },
     { id: 'personal', name: 'Personal', color: '#33CC66' },
     { id: 'family', name: 'Family', color: '#FF6633' },
@@ -46,64 +59,56 @@ const ModernCalendar = () => {
     { id: 'meeting', name: 'Meeting', color: '#FF3366' },
     { id: 'other', name: 'Other', color: '#999999' }
   ]);
-  
-  const [events, setEvents] = useState([
-    {
-      id: 1,
-      title: 'Team Meeting',
-      start: new Date(2025, 2, 29, 10, 0),
-      end: new Date(2025, 2, 29, 11, 30),
-      allDay: false,
-      description: 'Weekly team sync meeting',
-      location: 'Conference Room A',
-      category: 'work',
-      color: '#3366FF'
-    },
-    {
-      id: 2,
-      title: 'Doctor Appointment',
-      start: new Date(2025, 2, 30, 14, 0),
-      end: new Date(2025, 2, 30, 15, 0),
-      allDay: false,
-      description: 'Annual checkup',
-      location: 'Medical Center',
-      category: 'health',
-      color: '#9966FF'
-    },
-    {
-      id: 3,
-      title: 'Birthday Party',
-      start: new Date(2025, 3, 5, 0, 0),
-      end: new Date(2025, 3, 5, 23, 59),
-      allDay: true,
-      description: 'Sarah\'s birthday celebration',
-      location: 'Home',
-      category: 'family',
-      color: '#FF6633'
-    }
-  ]);
-  
-  // Helper functions
-  const formatDateTimeForInput = (date) => {
-    return date.toISOString().slice(0, 16);
-  };
+  const [events, setEvents] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const formatDate = (date, format = 'full') => {
-    if (format === 'full') {
-      return date.toLocaleDateString('en-US', {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric'
-      });
-    } else if (format === 'monthYear') {
-      return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    } else if (format === 'time') {
-      return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    }
-  };
 
-  const getDaysInMonth = () => {
+  useEffect(() => {
+    console.log("Location search changed:", location.search); // เพิ่ม log เพื่อดูว่า Effect ทำงานเมื่อไหร่
+    const newInitialDate = getInitialDate(); // เรียกใช้ getInitialDate ได้ตามปกติ
+    console.log("New initial date from URL:", newInitialDate);
+
+    // เปรียบเทียบเฉพาะ Date ไม่รวมเวลา เพื่อป้องกันการอัปเดตที่ไม่จำเป็น
+    if (currentDate.toDateString() !== newInitialDate.toDateString()) {
+       console.log("Current date differs from URL date, updating state.");
+       setCurrentDate(newInitialDate);
+       setSelectedDate(newInitialDate);
+       // *** ไม่ต้องเรียก setViewMode ที่นี่แล้ว ***
+    } else {
+       console.log("Current date matches URL date, no date state update needed.");
+    }
+
+    // Dependency ควรเป็น location.search เพื่อให้ทำงานเมื่อ URL query string เปลี่ยน
+  }, [location.search, getInitialDate]); // getInitialDate ต้องใส่เพราะถูกใช้ข้างใน แต่ getInitialViewMode ไม่ต้องแล้ว
+
+  // --- Helper Functions ---
+  const formatDateTimeForInput = useCallback((date) => {
+    if (!(date instanceof Date) || isNaN(date)) return '';
+    const pad = (num) => num.toString().padStart(2, '0');
+    try {
+      const year = date.getFullYear();
+      const month = pad(date.getMonth() + 1);
+      const day = pad(date.getDate());
+      const hours = pad(date.getHours());
+      const minutes = pad(date.getMinutes());
+      return `${year}-${month}-${day}T${hours}:${minutes}`;
+    } catch (e) { console.error("Error formatting date for input:", e); return ''; }
+  }, []);
+
+  const formatDate = useCallback((date, format = 'full') => {
+    if (!date) return '';
+    let dateObj = date instanceof Date ? date : new Date(date);
+    if (isNaN(dateObj)) return '';
+    try {
+      if (format === 'full') return dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      if (format === 'monthYear') return dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      if (format === 'time') return dateObj.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      return dateObj.toLocaleDateString();
+    } catch (e) { console.error("Error formatting date:", e); return ''; }
+  }, []);
+
+  const getDaysInMonth = useCallback(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1);
@@ -112,29 +117,20 @@ const ModernCalendar = () => {
     const days = [];
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = firstDayIndex - 1; i >= 0; i--) {
-      const day = prevMonthLastDay - i;
-      days.push({
-        date: new Date(year, month - 1, day),
-        currentMonth: false
-      });
+      days.push({ date: new Date(year, month - 1, prevMonthLastDay - i), currentMonth: false });
     }
     for (let day = 1; day <= lastDay.getDate(); day++) {
-      days.push({
-        date: new Date(year, month, day),
-        currentMonth: true
-      });
+      days.push({ date: new Date(year, month, day), currentMonth: true });
     }
-    const nextDays = 42 - days.length;
-    for (let day = 1; day <= nextDays; day++) {
-      days.push({
-        date: new Date(year, month + 1, day),
-        currentMonth: false
-      });
+    const daysGenerated = days.length;
+    const nextDaysCount = (daysGenerated <= 35) ? 42 - daysGenerated : 49 - daysGenerated;
+    for (let day = 1; day <= nextDaysCount; day++) {
+      days.push({ date: new Date(year, month + 1, day), currentMonth: false });
     }
-    return days;
-  };
+    return days.slice(0, (days.length > 35 ? 42 : 35));
+  }, [currentDate]);
 
-  const getDaysInWeek = () => {
+  const getDaysInWeek = useCallback(() => {
     const days = [];
     const weekStart = new Date(currentDate);
     weekStart.setDate(currentDate.getDate() - currentDate.getDay());
@@ -144,273 +140,355 @@ const ModernCalendar = () => {
       days.push(day);
     }
     return days;
-  };
+  }, [currentDate]);
 
-  const isToday = (date) => {
+  const isToday = useCallback((date) => {
+    if (!date) return false;
     const today = new Date();
     return date.getDate() === today.getDate() &&
            date.getMonth() === today.getMonth() &&
            date.getFullYear() === today.getFullYear();
-  };
+  }, []);
 
-  const isSameDay = (date1, date2) => {
-    return date1.getDate() === date2.getDate() &&
-           date1.getMonth() === date2.getMonth() &&
-           date1.getFullYear() === date2.getFullYear();
-  };
+  const isSameDay = useCallback((date1, date2) => {
+    if (!date1 || !date2) return false;
+    let d1 = date1 instanceof Date ? date1 : new Date(date1);
+    let d2 = date2 instanceof Date ? date2 : new Date(date2);
+    if (isNaN(d1) || isNaN(d2)) return false;
+    return d1.getDate() === d2.getDate() &&
+           d1.getMonth() === d2.getMonth() &&
+           d1.getFullYear() === d2.getFullYear();
+  }, []);
 
-  const goToPrevious = () => {
-    setCurrentDate(prevDate => {
-      const newDate = new Date(prevDate);
-      if (viewMode === 'day') {
-        newDate.setDate(prevDate.getDate() - 1);
-      } else if (viewMode === 'week') {
-        newDate.setDate(prevDate.getDate() - 7);
-      } else {
-        newDate.setMonth(prevDate.getMonth() - 1);
-      }
+  // --- Navigation ---
+  const goToPrevious = useCallback(() => {
+    setCurrentDate(prev => {
+      const newDate = new Date(prev);
+      if (viewMode === 'day') newDate.setDate(prev.getDate() - 1);
+      else if (viewMode === 'week') newDate.setDate(prev.getDate() - 7);
+      else newDate.setMonth(prev.getMonth() - 1);
       return newDate;
     });
-  };
+  }, [viewMode]);
 
-  const goToNext = () => {
-    setCurrentDate(prevDate => {
-      const newDate = new Date(prevDate);
-      if (viewMode === 'day') {
-        newDate.setDate(prevDate.getDate() + 1);
-      } else if (viewMode === 'week') {
-        newDate.setDate(prevDate.getDate() + 7);
-      } else {
-        newDate.setMonth(prevDate.getMonth() + 1);
-      }
+  const goToNext = useCallback(() => {
+    setCurrentDate(prev => {
+      const newDate = new Date(prev);
+      if (viewMode === 'day') newDate.setDate(prev.getDate() + 1);
+      else if (viewMode === 'week') newDate.setDate(prev.getDate() + 7);
+      else newDate.setMonth(prev.getMonth() + 1);
       return newDate;
     });
-  };
+  }, [viewMode]);
 
-  const goToToday = () => {
-    setCurrentDate(new Date());
-    setSelectedDate(new Date());
-  };
+  const goToToday = useCallback(() => {
+    const today = new Date();
+    setCurrentDate(today);
+    setSelectedDate(today);
+  }, []);
 
-  const handleDateClick = (date) => {
+  const handleDateClick = useCallback((date) => {
+    if (!date) return;
     setSelectedDate(date);
     if (viewMode === 'month') {
-      setViewMode('day');
       setCurrentDate(date);
+      setViewMode('day');
     }
-  };
+  }, [viewMode, setViewMode, setCurrentDate, setSelectedDate]);
 
-  // Event modal: initialize formเมื่อเปิด modalใหม่
-  useEffect(() => {
-    if (showEventModal && !editingEvent) {
-      const now = new Date();
-      const startTime = new Date(selectedDate);
-      startTime.setHours(now.getHours());
-      startTime.setMinutes(0);
-      const endTime = new Date(startTime);
-      endTime.setHours(startTime.getHours() + 1);
-      setEventForm({
-        id: Date.now(),
-        title: '',
-        start: formatDateTimeForInput(startTime),
-        end: formatDateTimeForInput(endTime),
-        allDay: false,
-        description: '',
-        location: '',
-        color: '#3366FF'
-      });
+  // --- Fetch Data ---
+  const loadEvents = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const fetchedEvents = await fetchEvents();
+      if (Array.isArray(fetchedEvents)) {
+         setEvents(fetchedEvents.map(event => ({
+           ...event,
+           start: event.start ? new Date(event.start) : null,
+           end: event.end ? new Date(event.end) : null,
+           allDay: Boolean(event.allDay)
+         })));
+      } else {
+         console.error("fetchEvents did not return an array:", fetchedEvents);
+         setEvents([]);
+      }
+    } catch (err) {
+      setError('Failed to load events. Please check connection or API.');
+      console.error("Load Events Error:", err);
+      setEvents([]);
+    } finally {
+      setIsLoading(false);
     }
-  }, [showEventModal, editingEvent, selectedDate]);
+  }, []);
 
   useEffect(() => {
-    if (editingEvent) {
-      setEventForm({
-        id: editingEvent.id,
-        title: editingEvent.title,
-        start: formatDateTimeForInput(editingEvent.start),
-        end: formatDateTimeForInput(editingEvent.end),
-        allDay: editingEvent.allDay,
-        description: editingEvent.description || '',
-        location: editingEvent.location || '',
-        color: editingEvent.color
-      });
+    loadEvents();
+  }, [loadEvents]);
+
+  // --- Handlers for Modals ---
+  const openEventModalForCreate = useCallback((startTime) => {
+      setSelectedDate(startTime instanceof Date && !isNaN(startTime) ? startTime : new Date());
+      setEditingEvent(null);
       setShowEventModal(true);
-    }
-  }, [editingEvent]);
+  }, [setSelectedDate, setEditingEvent, setShowEventModal]);
 
-  const handleEventFormChange = (e) => {
+  const openEventModalForEdit = useCallback((event) => {
+      if (!event) return;
+      setEditingEvent(event);
+      setShowEventModal(true);
+  }, [setEditingEvent, setShowEventModal]);
+
+  // --- Event Form Handling (useEffect) ---
+  useEffect(() => {
+    if (showEventModal) {
+      if (editingEvent && editingEvent.start instanceof Date) {
+        // Editing Mode
+        setEventForm({
+          id: editingEvent.id,
+          title: editingEvent.title || '',
+          start: formatDateTimeForInput(editingEvent.start),
+          end: editingEvent.end instanceof Date ? formatDateTimeForInput(editingEvent.end) : '',
+          allDay: editingEvent.allDay || false,
+          description: editingEvent.description || '',
+          location: editingEvent.location || '',
+          color: editingEvent.color || categories[0]?.color || '#3366FF'
+        });
+      } else if (!editingEvent && selectedDate instanceof Date) {
+        // Creating Mode - ใช้ selectedDate ที่ได้จากการคลิก
+        const startTime = new Date(selectedDate);
+        const endTime = new Date(startTime);
+        endTime.setHours(startTime.getHours() + 1);
+        setEventForm({
+          title: '',
+          start: formatDateTimeForInput(startTime), // ใช้เวลาที่คลิก
+          end: formatDateTimeForInput(endTime),     // คำนวณเวลาสิ้นสุด
+          allDay: false,
+          description: '',
+          location: '',
+          color: categories[0]?.color || '#3366FF'
+        });
+      } else {
+        // Fallback default
+        console.warn("Could not determine initial form values, using defaults.");
+        const fallbackStartTime = new Date();
+        fallbackStartTime.setHours(9,0,0,0);
+        const fallbackEndTime = new Date(fallbackStartTime);
+        fallbackEndTime.setHours(10,0,0,0);
+        setEventForm({
+          title: '',
+          start: formatDateTimeForInput(fallbackStartTime),
+          end: formatDateTimeForInput(fallbackEndTime),
+          allDay: false, description: '', location: '', color: '#3366FF'
+        });
+      }
+    }
+  }, [showEventModal, editingEvent, selectedDate, categories, formatDateTimeForInput]);
+
+  const handleEventFormChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
-    setEventForm(prev => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value
-    }));
-  };
+    setEventForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  }, []);
 
-  const handleEventSubmit = (e) => {
+  const handleEventSubmit = useCallback(async (e) => {
     e.preventDefault();
-    const newEvent = {
-      id: eventForm.id,
-      title: eventForm.title,
-      start: new Date(eventForm.start),
-      end: new Date(eventForm.end),
-      allDay: eventForm.allDay,
-      description: eventForm.description,
-      location: eventForm.location,
-      color: eventForm.color
-    };
-    if (editingEvent) {
-      setEvents(events.map(event => event.id === editingEvent.id ? newEvent : event));
-    } else {
-      setEvents([...events, newEvent]);
-    }
-    setShowEventModal(false);
-    setEditingEvent(null);
-  };
+    setIsLoading(true);
+    setError(null);
+    const payload = { ...eventForm, allDay: Boolean(eventForm.allDay) };
 
-  const handleDeleteEvent = () => {
-    if (editingEvent) {
-      setEvents(events.filter(event => event.id !== editingEvent.id));
+    try {
+      let resultEventData;
+      if (editingEvent) {
+        resultEventData = await updateEvent(editingEvent.id, payload);
+      } else {
+        resultEventData = await createEvent(payload);
+      }
+       const processedEvent = {
+           ...resultEventData,
+           start: resultEventData.start ? new Date(resultEventData.start) : null,
+           end: resultEventData.end ? new Date(resultEventData.end) : null,
+           allDay: Boolean(resultEventData.allDay)
+       };
+      if (editingEvent) {
+        setEvents(prevEvents => prevEvents.map(event => event.id === processedEvent.id ? processedEvent : event));
+        console.log("Event updated:", processedEvent);
+      } else {
+        setEvents(prevEvents => [...prevEvents, processedEvent]);
+        console.log("Event created:", processedEvent);
+      }
       setShowEventModal(false);
       setEditingEvent(null);
+    } catch (err) {
+      const errorMsg = `Failed to ${editingEvent ? 'update' : 'create'} event. ${err.message || ''}`;
+      setError(errorMsg);
+      console.error(errorMsg, err);
+      // alert(`Error: ${errorMsg}`);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, [eventForm, editingEvent, setIsLoading, setError, setEvents, setShowEventModal, setEditingEvent]);
 
-  const getEventsForDate = (date) => {
-    return events.filter(event =>
-      isSameDay(event.start, date) || (event.allDay && isSameDay(event.end, date))
-    );
-  };
+  const handleDeleteEvent = useCallback(async () => {
+    if (!editingEvent || !editingEvent.id) return;
+    const confirmDelete = window.confirm(`Are you sure you want to delete "${editingEvent.title}"?`);
+    if (!confirmDelete) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await deleteEvent(editingEvent.id);
+      const deletedId = result?.id || editingEvent.id;
+      setEvents(prevEvents => prevEvents.filter(event => event.id !== deletedId));
+      console.log("Event deleted:", deletedId);
+      setShowEventModal(false);
+      setEditingEvent(null);
+    } catch (err) {
+      const errorMsg = `Failed to delete event: ${err.message || ''}`;
+      setError(errorMsg);
+      console.error(errorMsg, err);
+      // alert(`Error: ${errorMsg}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [editingEvent, setIsLoading, setError, setEvents, setShowEventModal, setEditingEvent]);
 
-  const getAllDayEvents = (date) => {
-    return events.filter(event => event.allDay && isSameDay(event.start, date));
-  };
 
-  const getEventsForHour = (date, hour) => {
-    return events.filter(event =>
-      !event.allDay && isSameDay(event.start, date) && event.start.getHours() === hour
-    );
-  };
+  // --- Filtering Functions ---
+  const getEventsForDate = useCallback((date) => {
+    if (!date || !Array.isArray(events)) return [];
+    return events.filter(event => {
+      if (!event || !event.start) return false;
+      return isSameDay(event.start, date) || (event.allDay && event.end && isSameDay(event.end, date));
+    });
+  }, [events, isSameDay]);
 
-  const timeSlots = Array.from({ length: 24 }, (_, i) => i);
-  const getTimeLabel = (hour) => {
-    if (hour === 0) return '12 AM';
-    if (hour === 12) return '12 PM';
-    return hour < 12 ? `${hour} AM` : `${hour - 12} PM`;
-  };
+  const getAllDayEvents = useCallback((date) => {
+    if (!date || !Array.isArray(events)) return [];
+    return events.filter(event => event?.allDay && event.start && isSameDay(event.start, date));
+  }, [events, isSameDay]);
 
+  const getEventsForHour = useCallback((date, hour) => {
+    if (!date || !Array.isArray(events)) return [];
+    return events.filter(event => {
+      if (!event || event.allDay || !event.start) return false;
+      return isSameDay(event.start, date) && event.start.getHours() === hour;
+    });
+  }, [events, isSameDay]);
+
+  // --- Time Slot Generation ---
+  const timeSlots = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
+  const getTimeLabel = useCallback((hour) => {
+    const h = hour % 12 === 0 ? 12 : hour % 12;
+    const ampm = hour < 12 || hour === 24 ? 'AM' : 'PM';
+    return `${h} ${ampm}`;
+  }, []);
+
+
+  // --- Render ---
   return (
-    <div className="calendar-container">
-      <div className="calendar-wrapper">
-        <Header 
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          currentDate={currentDate}
-          goToToday={goToToday}
-          goToPrevious={goToPrevious}
-          goToNext={goToNext}
-          formatDate={formatDate}
-          getDaysInWeek={getDaysInWeek}
-          setShowEventModal={() => { setEditingEvent(null); setShowEventModal(true); }}
-        />
-        <div className="calendar-content">
-          <Sidebar 
-            categories={categories}
-            events={events}
-            setEditingCategory={setEditingCategory}
-            setCategoryForm={setCategoryForm}
-            setShowCategoryModal={setShowCategoryModal}
-            setEditingEvent={setEditingEvent}
-            formatDate={formatDate}
-          />
-          <div className="calendar-main">
-            {viewMode === 'day' && (
-              <DayView 
+      <div className="calendar-container">
+        <div className="calendar-wrapper">
+            <Header
+                viewMode={viewMode}
+                setViewMode={setViewMode}
                 currentDate={currentDate}
-                timeSlots={timeSlots}
-                getTimeLabel={getTimeLabel}
-                getAllDayEvents={getAllDayEvents}
-                getEventsForHour={getEventsForHour}
-                setSelectedDate={setSelectedDate}
-                setShowEventModal={setShowEventModal}
-                setEditingEvent={setEditingEvent}
+                goToToday={goToToday}
+                goToPrevious={goToPrevious}
+                goToNext={goToNext}
                 formatDate={formatDate}
-              />
-            )}
-            {viewMode === 'week' && (
-              <WeekView 
-                timeSlots={timeSlots}
-                getTimeLabel={getTimeLabel}
                 getDaysInWeek={getDaysInWeek}
-                isToday={isToday}
-                getAllDayEvents={getAllDayEvents}
-                getEventsForHour={getEventsForHour}
-                setSelectedDate={setSelectedDate}
-                setShowEventModal={setShowEventModal}
-                setEditingEvent={setEditingEvent}
-              />
-            )}
-            {viewMode === 'month' && (
-              <MonthView 
-                currentDate={currentDate}
-                getDaysInMonth={getDaysInMonth}
-                handleDateClick={handleDateClick}
-                isToday={isToday}
-                formatDate={formatDate}
-                getEventsForDate={getEventsForDate}
-              />
-            )}
-          </div>
+                setShowEventModal={() => openEventModalForCreate(selectedDate)} // ปุ่ม Create หลัก ใช้ selectedDate ปัจจุบัน
+            />
+            <div className="calendar-content">
+                <Sidebar
+                  categories={categories}
+                  events={events}
+                  setEditingCategory={setEditingCategory}
+                  setCategoryForm={setCategoryForm}
+                  setShowCategoryModal={setShowCategoryModal}
+                  setEditingEvent={openEventModalForEdit}
+                  formatDate={formatDate}
+                />
+                <div className="calendar-main">
+                    {isLoading && <div style={{ padding: '20px', textAlign: 'center' }}>Loading events...</div>}
+                    {error && !isLoading && <div style={{ color: 'red', padding: '20px', textAlign: 'center' }}>Error: {error}</div>}
+                    {!isLoading && !error && (
+                        <>
+                            {viewMode === 'day' &&
+                                <DayView
+                                    currentDate={currentDate}
+                                    timeSlots={timeSlots}
+                                    getTimeLabel={getTimeLabel}
+                                    getAllDayEvents={getAllDayEvents}
+                                    getEventsForHour={getEventsForHour}
+                                    formatDate={formatDate}
+                                    // ส่ง Handlers ให้ DayView
+                                    openEventModalForCreate={openEventModalForCreate}
+                                    openEventModalForEdit={openEventModalForEdit}
+                                />
+                            }
+                            {viewMode === 'week' &&
+                                <WeekView
+                                    timeSlots={timeSlots}
+                                    getTimeLabel={getTimeLabel}
+                                    getDaysInWeek={getDaysInWeek}
+                                    isToday={isToday}
+                                    getAllDayEvents={getAllDayEvents}
+                                    getEventsForHour={getEventsForHour}
+                                    formatDate={formatDate}
+                                    // ส่ง Handlers ให้ WeekView
+                                    openEventModalForCreate={openEventModalForCreate}
+                                    openEventModalForEdit={openEventModalForEdit}
+                                />
+                            }
+                            {viewMode === 'month' &&
+                                <MonthView
+                                    currentDate={currentDate}
+                                    getDaysInMonth={getDaysInMonth}
+                                    handleDateClick={handleDateClick}
+                                    isToday={isToday}
+                                    formatDate={formatDate}
+                                    getEventsForDate={getEventsForDate}
+                                    setEditingEvent={openEventModalForEdit}
+                                    events={events}
+                                />
+                            }
+                        </>
+                    )}
+                </div>
+            </div>
         </div>
+
+        {/* Event Modal */}
+        {showEventModal &&
+            <EventModal
+                showEventModal={showEventModal}
+                onClose={() => { setShowEventModal(false); setEditingEvent(null); }}
+                eventForm={eventForm}
+                handleEventFormChange={handleEventFormChange}
+                handleEventSubmit={handleEventSubmit}
+                editingEvent={editingEvent}
+                handleDeleteEvent={handleDeleteEvent}
+                categories={categories}
+                setEventForm={setEventForm}
+            />
+        }
+
+        {/* Category Modal */}
+        {showCategoryModal &&
+            <CategoryModal
+                showCategoryModal={showCategoryModal}
+                onClose={() => { setShowCategoryModal(false); setEditingCategory(null); }}
+                categoryForm={categoryForm}
+                handleCategoryFormChange={(e) => {
+                    const { name, value } = e.target;
+                    setCategoryForm(prev => ({ ...prev, [name]: value }));
+                }}
+                handleCategorySubmit={(e) => { /* ... Category Submit (Local State) ... */ }}
+                editingCategory={editingCategory}
+                handleDeleteCategory={() => { /* ... Category Delete (Local State) ... */ }}
+            />
+        }
       </div>
-      <EventModal 
-        showEventModal={showEventModal}
-        onClose={() => { setShowEventModal(false); setEditingEvent(null); }}
-        eventForm={eventForm}
-        handleEventFormChange={handleEventFormChange}
-        handleEventSubmit={handleEventSubmit}
-        editingEvent={editingEvent}
-        handleDeleteEvent={handleDeleteEvent}
-        categories={categories}
-        setEventForm={setEventForm}
-      />
-      <CategoryModal 
-        showCategoryModal={showCategoryModal}
-        onClose={() => { setShowCategoryModal(false); setEditingCategory(null); }}
-        categoryForm={categoryForm}
-        handleCategoryFormChange={(e) => {
-          const { name, value } = e.target;
-          setCategoryForm(prev => ({ ...prev, [name]: value }));
-        }}
-        handleCategorySubmit={(e) => {
-          e.preventDefault();
-          const newCategory = {
-            id: editingCategory ? categoryForm.id : `category-${Date.now()}`,
-            name: categoryForm.name,
-            color: categoryForm.color
-          };
-          if (editingCategory) {
-            setCategories(categories.map(cat => cat.id === editingCategory.id ? newCategory : cat));
-          } else {
-            setCategories([...categories, newCategory]);
-          }
-          setShowCategoryModal(false);
-          setEditingCategory(null);
-        }}
-        editingCategory={editingCategory}
-        handleDeleteCategory={() => {
-          if (editingCategory) {
-            const eventsUsingCategory = events.some(event => event.color === editingCategory.color);
-            if (eventsUsingCategory) {
-              alert("Cannot delete this category as it's being used by one or more events");
-              return;
-            }
-            setCategories(categories.filter(cat => cat.id !== editingCategory.id));
-            setShowCategoryModal(false);
-            setEditingCategory(null);
-          }
-        }}
-      />
-    </div>
   );
 };
 
