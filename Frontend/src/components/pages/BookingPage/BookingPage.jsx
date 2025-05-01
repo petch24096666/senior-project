@@ -1,371 +1,1894 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
+import { UserContext } from '../../../context/Usercontext';
+import { v4 as uuidv4 } from 'uuid';
+import dayjs from 'dayjs';
+import { useNavigate } from "react-router-dom";
+import axios from 'axios';
+import { Snackbar, Alert } from '@mui/material';
+import { useRBAC } from '../../../context/RBAC';
+import TeamMemberDropdown from './TeamMemberDropdown'; // แก้ path ให้ตรง
+import ArchiveModal from './ArchiveModal'; // แก้ path ให้ตรง
+// Custom CSS keyframes for animations
+const fadeInKeyframes = `
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+`;
 
-const BookingFacilityPage = () => {
-  // State for facility data
-  const [facilities, setFacilities] = useState([
-    { id: 1, name: 'Conference Room A', capacity: 20, equipment: ['Projector', 'Whiteboard', 'Video Conference'], image: '/api/placeholder/300/180' },
-    { id: 2, name: 'Meeting Room B', capacity: 8, equipment: ['Whiteboard', 'TV Screen'], image: '/api/placeholder/300/180' },
-    { id: 3, name: 'Workshop Space', capacity: 30, equipment: ['Workstations', 'Projector', 'Audio System'], image: '/api/placeholder/300/180' },
-    { id: 4, name: 'Private Office', capacity: 4, equipment: ['Desk', 'Whiteboard'], image: '/api/placeholder/300/180' },
-    { id: 5, name: 'Auditorium', capacity: 100, equipment: ['Stage', 'Projector', 'Sound System'], image: '/api/placeholder/300/180' },
-  ]);
-
-  // State for selected facility and booking details
-  const [selectedFacility, setSelectedFacility] = useState(null);
-  const [bookingDate, setBookingDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [attendees, setAttendees] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedEquipment, setSelectedEquipment] = useState([]);
-  const [bookedSlots, setBookedSlots] = useState([
-    { facilityId: 1, date: '2025-03-30', startTime: '09:00', endTime: '11:00' },
-    { facilityId: 1, date: '2025-03-30', startTime: '14:00', endTime: '16:00' },
-    { facilityId: 2, date: '2025-03-30', startTime: '10:00', endTime: '12:00' },
-    { facilityId: 3, date: '2025-03-31', startTime: '13:00', endTime: '17:00' },
-  ]);
-  
-  // State for the modal
+const BookingPage = () => {
+  // ดึงข้อมูลผู้ใช้จาก context
+  const ctx = useContext(UserContext);
+  if (!ctx || !ctx.customUser) {
+    return <div>Please log in to view your projects.</div>;
+  }
+  const currentUserId = ctx.customUser.user_id;
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
+  // Project data
+  const [booking, setBooking] = useState([]);
+  // State variables
+  const [viewMode, setViewMode] = useState('grid');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingBooking, setEditingBooking] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filteredProjects, setFilteredProjects] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [bookingConfirmed, setBookingConfirmed] = useState(false);
-  const [bookingError, setBookingError] = useState('');
-  
-  // Current date for minimum date selection
-  const today = new Date().toISOString().split('T')[0];
-  
-  // All available equipment for filtering
-  const allEquipment = ['Projector', 'Whiteboard', 'Video Conference', 'TV Screen', 'Workstations', 'Audio System', 'Desk', 'Stage', 'Sound System'];
-
-  // Filter facilities based on search and equipment
-  const filteredFacilities = facilities.filter(facility => {
-    // Search by name
-    const matchesSearch = facility.name.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // Filter by selected equipment
-    const hasAllEquipment = selectedEquipment.length === 0 || 
-      selectedEquipment.every(eq => facility.equipment.includes(eq));
-    
-    return matchesSearch && hasAllEquipment;
+  const navigate = useNavigate();
+  const [menuOpenId, setMenuOpenId] = useState(null);
+  // ดึงผู้ใช้ทั้งหมด (ใช้ใน dropdown หากจำเป็น)
+  const [allUsers, setAllUsers] = useState([]);
+  // ปรับ state ใหม่ ไม่รวม tasks fields และ description
+  const [newBooking, setNewBooking] = useState({
+    booking_id: '',
+    booking_title: '',
+    booking_description: '',
+    booking_type: '',
+    booking_startdate: '', // 👈 ใหม่
+    booking_enddate: '',   // 👈 ใหม่
+    booking_starttime: '',
+    booking_endtime: '',
+    booking_status: '',
+    team: [],
+    booking_image: null,
+    booking_image_preview: null
   });
 
-  // Check if a time slot is available
-  const isTimeSlotAvailable = (facilityId, date, start, end) => {
-    const conflictingBooking = bookedSlots.find(booking => 
-      booking.facilityId === facilityId && 
-      booking.date === date && 
-      ((booking.startTime <= start && booking.endTime > start) || 
-       (booking.startTime < end && booking.endTime >= end) ||
-       (booking.startTime >= start && booking.endTime <= end))
-    );
-    
-    return !conflictingBooking;
-  };
+  // Stats state
+  const [stats, setStats] = useState({
+    totalProjects: 0,
+    completedTasks: '0/0',
+    highPriorityCount: 0,
+    dueThisWeek: 0
+  });
+  const { canCreateBooking, canEditBooking, canDeleteBooking } = useRBAC();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [hoveredCard, setHoveredCard] = useState(null);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [notification, setNotification] = useState({ open: false, message: '', type: 'info' });
+  const showNotification = (msg, type = 'info') => setNotification({ open: true, message: msg, type });
+  const handleCloseNotification = () => setNotification(prev => ({ ...prev, open: false }));
+  const [selectedType, setSelectedType] = useState('');
+  const [customType, setCustomType] = useState('');
+  const [showBookModal, setShowBookModal] = useState(false);
+  const [bookingToBook, setBookingToBook] = useState(null);
+  const [bookedSlots, setBookedSlots] = useState([]);
+  const [bookedTimes, setBookedTimes] = useState([]); // เก็บเวลาที่ถูกจองไว้
+  const [bookingReservation, setBookingReservation] = useState({
+    booked_id: '', // ไม่จำเป็นต้องกำหนดเองก็ได้
+    booked_startdate: '',
+    booked_enddate: '',
+    booked_starttime: '',
+    booked_endtime: '',
+    booking_id: '', // จะ set ตอนกดปุ่ม Book Now
+    user_id: currentUserId
+  });
 
-  // Handle facility selection
-  const handleSelectFacility = (facility) => {
-    setSelectedFacility(facility);
-    setShowModal(true);
-    setBookingDate('');
-    setStartTime('');
-    setEndTime('');
-    setAttendees('');
-    setPurpose('');
-    setBookingConfirmed(false);
-    setBookingError('');
-  };
 
-  // Toggle equipment selection
-  const toggleEquipment = (equipment) => {
-    if (selectedEquipment.includes(equipment)) {
-      setSelectedEquipment(selectedEquipment.filter(eq => eq !== equipment));
+  useEffect(() => {
+    // Sync selectedType จาก state จริง
+    if (!isEditMode) {
+      setSelectedType(newBooking.booking_type);
     } else {
-      setSelectedEquipment([...selectedEquipment, equipment]);
+      setSelectedType(editingBooking?.booking_type || '');
+    }
+  }, [newBooking.booking_type, editingBooking?.booking_type, isEditMode]);
+
+  const handleTypeSelect = (type) => {
+    console.log("Selected type:", type); // ✅ ดูว่าเรียกจริงไหม
+    setSelectedType(type);
+
+    if (type !== 'Other') {
+      setCustomType('');
+    }
+
+    if (isEditMode) {
+      setEditingBooking(prev => ({
+        ...prev,
+        booking_type: type
+      }));
+    } else {
+      setNewBooking(prev => ({
+        ...prev,
+        booking_type: type
+      }));
     }
   };
-  
-  // Handle booking submission
-  const handleBooking = () => {
-    // Input validation
-    if (!bookingDate || !startTime || !endTime || !attendees || !purpose) {
-      setBookingError('Please fill in all fields');
-      return;
+
+  useEffect(() => {
+    if (bookingToBook && bookingReservation.booked_startdate) {
+      fetchBookedTimes(bookingToBook.booking_id, bookingReservation.booked_startdate);
     }
-    
-    // Check if end time is after start time
-    if (startTime >= endTime) {
-      setBookingError('End time must be after start time');
-      return;
+  }, [bookingToBook, bookingReservation.booked_startdate]);
+
+  const isTimeBooked = (time, type) => {
+    const timeValue = dayjs(`2000-01-01T${time}`);
+    return bookedTimes.some(({ booked_starttime, booked_endtime }) => {
+      const start = dayjs(`2000-01-01T${booked_starttime}`);
+      const end = dayjs(`2000-01-01T${booked_endtime}`);
+      return timeValue.isSame(start) || timeValue.isAfter(start) && timeValue.isBefore(end);
+    });
+  };
+
+  const fetchBookedTimes = async (bookingId, date) => {
+    const res = await fetch(`${API_BASE_URL}/api/booked/times?booking_id=${bookingId}&date=${date}`);
+    const data = await res.json();
+    if (data.success) {
+      setBookedTimes(data.data); // [{ booked_starttime: '10:00', booked_endtime: '12:00' }, ...]
     }
-    
-    // Check if the slot is available
-    if (!isTimeSlotAvailable(selectedFacility.id, bookingDate, startTime, endTime)) {
-      setBookingError('This time slot is already booked');
-      return;
-    }
-    
-    // Add the booking
-    const newBooking = {
-      facilityId: selectedFacility.id,
-      date: bookingDate,
-      startTime,
-      endTime,
-      attendees: parseInt(attendees, 10),
-      purpose
+  };
+
+  const getTypeColor = (type) => {
+    const colors = {
+      'Meeting Rooms': { bg: '#3b82f6', text: '#1e40af', light: '#dbeafe' },
+      Workstations: { bg: '#22c55e', text: '#065f46', light: '#dcfce7' },
+      Computer: { bg: '#8b5cf6', text: '#4c1d95', light: '#ede9fe' },
     };
-    
-    setBookedSlots([...bookedSlots, newBooking]);
-    setBookingConfirmed(true);
-    setBookingError('');
-    
-    // In a real application, you would send this data to your backend
-    console.log('Booking confirmed:', newBooking);
+    return colors[type] || { bg: '#9ca3af', text: '#374151', light: '#f3f4f6' };
   };
-  
-  // Close the modal
+
+  const typeOptions = [
+    { label: 'Meeting Rooms', value: 'Meeting Rooms' },
+    { label: 'Workstations', value: 'Workstations' },
+    { label: 'Computer', value: 'Computer' }
+  ];
+
+  // Fetch projects
+  const fetchProjectsAndCounts = useCallback(async () => {
+    try {
+      setLoading(true);
+      const projRes = await axios.get(`http://localhost:8081/api/booking?userId=${currentUserId}`);
+      const bookingData = projRes.data.data.map(p => ({
+        ...p,
+        startdate: (p.booking_startdate || '').split(' ')[0],
+        duedate: (p.booking_enddate || '').split(' ')[0],
+        tasks: 0,
+        totalTasks: 0
+      }));
+      const countsRes = await axios.get(`http://localhost:8081/api/booking/taskCounts?userId=${currentUserId}`);
+      const counts = Array.isArray(countsRes.data.data) ? countsRes.data.data : [];
+      const merged = bookingData.map(b => {
+        const c = counts.find(x => x.booking_id === b.booking_id_id);
+        return {
+          ...b,
+          totalTasks: c?.totalTasks || 0,
+          tasks: c?.tasksCompleted || 0
+        };
+      });
+      console.log("Merged bookings:", merged);
+      setBooking(merged);
+    } catch (err) {
+      console.error(err);
+      showNotification("Failed to load projects", 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUserId]);
+
+  // 2) เรียกใน useEffect พร้อม polling
+  useEffect(() => {
+    fetchProjectsAndCounts();
+    const intervalId = setInterval(fetchProjectsAndCounts, 30000);
+    return () => clearInterval(intervalId);
+  }, [fetchProjectsAndCounts]);
+
+  // Memoized filter function
+  const filterProjects = useCallback(() => {
+    let filtered = [...booking];
+
+    // Apply category filter
+    if (selectedCategory !== 'all') {
+      filtered = filtered.filter(project => project.category === selectedCategory);
+    }
+
+    // Apply search filter
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(booking => {
+        return booking.title.toLowerCase().includes(term) ||
+          booking.category.toLowerCase().includes(term) ||
+          (booking.team && booking.team.some(member => member.toLowerCase().includes(term)));
+      });
+    }
+
+    setFilteredProjects(filtered);
+  }, [booking, searchTerm, selectedCategory]);
+
+  // Run filter and update stats when projects change
+  useEffect(() => {
+    filterProjects();
+    updateStats();
+  }, [filterProjects, booking]);
+
+  // Add this useEffect to handle clicks outside the menu
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuOpenId && !event.target.closest('.project-menu-button')) {
+        setMenuOpenId(null);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [menuOpenId]);
+
+  // Handle search input keypress
+  const handleSearchKeyPress = (e) => {
+    if (e.key === 'Enter') {
+      filterProjects();
+    }
+  };
+
+  const handleProjectRestored = () => {
+    fetchProjectsAndCounts();
+  };
+  // Update dashboard statistics
+  const updateStats = useCallback(() => {
+    const totalProjects = booking.length;
+    // เนื่องจาก tasks จะถูกรับค่ามาจาก Kanban ในอนาคต เราจึงใช้ค่า default 0
+    const completedTasks = booking.reduce((sum, project) => sum + (project.tasks || 0), 0);
+    const totalTasks = booking.reduce((sum, project) => sum + (project.totalTasks || 0), 0);
+    const completedTasksString = `${completedTasks}/${totalTasks}`;
+
+    const highPriorityCount = booking.filter(project => project.priority === 'high').length;
+
+    const today = new Date();
+    const oneWeekLater = new Date(today);
+    oneWeekLater.setDate(today.getDate() + 7);
+    const dueThisWeek = booking.filter(project => {
+      const dueDate = new Date(project.duedate);
+      return dueDate >= today && dueDate <= oneWeekLater;
+    }).length;
+
+    setStats({
+      totalProjects,
+      completedTasks: completedTasksString,
+      highPriorityCount,
+      dueThisWeek
+    });
+  }, [booking]);
+
+  // Reset filters
+  const resetFilters = () => {
+    setSearchTerm('');
+    setSelectedCategory('all');
+  };
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    if (!dateString) return 'No Due Date';
+    const date = dayjs(dateString);
+    if (!date.isValid()) return 'No Due Date';
+    return date.format('MMM D, YYYY'); // Apr 30, 2025
+  };
+
+
+  // Capitalize first letter
+  const capitalize = (string) => {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+  };
+
+  // Generate team avatars for grid view
+  const generateAvatars = (team, category) => {
+    const maxDisplayed = 3;
+    const displayedTeam = team.slice(0, maxDisplayed);
+    const extraMembers = team.length > maxDisplayed ? team.length - maxDisplayed : 0;
+
+    return (
+      <>
+        {displayedTeam.map((member, index) => (
+          <div
+            key={index}
+            style={{
+              width: '30px',
+              height: '30px',
+              borderRadius: '50%',
+              fontSize: '13px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid white',
+              marginLeft: index === 0 ? '0' : '-8px',
+              transition: 'transform 0.2s',
+              backgroundColor: getCategoryColor(category, 'bg'),
+              color: getCategoryColor(category, 'text'),
+              zIndex: displayedTeam.length - index
+            }}
+          >
+            {member.charAt(0)}
+          </div>
+        ))}
+        {extraMembers > 0 && (
+          <div
+            style={{
+              width: '30px',
+              height: '30px',
+              borderRadius: '50%',
+              fontSize: '13px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid white',
+              marginLeft: '-8px',
+              backgroundColor: '#e2e8f0',
+              color: '#4a5568',
+              zIndex: 0
+            }}
+          >
+            +{extraMembers}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // Generate team avatars for list view
+  const generateListAvatars = (team, category) => {
+    const maxDisplayed = 2;
+    const displayedTeam = team.slice(0, maxDisplayed);
+    const extraMembers = team.length > maxDisplayed ? team.length - maxDisplayed : 0;
+
+    return (
+      <>
+        {displayedTeam.map((member, index) => (
+          <div
+            key={index}
+            style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '50%',
+              fontSize: '12px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid white',
+              marginLeft: index === 0 ? '0' : '-6px',
+              backgroundColor: getCategoryColor(category, 'bg'),
+              color: getCategoryColor(category, 'text'),
+              zIndex: displayedTeam.length - index
+            }}
+          >
+            {member.charAt(0)}
+          </div>
+        ))}
+        {extraMembers > 0 && (
+          <div
+            style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '50%',
+              fontSize: '12px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '2px solid white',
+              marginLeft: '-6px',
+              backgroundColor: '#e2e8f0',
+              color: '#4a5568',
+              zIndex: 0
+            }}
+          >
+            +{extraMembers}
+          </div>
+        )}
+      </>
+    );
+  };
+
+  // Get color based on category
+  const getCategoryColor = (category, type) => {
+    const colors = {
+      design: { bg: '#eff0ff', text: '#4f46e5', header: '#4f46e5' },
+      development: { bg: '#e0f7ff', text: '#0ea5e9', header: '#0ea5e9' },
+      marketing: { bg: '#f3f0ff', text: '#8b5cf6', header: '#8b5cf6' },
+      operations: { bg: '#fce7f3', text: '#ec4899', header: '#ec4899' }
+    };
+    return colors[category] ? colors[category][type] : '#cbd5e0';
+  };
+
+  // Get priority badge styles
+  const getPriorityStyles = (priority) => {
+    const styles = {
+      high: {
+        bg: '#FEE2E2',
+        text: '#DC2626',
+        dotColor: '#DC2626' // Add dot color property
+      },
+      medium: {
+        bg: '#FEF3C7',
+        text: '#D97706',
+        dotColor: '#D97706'
+      },
+      low: {
+        bg: '#ECFDF5',
+        text: '#059669',
+        dotColor: '#059669'
+      }
+    };
+    return styles[priority] || { bg: '#E5E7EB', text: '#4B5563', dotColor: '#4B5563' };
+  };
+
+
+  const handleProjectClick = (projectId) => {
+    console.log("Navigating to Kanban board with projectId:", projectId);
+    navigate(`/task/${projectId}`);
+  };
+
+  // Handle form input changes
+  const handleInputChange = (e) => {
+    const { id } = e.target;
+    let value = e.target.value;
+    if (e.target.multiple) {
+      value = Array.from(e.target.selectedOptions, option => option.value);
+    }
+    const mapping = {
+      bookingTitle: 'booking_title',
+      bookingDescription: 'booking_description',
+      bookingStartDate: 'booking_startdate',
+      bookingEndDate: 'booking_enddate',
+      bookingStartTime: 'booking_starttime',
+      bookingEndTime: 'booking_endtime',
+      bookingStatus: 'booking_status',
+      bookingType: 'booking_type',
+      bookingTeam: 'team'
+    };
+    const field = mapping[id];
+    if (field) {
+      if (isEditMode) {
+        setEditingBooking(prev => ({ ...prev, [field]: value }));
+      } else {
+        setNewBooking(prev => ({ ...prev, [field]: value }));
+      }
+    }
+  };
+
+
+  // Validate form before saving
+  const validateForm = () => {
+    const booking = isEditMode ? editingBooking : newBooking;
+
+    console.log("Validating Booking:", booking); // ✅ เพิ่มบรรทัดนี้ดูค่าจริง
+
+    const {
+      booking_title,
+      booking_type,
+      booking_startdate,
+      booking_enddate,
+      booking_starttime,
+      booking_endtime
+    } = booking;
+
+    if (
+      !booking_title ||
+      !booking_type ||
+      !booking_startdate ||
+      !booking_enddate ||
+      !booking_starttime ||
+      !booking_endtime
+    ) {
+      alert('Please fill out all required fields');
+      return false;
+    }
+
+    return true;
+  };
+
+  // Save new project
+  // ตัวอย่างส่วนของ saveProject ใน ProjectDashboard.jsx
+  // Save new project
+  const saveBooking = () => {
+    if (!validateForm()) return;
+    const newId = uuidv4();
+
+    let teamMembers = [];
+    if (newBooking.team && newBooking.team.length > 0) {
+      teamMembers = newBooking.team.map(email => ({ email: email.trim(), role: 'view-only' }));
+    }
+
+    const creatorEmail = ctx.customUser.email;
+    const isCreatorInTeam = teamMembers.some(member => member.email === creatorEmail);
+
+    if (!isCreatorInTeam) {
+      teamMembers.push({ email: creatorEmail, role: 'admin' });
+    } else {
+      teamMembers = teamMembers.map(member =>
+        member.email === creatorEmail ? { ...member, role: 'admin' } : member
+      );
+    }
+
+    const bookingData = new FormData(); // ✅ ใช้ FormData
+
+    bookingData.append('booking_id', newId); // ✅ ใช้ newId แทน
+    bookingData.append('booking_title', newBooking.booking_title);
+    bookingData.append('booking_description', newBooking.booking_description);
+    bookingData.append('booking_type', newBooking.booking_type || selectedType || customType);
+    bookingData.append('booking_startdate', newBooking.booking_startdate); // ✅ แยก start
+    bookingData.append('booking_enddate', newBooking.booking_enddate);     // ✅ แยก end
+    bookingData.append('booking_starttime', newBooking.booking_starttime);
+    bookingData.append('booking_endtime', newBooking.booking_endtime);
+    bookingData.append('booking_status', newBooking.booking_status);
+    //bookingData.append('creator_id', currentUserId);
+    bookingData.team = JSON.stringify(teamMembers);
+
+    if (newBooking.booking_image) {
+      bookingData.append('booking_image', newBooking.booking_image);
+    }
+
+    bookingData.append('team', JSON.stringify(teamMembers));
+
+    fetch(`${API_BASE_URL}/api/booking`, {
+      method: 'POST',
+      body: bookingData
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText); // 🛑 กรณี response ไม่ใช่ JSON
+        }
+        return response.json();
+      })
+      .then(result => {
+        if (result.success) {
+          showNotification("Booking saved successfully!", 'success'); // ✅ แจ้งเตือนสำเร็จ
+          closeModal(); // ✅ ปิด modal ทันทีเมื่อบันทึกเสร็จ
+          fetchProjectsAndCounts(); // ✅ ดึงข้อมูลใหม่
+        } else {
+          showNotification("Error: " + result.error, "error");
+        }
+      })
+      .catch(error => {
+        console.error("Booking creation failed:", error);
+        showNotification("Error: " + error.message, "error");
+      });
+  };
+
+
+  /*const bookingData = {
+    booking_id: newBooking.booking_id,
+    booking_title: newBooking.booking_title,
+    booking_description: newBooking.booking_description,
+    booking_type: newBooking.booking_type,
+    booking_starttime: newBooking.booking_starttime,
+    booking_endtime: newBooking.booking_endtime,
+    booking_status: newBooking.booking_status,
+    booking_date: JSON.stringify(newBooking.booking_date),
+    team: teamMembers,
+    creator_id: currentUserId
+  };*/
+
+  const handleEditBooking = async (booking) => {
+    try {
+      const res = await axios.get(`http://localhost:8081/api/booking/${booking.booking_id}`);
+      const data = res.data.data;
+      const teamArray = Array.isArray(data.team) ? data.team.map(m => m.email) : [];
+      setEditingBooking({
+        booking_id: data.booking_id,
+        booking_title: data.booking_title,
+        booking_description: data.booking_description,
+        booking_type: data.booking_type,
+        booking_startdate: data.booking_startdate,
+        booking_enddate: data.booking_enddate,
+        booking_starttime: data.booking_starttime,
+        booking_endtime: data.booking_endtime,
+        booking_status: data.booking_status,
+        team: teamArray,
+        booking_image: null, // ไว้รองรับรูปใหม่ที่เลือก
+        booking_image_preview: `${API_BASE_URL}/uploads/${data.booking_image}` // ✅ หรือ path ที่ backend ให้มา
+      });
+      setIsEditMode(true);
+      setShowModal(true);
+    } catch (err) {
+      showNotification("Cannot load project details", 'error');
+    }
+  };
+
+  // Delete project functionality
+  const [showDeletePopup, setShowDeletePopup] = useState(false);
+  const [bookingToDelete, setBookingToDelete] = useState(null);
+
+  const initiateDelete = (id) => {
+    setBookingToDelete(id);
+    setShowDeletePopup(true);
+  };
+
+  const confirmDelete = () => {
+    if (bookingToDelete) {
+      fetch(`http://localhost:8081/api/booking/${bookingToDelete}`, {
+        method: "DELETE"
+      })
+        .then(response => response.json())
+        .then(result => {
+          if (result.success) {
+            setBooking(prev => prev.filter(booking => booking.booking_id !== bookingToDelete));
+          } else {
+            console.error("Delete error:", result.error);
+          }
+        })
+        .catch(error => console.error("Error deleting booking:", error))
+        .finally(() => {
+          setShowDeletePopup(false);
+          setBookingToDelete(null);
+        });
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeletePopup(false);
+    setBookingToDelete(null);
+  };
+
+  const updateBooking = () => {
+    if (!validateForm()) return;
+
+    let teamMembers = [];
+    if (editingBooking.team && editingBooking.team.length > 0) {
+      teamMembers = editingBooking.team.map(email => ({
+        email: email.trim(),
+        role: 'view-only'
+      }));
+    }
+
+    const creatorEmail = ctx.customUser.email;
+    const isCreatorInTeam = teamMembers.some(m => m.email === creatorEmail);
+
+    if (!isCreatorInTeam) {
+      showNotification("Project creator cannot be removed from the team.", 'warning');
+      teamMembers.push({ email: creatorEmail, role: 'admin' });
+    } else {
+      teamMembers = teamMembers.map(member =>
+        member.email === creatorEmail
+          ? { ...member, role: 'admin' }
+          : member
+      );
+    }
+
+    // ✅ ใช้ FormData สำหรับส่งข้อมูล + ไฟล์รูป
+    const bookingData = new FormData();
+    bookingData.append('booking_id', editingBooking.booking_id);
+    bookingData.append('booking_title', editingBooking.booking_title);
+    bookingData.append('booking_description', editingBooking.booking_description);
+    bookingData.append('booking_type', editingBooking.booking_type);
+    bookingData.append('booking_startdate', editingBooking.booking_startdate);
+    bookingData.append('booking_enddate', editingBooking.booking_enddate);
+    bookingData.append('booking_starttime', editingBooking.booking_starttime);
+    bookingData.append('booking_endtime', editingBooking.booking_endtime);
+    bookingData.append('booking_status', editingBooking.booking_status);
+    bookingData.append('creator_id', currentUserId);
+    bookingData.append('team', JSON.stringify(teamMembers));
+
+    // ✅ แนบไฟล์รูปถ้ามีการอัปเดต
+    if (editingBooking.booking_image) {
+      bookingData.append('booking_image', editingBooking.booking_image);
+    }
+
+    fetch(`${API_BASE_URL}/api/booking/${editingBooking.booking_id}`, {
+      method: "PUT",
+      body: bookingData
+    })
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
+          showNotification("Project updated successfully!", 'success');
+          closeModal();
+          fetchProjectsAndCounts();
+        } else {
+          showNotification("Error updating project: " + result.error, 'error');
+        }
+      })
+      .catch(error => {
+        console.error("Error:", error);
+        showNotification("Error updating project. Please try again.", 'error');
+      });
+  };
+
+
+  // Open/close modal functions
+  const openModal = () => {
+    setShowModal(true);
+  };
+
   const closeModal = () => {
     setShowModal(false);
+    setIsEditMode(false);
+
+    setSelectedType('');
+    setCustomType('');
+    // Reset form state
+    if (isEditMode) {
+      setEditingBooking(null);
+    } else {
+      setNewBooking({
+        booking_id: uuidv4(),
+        booking_title: '',
+        booking_description: '',
+        booking_type: '',
+        booking_startdate: '',
+        booking_enddate: '',
+        booking_starttime: '',
+        booking_endtime: '',
+        booking_status: '',
+        team: [],
+        booking_image: null,
+        booking_image_preview: null
+      });
+    }
   };
 
-  return (
-    <div style={{
-      padding: '24px',
-      backgroundColor: '#f9fafb',
-      minHeight: '100vh',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-    }}>
-      <header style={{ marginBottom: '24px' }}>
-        <h1 style={{ 
-          fontSize: '24px', 
-          fontWeight: 700, 
-          marginBottom: '8px',
-          color: '#111827'
-        }}>Facility Booking</h1>
-        <p style={{ 
-          color: '#6b7280', 
-          margin: 0 
-        }}>Book meeting rooms, conference spaces, and more.</p>
-      </header>
-      
-      {/* Search and Filter Section */}
-      <div style={{ 
-        backgroundColor: 'white',
-        borderRadius: '8px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-        padding: '16px',
-        marginBottom: '24px'
-      }}>
-        <div style={{ 
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          gap: '16px'
+
+  // Render grid view
+  const renderGridView = () => {
+    if (!booking || booking.length === 0) {
+      return (
+        <div style={{
+          gridColumn: '1 / -1',
+          textAlign: 'center',
+          padding: '60px 20px',
+          backgroundColor: 'white',
+          borderRadius: '12px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
         }}>
-          <div style={{ flex: '1 1 300px' }}>
-            <label 
-              htmlFor="search" 
-              style={{ 
-                display: 'block', 
-                marginBottom: '6px',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#4b5563'
-              }}
-            >
-              Search Facilities
-            </label>
-            <input
-              id="search"
-              type="text"
-              placeholder="Search by name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '6px',
-                border: '1px solid #d1d5db',
-                fontSize: '14px',
-                outline: 'none',
-                transitionProperty: 'border-color, box-shadow',
-                transitionDuration: '150ms',
-                transitionTimingFunction: 'ease-in-out'
-              }}
-            />
-          </div>
-          
-          <div style={{ flex: '1 1 300px' }}>
-            <label 
-              style={{ 
-                display: 'block', 
-                marginBottom: '6px',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#4b5563'
-              }}
-            >
-              Filter by Equipment
-            </label>
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px'
-            }}>
-              {allEquipment.map(equipment => (
+          <h3 style={{
+            color: '#4a5568',
+            fontSize: '18px',
+            marginBottom: '12px'
+          }}>No bookings found</h3>
+          <p style={{
+            color: '#718096',
+            marginBottom: '24px'
+          }}>Try adjusting your search or filter criteria</p>
+          <button
+            onClick={resetFilters}
+            style={{
+              backgroundColor: '#4f46e5',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >
+            Reset Filters
+          </button>
+        </div>
+      );
+    }
+    return booking.map(item => {
+      const typeStyle = getTypeColor(item.booking_type || '');
+      const formattedDate = formatDate(item.booking_startdate);
+      const imageUrl = item.booking_image ? `${API_BASE_URL}/uploads/${item.booking_image}` : null;
+      return (
+        <div
+          key={item.booking_id}
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+            padding: '20px',
+            borderTop: `6px solid ${typeStyle.bg}`,
+            transition: 'transform 0.3s ease',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            animation: 'fadeIn 0.5s ease-out'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {canEditBooking(booking.booking_id) && (
                 <button
-                  key={equipment}
-                  onClick={() => toggleEquipment(equipment)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log("Edit button clicked for booking:", booking);
+                    handleEditBooking(booking);
+                  }}
                   style={{
-                    backgroundColor: selectedEquipment.includes(equipment) ? '#2563eb' : '#e5e7eb',
-                    color: selectedEquipment.includes(equipment) ? 'white' : '#4b5563',
+                    width: '30px',
+                    height: '30px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#EDF2F7',
                     border: 'none',
-                    padding: '4px 10px',
-                    borderRadius: '16px',
-                    fontSize: '12px',
-                    fontWeight: '500',
+                    borderRadius: '4px',
                     cursor: 'pointer',
-                    transition: 'background-color 150ms ease-in-out, color 150ms ease-in-out'
                   }}
                 >
-                  {equipment}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      {/* Facilities Grid */}
-      <div style={{ 
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-        gap: '16px',
-        marginBottom: '24px'
-      }}>
-        {filteredFacilities.map(facility => (
-          <div key={facility.id} style={{ 
-            backgroundColor: 'white',
-            borderRadius: '8px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-            overflow: 'hidden',
-            transition: 'transform 150ms ease-in-out, box-shadow 150ms ease-in-out',
-            cursor: 'pointer',
-          }}
-          onClick={() => handleSelectFacility(facility)}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.transform = 'translateY(-4px)';
-            e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.transform = 'translateY(0)';
-            e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.12)';
-          }}
-          >
-            <img 
-              src={facility.image} 
-              alt={facility.name}
-              style={{
-                width: '100%',
-                height: '180px',
-                objectFit: 'cover'
-              }}
-            />
-            <div style={{ padding: '16px' }}>
-              <h3 style={{ 
-                fontSize: '18px',
-                fontWeight: '600',
-                marginTop: 0,
-                marginBottom: '8px'
-              }}>{facility.name}</h3>
-              
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                marginBottom: '12px',
-                color: '#6b7280',
-                fontSize: '14px'
-              }}>
-                <span role="img" aria-label="capacity">👥</span>
-                <span>Capacity: {facility.capacity}</span>
-              </div>
-              
-              <div style={{ marginBottom: '8px' }}>
-                <span style={{ 
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  color: '#4b5563'
-                }}>Equipment:</span>
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '6px',
-                  marginTop: '8px'
-                }}>
-                  {facility.equipment.map(item => (
-                    <span key={item} style={{
-                      backgroundColor: '#f3f4f6',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      color: '#4b5563'
-                    }}>
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              
+              )}
               <button
+                onClick={() => initiateDelete(item.booking_id)}
                 style={{
-                  display: 'block',
-                  width: '100%',
-                  backgroundColor: '#2563eb',
-                  color: 'white',
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#FEE2E2',
                   border: 'none',
-                  borderRadius: '6px',
-                  padding: '8px 0',
-                  marginTop: '16px',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  cursor: 'pointer',
-                  transition: 'background-color 150ms ease-in-out'
-                }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSelectFacility(facility);
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#1d4ed8';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#2563eb';
+                  borderRadius: '4px',
+                  cursor: 'pointer'
                 }}
               >
-                Book Now
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </button>
             </div>
           </div>
-        ))}
-      </div>
-      
-      {/* No results message */}
-      {filteredFacilities.length === 0 && (
+
+          {imageUrl && (
+            <div style={{ position: 'relative', width: '100%', height: '160px', marginTop: '12px', marginBottom: '16px' }}>
+              <img
+                src={imageUrl}
+                alt="Booking"
+                style={{
+                  width: '100%',
+                  height: '160px',
+                  objectFit: 'cover',
+                  borderRadius: '8px',
+                  marginTop: '12px',
+                  marginBottom: '16px',
+                  animation: 'fadeIn 0.5s ease-out'
+                }}
+              />
+              <span style={{
+                position: 'absolute',
+                top: '-35px',
+                left: '-1px', // 👈 เปลี่ยนจาก right: '-1px'
+                backgroundColor: item.booking_status === 'Booked' ? '#ef4444' : '#10b981',
+                color: 'white',
+                padding: '4px 10px',
+                fontSize: '15px',
+                borderRadius: '999px',
+                fontWeight: 600,
+                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                zIndex: 10,
+                animation: 'fadeIn 0.5s ease-out'
+              }}>
+                {item.booking_status}
+              </span>
+            </div>
+          )}
+          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', margin: 0, marginTop: '16px' }}>
+            {item.booking_title}
+          </h3>
+          <p style={{ fontSize: '14px', color: '#4b5563', marginTop: '16px', marginBottom: '16px' }}>
+            {item.booking_description}
+          </p>
+          <div style={{
+            display: 'inline-flex',
+            padding: '5px 12px',
+            borderRadius: '50px',
+            fontSize: '13px',
+            fontWeight: 500,
+            backgroundColor: typeStyle.light,
+            color: typeStyle.text,
+            width: 'fit-content',
+            marginBottom: '16px',
+            animation: 'fadeIn 0.5s ease-out'
+          }}>
+            {item.booking_type}
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <button
+              onClick={() => {
+                setBookingToBook(item);
+                setBookingReservation({
+                  booked_startdate: '',
+                  booked_enddate: '',
+                  booked_starttime: '',
+                  booked_endtime: ''
+                });
+                setShowBookModal(true);
+                fetch(`${API_BASE_URL}/api/booked?booking_id=${item.booking_id}`)
+                  .then(res => res.json())
+                  .then(data => {
+                    setBookedSlots(data?.data || []);
+                  });
+              }}
+              style={{
+                padding: '10px 100px',
+                backgroundColor: '#4f46e5',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: 600,
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'background-color 0.2s',
+                animation: 'fadeIn 0.5s ease-out'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#4338ca'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
+            >
+              Book Now
+            </button>
+          </div>
+        </div>
+      );
+    });
+  };
+
+  // Render list view (ไม่ซ้ำกับ grid มากนัก)
+  const renderListView = () => {
+    if (filteredBooking.length === 0) {
+      return (
         <div style={{
           textAlign: 'center',
-          padding: '40px',
+          padding: '60px 20px',
           backgroundColor: 'white',
-          borderRadius: '8px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.12)'
+          borderRadius: '12px',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
         }}>
-          <span role="img" aria-label="search" style={{ fontSize: '32px', marginBottom: '16px', display: 'block' }}>🔍</span>
-          <h3 style={{ margin: '0 0 8px', color: '#374151' }}>No facilities found</h3>
-          <p style={{ color: '#6b7280', margin: 0 }}>Try adjusting your search or filters</p>
+          <h3 style={{ color: '#4a5568', fontSize: '18px', marginBottom: '12px' }}>No projects found</h3>
+          <p style={{ color: '#718096', marginBottom: '24px' }}>Try adjusting your search or filter criteria</p>
+          <button
+            onClick={resetFilters}
+            style={{
+              backgroundColor: '#4f46e5',
+              color: 'white',
+              border: 'none',
+              padding: '8px 16px',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: 500
+            }}
+          >
+            Reset Filters
+          </button>
+        </div>
+      );
+    }
+
+    return filteredBooking.map(booking => {
+      const progress = Math.round((project.tasks / project.totalTasks) * 100);
+      const formattedDate = formatDate(project.duedate);
+      const priorityStyles = getPriorityStyles(project.priority);
+      return (
+        <div
+          key={booking.booking_id}
+          onClick={() => handleProjectClick(booking.booking_id)}
+          style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+            padding: '16px 20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '20px',
+            transition: 'transform 0.2s, box-shadow 0.2s',
+          }}
+        >
+          <div style={{
+            width: '12px',
+            height: '30px',
+            borderRadius: '6px',
+            backgroundColor: getCategoryColor(project.category, 'header')
+          }}>
+          </div>
+          <h3 style={{ fontWeight: 600, fontSize: '16px', flex: 1 }}>
+            {project.title}
+          </h3>
+          <span style={{
+            padding: '4px 12px',
+            borderRadius: '50px',
+            fontSize: '13px',
+            fontWeight: 500,
+            width: '120px',
+            textAlign: 'center',
+            backgroundColor: getCategoryColor(project.category, 'bg'),
+            color: getCategoryColor(project.category, 'text')
+          }}>
+            {capitalize(project.category)}
+          </span>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            width: '180px'
+          }}>
+            <div style={{
+              flex: 1,
+              height: '6px',
+              backgroundColor: '#edf2f7',
+              borderRadius: '3px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                height: '100%',
+                borderRadius: '3px',
+                transition: 'width 0.5s ease',
+                width: `${progress}%`,
+                backgroundColor: getCategoryColor(project.category, 'header')
+              }}>
+              </div>
+            </div>
+            <span style={{ fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {progress}%
+            </span>
+          </div>
+          <span style={{ fontSize: '13px', color: '#718096', width: '100px' }}>
+            {formattedDate}
+          </span>
+          <div style={{ display: 'flex', width: '100px' }}>
+            {generateListAvatars(project.team, project.category)}
+          </div>
+          <span style={{
+            display: 'inline-flex',
+            padding: '4px 10px',
+            borderRadius: '50px',
+            fontSize: '12px',
+            fontWeight: 600,
+            width: '80px',
+            justifyContent: 'center',
+            backgroundColor: priorityStyles.bg,
+            color: priorityStyles.text
+          }}>
+            {capitalize(project.priority)}
+          </span>
+
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            zIndex: 20
+          }}>
+            {canEditBooking(booking.booking_id) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log("Edit button clicked for booking:", booking);
+                  handleEditBooking(booking);
+                }}
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#EDF2F7',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+            {canDeleteBooking(booking.booking_id) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log("Delete button clicked for booking:", booking.booking_id);
+                  initiateDelete(booking.booking_id);
+                }}
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#FEE2E2',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    });
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
+      {/* Header on white background */}
+      <div style={{
+        backgroundColor: '#ffffff',
+        padding: '20px 20px 0',
+        borderBottom: '1px solid #eaeaea'
+      }}>
+        <div style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div>
+            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>Booking</h1>
+            <p style={{ color: '#718096', marginTop: '5px', fontSize: '16px' }}>
+              Get an overview of your projects and track progress.
+            </p>
+          </div>
+          {canCreateBooking() && (
+            <button
+              onClick={openModal}
+              style={{
+                backgroundColor: '#4f46e5',
+                color: 'white',
+                border: 'none',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '15px',
+                boxShadow: '0 4px 6px rgba(79, 70, 229, 0.1)'
+              }}
+            >
+              + Add Booking
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div style={{
+        backgroundColor: '#f8f9fa',
+        padding: '20px'
+      }}>
+        <div style={{
+          maxWidth: '1280px',
+          margin: '0 auto'
+        }}>
+
+          {/* Search and Filters */}
+          <div style={{
+            display: 'flex',
+            marginBottom: '25px',
+            width: '100%',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '15px'
+          }}>
+            <div style={{
+              display: 'flex',
+              flex: 1,
+              maxWidth: '500px',
+              boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+              borderRadius: '8px',
+              overflow: 'hidden'
+            }}>
+              <input
+                type="text"
+                placeholder="Search projects..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyPress={handleSearchKeyPress}
+                style={{
+                  flex: 1,
+                  padding: '12px 16px',
+                  border: '1px solid #e2e8f0',
+                  borderRight: 'none',
+                  borderRadius: '8px 0 0 8px',
+                  fontSize: '15px',
+                  outline: 'none',
+                  transition: 'all 0.2s'
+                }}
+              />
+              <button
+                onClick={filterProjects}
+                style={{
+                  backgroundColor: '#4f46e5',
+                  color: 'white',
+                  border: 'none',
+                  padding: '0 20px',
+                  borderRadius: '0 8px 8px 0',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                Search
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{
+                display: 'flex',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                backgroundColor: 'white',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+              }}>
+                <button
+                  onClick={() => setViewMode('grid')}
+                  style={{
+                    backgroundColor: viewMode === 'grid' ? '#f0f0ff' : 'white',
+                    border: 'none',
+                    padding: '10px 16px',
+                    cursor: 'pointer',
+                    fontWeight: viewMode === 'grid' ? 600 : 500,
+                    color: viewMode === 'grid' ? '#4f46e5' : '#718096',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => {
+                    if (viewMode !== 'grid') { e.currentTarget.style.backgroundColor = '#f9fafb'; }
+                  }}
+                  onMouseOut={(e) => {
+                    if (viewMode !== 'grid') { e.currentTarget.style.backgroundColor = 'white'; }
+                  }}
+                >
+                  Grid
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  style={{
+                    backgroundColor: viewMode === 'list' ? '#f0f0ff' : 'white',
+                    border: 'none',
+                    padding: '10px 16px',
+                    cursor: 'pointer',
+                    fontWeight: viewMode === 'list' ? 600 : 500,
+                    color: viewMode === 'list' ? '#4f46e5' : '#718096',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => {
+                    if (viewMode !== 'list') { e.currentTarget.style.backgroundColor = '#f9fafb'; }
+                  }}
+                  onMouseOut={(e) => {
+                    if (viewMode !== 'list') { e.currentTarget.style.backgroundColor = 'white'; }
+                  }}
+                >
+                  List
+                </button>
+              </div>
+
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                style={{
+                  padding: '10px 16px',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  backgroundColor: 'white',
+                  outline: 'none',
+                  color: '#4a5568',
+                  fontWeight: 500,
+                  minWidth: '160px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+                }}
+              >
+                <option value="all">All Categories</option>
+                <option value="design">Design</option>
+                <option value="development">Development</option>
+                <option value="marketing">Marketing</option>
+                <option value="operations">Operations</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Projects View (Grid or List) */}
+          {viewMode === 'grid' ? (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+              gap: '24px'
+            }}>
+              {renderGridView()}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {renderListView()}
+            </div>
+          )}
+
+          {/* Stats Section */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+            gap: '24px',
+            marginTop: '40px'
+          }}>
+            <div style={{
+              backgroundColor: 'white',
+              padding: '20px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              border: '1px solid #f1f1f1'
+            }}>
+              <div style={{
+                marginBottom: '12px',
+                width: '40px',
+                height: '40px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#4f46e5'
+              }}>
+                <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Total Projects</div>
+              <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.totalProjects}</div>
+            </div>
+
+            <div style={{
+              backgroundColor: 'white',
+              padding: '20px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              border: '1px solid #f1f1f1'
+            }}>
+              <div style={{
+                marginBottom: '12px',
+                width: '40px',
+                height: '40px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#0ea5e9'
+              }}>
+                <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Completed Tasks</div>
+              <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.completedTasks}</div>
+            </div>
+
+            <div style={{
+              backgroundColor: 'white',
+              padding: '20px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              border: '1px solid #f1f1f1'
+            }}>
+              <div style={{
+                marginBottom: '12px',
+                width: '40px',
+                height: '40px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#8b5cf6'
+              }}>
+                <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>High Priority</div>
+              <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.highPriorityCount}</div>
+            </div>
+
+            <div style={{
+              backgroundColor: 'white',
+              padding: '20px',
+              borderRadius: '12px',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+              transition: 'transform 0.2s, box-shadow 0.2s',
+              border: '1px solid #f1f1f1'
+            }}>
+              <div style={{
+                marginBottom: '12px',
+                width: '40px',
+                height: '40px',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#ec4899'
+              }}>
+                <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Due This Week</div>
+              <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.dueThisWeek}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {/* Add/Edit Project Modal */}
+      {showModal && (
+        <div style={{
+          position: 'fixed',
+          zIndex: 100,
+          left: 0,
+          top: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          marginTop: '-20px',
+          // Add padding to ensure modal doesn't touch screen edges
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+            width: '90%',
+            maxWidth: '500px',
+            animation: 'fadeIn 0.3s',
+            maxHeight: '90vh', // Limit height to 90% of viewport
+            display: 'flex',
+            flexDirection: 'column', // Ensure proper layout
+            overflow: 'hidden' // Hide overflow
+          }}>
+            <div style={{
+              padding: '20px',
+              borderBottom: '1px solid #eaeaea',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#1a202c', margin: 0 }}>
+                {isEditMode ? 'Edit Booking' : 'Add New Booking'}
+              </h2>
+              <button
+                onClick={closeModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#718096',
+                  padding: '0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '30px',
+                  height: '30px'
+                }}
+              >
+                &times;
+              </button>
+            </div>
+            <div style={{
+              padding: '20px',
+              overflowY: 'auto',
+              maxHeight: 'calc(90vh - 140px)'
+            }}>
+              <form>
+                <div style={{ marginBottom: '24px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }}>
+                    Upload Image
+                  </label>
+                  <div
+                    style={{
+                      border: '2px dashed #cbd5e0',
+                      borderRadius: '10px',
+                      padding: '20px',
+                      textAlign: 'center',
+                      backgroundColor: '#f9fafb',
+                      position: 'relative'
+                    }}
+                  >
+                    {((isEditMode && editingBooking.booking_image_preview) || (!isEditMode && newBooking.booking_image_preview)) ? (
+                      <img
+                        src={isEditMode ? editingBooking.booking_image_preview : newBooking.booking_image_preview}
+                        alt="Preview"
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '200px',
+                          objectFit: 'contain',
+                          borderRadius: '6px',
+                          marginBottom: '12px'
+                        }}
+                      />
+                    ) : (
+                      <div>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth="1.5"
+                          stroke="currentColor"
+                          style={{ width: '50px', height: '50px', color: '#a78bfa', margin: '0 auto 8px' }}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0L8 8m4-4l4 4m-4 8v4m0 0H8m4 0h4" />
+                        </svg>
+                        <p style={{ color: '#718096', marginBottom: '12px' }}>No file chosen, yet!</p>
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg, image/png"
+                      onChange={(e) => {
+                        const file = e.target.files[0];
+                        if (file) {
+                          const isValidType = ['image/jpeg', 'image/png'].includes(file.type);
+                          if (!isValidType) {
+                            alert('Only JPEG and PNG files are allowed.');
+                            return;
+                          }
+                          const imageURL = URL.createObjectURL(file);
+                          if (isEditMode) {
+                            setEditingBooking(prev => ({
+                              ...prev,
+                              booking_image: file,
+                              booking_image_preview: imageURL
+                            }));
+                          } else {
+                            setNewBooking(prev => ({
+                              ...prev,
+                              booking_image: file,
+                              booking_image_preview: imageURL
+                            }));
+                          }
+                        }
+                      }}
+                      style={{ display: 'none' }}
+                      id="bookingImage"
+                    />
+                    <label
+                      htmlFor="bookingImage"
+                      style={{
+                        display: 'inline-block',
+                        padding: '10px 20px',
+                        backgroundImage: 'linear-gradient(to right, #6366f1, #8b5cf6)',
+                        color: 'white',
+                        fontWeight: 500,
+                        borderRadius: '999px',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        transition: 'background 0.2s'
+                      }}
+                    >
+                      Choose a File
+                    </label>
+                  </div>
+                </div>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="bookingTitle">
+                    Title
+                  </label>
+                  <input
+                    type="text"
+                    id="bookingTitle"
+                    value={(isEditMode ? editingBooking : newBooking).booking_title || ''}
+                    onChange={handleInputChange}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      fontSize: '15px',
+                      transition: 'all 0.2s'
+                    }}
+                  />
+                </div>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="bookingDescription">
+                    Description
+                  </label>
+                  <textarea
+                    id="bookingDescription"
+                    value={(isEditMode ? editingBooking : newBooking).booking_description || ''}
+                    onChange={handleInputChange}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '6px',
+                      fontSize: '15px',
+                      transition: 'all 0.2s'
+                    }}
+                  />
+                </div>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }} htmlFor="bookingType">
+                    Type
+                  </label>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    {typeOptions.map(({ label, value }) => (
+                      <button
+                        id="bookingType"
+                        key={value}
+                        type="button"
+                        value={(isEditMode ? editingBooking : newBooking).booking_type || ''}
+                        onClick={() => handleTypeSelect(value)}
+                        style={{
+                          padding: '6px 14px',
+                          borderRadius: '20px',
+                          backgroundColor: selectedType === value ? getTypeColor(value).bg : getTypeColor(value).light,
+                          color: selectedType === value ? 'white' : getTypeColor(value).text,
+                          border: 'none',
+                          cursor: 'pointer',
+                          fontWeight: 500,
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+
+                    {/* ปุ่ม Other */}
+                    <button
+                      type="button"
+                      onClick={() => handleTypeSelect('Other')}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        backgroundColor: selectedType === 'Other' ? '#6b7280' : '#f3f4f6',
+                        color: selectedType === 'Other' ? 'white' : '#4b5563',
+                        border: selectedType === 'Other' ? 'none' : '1px solid #d1d5db',
+                        cursor: 'pointer',
+                        fontWeight: 500,
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      Other
+                    </button>
+                  </div>
+
+                  {/* ช่องพิมพ์ถ้าเลือก Other */}
+                  {selectedType === 'Other' && (
+                    <input
+                      type="text"
+                      placeholder="Enter custom type"
+                      value={customType}
+                      onChange={(e) => setCustomType(e.target.value)}
+                      style={{
+                        marginTop: '12px',
+                        width: '100%',
+                        padding: '10px 14px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        fontSize: '15px',
+                        outline: 'none',
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                        backgroundColor: '#fff'
+                      }}
+                    />
+                  )}
+                </div>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }}>
+                    Due Date
+                  </label>
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1 }}>
+                      <label
+                        htmlFor="bookingStartDate"
+                        style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}
+                      >
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        id="bookingStartDate"
+                        value={isEditMode ? editingBooking.booking_startdate : newBooking.booking_startdate}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (isEditMode) {
+                            setEditingBooking(prev => ({ ...prev, booking_startdate: value }));
+                          } else {
+                            setNewBooking(prev => ({ ...prev, booking_startdate: value }));
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                          fontSize: '15px',
+                          outline: 'none',
+                          backgroundColor: '#fff',
+                          color: '#1a202c',
+                          transition: 'border-color 0.2s, box-shadow 0.2s',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <label
+                        htmlFor="bookingEndDate"
+                        style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}
+                      >
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        id="bookingEndDate"
+                        value={isEditMode ? editingBooking.booking_enddate : newBooking.booking_enddate}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (isEditMode) {
+                            setEditingBooking(prev => ({ ...prev, booking_enddate: value }));
+                          } else {
+                            setNewBooking(prev => ({ ...prev, booking_enddate: value }));
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                          fontSize: '15px',
+                          outline: 'none',
+                          backgroundColor: '#fff',
+                          color: '#1a202c',
+                          transition: 'border-color 0.2s, box-shadow 0.2s',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }}>
+                    Time
+                  </label>
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1 }}>
+                      <label
+                        htmlFor="bookingStartTime"
+                        style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}
+                      >
+                        Start Time
+                      </label>
+                      <input
+                        type="time"
+                        id="bookingStartTime"
+                        value={isEditMode ? editingBooking.booking_starttime : newBooking.booking_starttime}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (isEditMode) {
+                            setEditingBooking(prev => ({ ...prev, booking_starttime: value }));
+                          } else {
+                            setNewBooking(prev => ({ ...prev, booking_starttime: value }));
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                          fontSize: '15px',
+                          outline: 'none',
+                          backgroundColor: '#fff',
+                          color: '#1a202c',
+                          transition: 'border-color 0.2s, box-shadow 0.2s',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ flex: 1 }}>
+                      <label
+                        htmlFor="bookingEndTime"
+                        style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}
+                      >
+                        End Time
+                      </label>
+                      <input
+                        type="time"
+                        id="bookingEndTime"
+                        value={isEditMode ? editingBooking.booking_endtime : newBooking.booking_endtime}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (isEditMode) {
+                            setEditingBooking(prev => ({ ...prev, booking_endtime: value }));
+                          } else {
+                            setNewBooking(prev => ({ ...prev, booking_endtime: value }));
+                          }
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: '8px',
+                          fontSize: '15px',
+                          outline: 'none',
+                          backgroundColor: '#fff',
+                          color: '#1a202c',
+                          transition: 'border-color 0.2s, box-shadow 0.2s',
+                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+            <div style={{
+              padding: '15px 20px',
+              borderTop: '1px solid #eaeaea',
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              backgroundColor: 'white'
+            }}>
+              <button
+                onClick={closeModal}
+                style={{
+                  backgroundColor: '#f3f4f6',
+                  color: '#4b5563',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={isEditMode ? updateBooking : saveBooking}
+                style={{
+                  backgroundColor: '#4f46e5',
+                  color: 'white',
+                  border: 'none',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 500,
+                  cursor: 'pointer'
+                }}
+              >
+                {isEditMode ? 'Update Booking' : 'Save Booking'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
-      
-      {/* Booking Modal */}
-      {showModal && selectedFacility && (
+      {showDeletePopup && (
         <div style={{
           position: 'fixed',
           top: 0,
@@ -374,418 +1897,246 @@ const BookingFacilityPage = () => {
           bottom: 0,
           backgroundColor: 'rgba(0, 0, 0, 0.5)',
           display: 'flex',
-          alignItems: 'center',
           justifyContent: 'center',
+          alignItems: 'center',
           zIndex: 1000
         }}>
           <div style={{
             backgroundColor: 'white',
             borderRadius: '8px',
-            maxWidth: '500px',
-            width: '100%',
-            maxHeight: '90vh',
-            overflowY: 'auto',
-            padding: '24px',
-            position: 'relative'
+            padding: '20px',
+            width: '400px',
+            maxWidth: '90%',
+            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)'
           }}>
-            <button
-              onClick={closeModal}
-              style={{
-                position: 'absolute',
-                top: '16px',
-                right: '16px',
-                backgroundColor: 'transparent',
-                border: 'none',
-                fontSize: '20px',
-                cursor: 'pointer',
-                color: '#6b7280'
-              }}
-            >
-              ✕
-            </button>
-            
-            {!bookingConfirmed ? (
-              <>
-                <h2 style={{ 
-                  fontSize: '20px',
-                  fontWeight: '600',
-                  marginTop: 0,
-                  marginBottom: '24px'
-                }}>Book {selectedFacility.name}</h2>
-                
-                {bookingError && (
-                  <div style={{
-                    backgroundColor: '#fee2e2',
-                    color: '#dc2626',
-                    padding: '12px',
-                    borderRadius: '6px',
-                    marginBottom: '16px',
-                    fontSize: '14px'
-                  }}>
-                    {bookingError}
-                  </div>
-                )}
-                
-                <div style={{ marginBottom: '16px' }}>
-                  <label 
-                    htmlFor="booking-date" 
-                    style={{ 
-                      display: 'block', 
-                      marginBottom: '6px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#4b5563'
-                    }}
-                  >
-                    Date
-                  </label>
-                  <input
-                    id="booking-date"
-                    type="date"
-                    min={today}
-                    value={bookingDate}
-                    onChange={(e) => setBookingDate(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #d1d5db',
-                      fontSize: '14px'
-                    }}
-                  />
-                </div>
-                
-                <div style={{ 
-                  display: 'flex',
-                  gap: '16px',
-                  marginBottom: '16px'
-                }}>
-                  <div style={{ flex: 1 }}>
-                    <label 
-                      htmlFor="start-time" 
-                      style={{ 
-                        display: 'block', 
-                        marginBottom: '6px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        color: '#4b5563'
-                      }}
-                    >
-                      Start Time
-                    </label>
-                    <input
-                      id="start-time"
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        border: '1px solid #d1d5db',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                  
-                  <div style={{ flex: 1 }}>
-                    <label 
-                      htmlFor="end-time" 
-                      style={{ 
-                        display: 'block', 
-                        marginBottom: '6px',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                        color: '#4b5563'
-                      }}
-                    >
-                      End Time
-                    </label>
-                    <input
-                      id="end-time"
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        border: '1px solid #d1d5db',
-                        fontSize: '14px'
-                      }}
-                    />
-                  </div>
-                </div>
-                
-                <div style={{ marginBottom: '16px' }}>
-                  <label 
-                    htmlFor="attendees" 
-                    style={{ 
-                      display: 'block', 
-                      marginBottom: '6px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#4b5563'
-                    }}
-                  >
-                    Number of Attendees (Max: {selectedFacility.capacity})
-                  </label>
-                  <input
-                    id="attendees"
-                    type="number"
-                    min="1"
-                    max={selectedFacility.capacity}
-                    value={attendees}
-                    onChange={(e) => setAttendees(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #d1d5db',
-                      fontSize: '14px'
-                    }}
-                  />
-                </div>
-                
-                <div style={{ marginBottom: '24px' }}>
-                  <label 
-                    htmlFor="purpose" 
-                    style={{ 
-                      display: 'block', 
-                      marginBottom: '6px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: '#4b5563'
-                    }}
-                  >
-                    Purpose of Booking
-                  </label>
-                  <textarea
-                    id="purpose"
-                    value={purpose}
-                    onChange={(e) => setPurpose(e.target.value)}
-                    placeholder="Briefly describe the purpose of your booking"
-                    rows="3"
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      borderRadius: '6px',
-                      border: '1px solid #d1d5db',
-                      fontSize: '14px',
-                      resize: 'vertical',
-                      fontFamily: 'inherit'
-                    }}
-                  />
-                </div>
-                
-                <div style={{ 
-                  display: 'flex',
-                  justifyContent: 'flex-end',
-                  gap: '12px'
-                }}>
-                  <button
-                    onClick={closeModal}
-                    style={{
-                      backgroundColor: '#f3f4f6',
-                      color: '#4b5563',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '8px 16px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  
-                  <button
-                    onClick={handleBooking}
-                    style={{
-                      backgroundColor: '#2563eb',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '8px 16px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Confirm Booking
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div style={{
-                textAlign: 'center',
-                padding: '16px'
-              }}>
-                <div style={{
-                  width: '64px',
-                  height: '64px',
-                  borderRadius: '50%',
-                  backgroundColor: '#dcfce7',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  margin: '0 auto 16px',
-                  fontSize: '32px'
-                }}>
-                  ✓
-                </div>
-                
-                <h2 style={{ 
-                  fontSize: '20px',
-                  fontWeight: '600',
-                  margin: '0 0 8px'
-                }}>Booking Confirmed!</h2>
-                
-                <p style={{ 
-                  color: '#6b7280',
-                  marginBottom: '16px'
-                }}>
-                  You have successfully booked {selectedFacility.name} for {bookingDate} from {startTime} to {endTime}.
-                </p>
-                
-                <button
-                  onClick={closeModal}
-                  style={{
-                    backgroundColor: '#2563eb',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '8px 16px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    cursor: 'pointer'
-                  }}
-                >
-                  Close
-                </button>
-              </div>
-            )}
+            <h3 style={{ marginTop: 0 }}>Confirm Deletion</h3>
+            <p>Are you sure you want to delete this booking?</p>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              marginTop: '20px'
+            }}>
+              <button
+                onClick={cancelDelete}
+                style={{
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  border: '1px solid #d9d9d9',
+                  backgroundColor: 'white'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                style={{
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: '#ff4d4f',
+                  color: 'white'
+                }}
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
-      
-      {/* Bookings Timeline - Can be expanded in the future */}
-      <div style={{ 
-        backgroundColor: 'white',
-        borderRadius: '8px',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-        marginBottom: '24px'
-      }}>
-        <div style={{ 
-          padding: '16px',
-          borderBottom: '1px solid #e5e7eb'
+      {showBookModal && bookingToBook && (
+        <div style={{
+          position: 'fixed',
+          zIndex: 100,
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
         }}>
-          <h2 style={{ 
-            fontSize: '18px',
-            fontWeight: 700,
-            margin: 0
-          }}>Your Upcoming Bookings</h2>
-        </div>
-        
-        <div style={{ padding: '16px' }}>
-          {bookedSlots.length > 0 ? (
-            <div style={{ 
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '12px',
+            width: '100%',
+            maxWidth: '500px'
+          }}>
+            <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>Reserve Booking Slot</h2>
+            <div style={{
               display: 'flex',
-              flexDirection: 'column',
-              gap: '12px'
+              gap: '16px',
+              marginBottom: '20px',
+              alignItems: 'flex-start',
+              backgroundColor: '#f9fafb',
+              padding: '16px',
+              borderRadius: '10px'
             }}>
-              {bookedSlots.slice(0, 3).map((booking, index) => {
-                const facility = facilities.find(f => f.id === booking.facilityId);
-                return (
-                  <div key={index} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '12px',
-                    borderRadius: '6px',
-                    backgroundColor: '#f9fafb',
-                    gap: '16px'
-                  }}>
-                    <div style={{
-                      width: '40px',
-                      height: '40px',
-                      backgroundColor: '#e5e7eb',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '20px'
-                    }}>
-                      🗓️
-                    </div>
-                    
-                    <div style={{ flex: 1 }}>
-                      <h4 style={{ 
-                        fontSize: '16px',
-                        fontWeight: '600',
-                        margin: '0 0 4px'
-                      }}>{facility?.name}</h4>
-                      
-                      <div style={{
-                        fontSize: '14px',
-                        color: '#6b7280',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                      }}>
-                        <span>{new Date(booking.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                        <span>•</span>
-                        <span>{booking.startTime} - {booking.endTime}</span>
-                      </div>
-                    </div>
-                    
-                    <button style={{
-                      backgroundColor: '#fee2e2',
-                      color: '#dc2626',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '6px 12px',
-                      fontSize: '12px',
-                      fontWeight: '500',
-                      cursor: 'pointer'
-                    }}>
-                      Cancel
-                    </button>
-                  </div>
-                );
-              })}
+              {/* รูปภาพห้อง */}
+              {bookingToBook.booking_image && (
+                <img
+                  src={`${API_BASE_URL}/uploads/${bookingToBook.booking_image}`}
+                  alt="Room"
+                  style={{
+                    width: '100px',
+                    height: '100px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0'
+                  }}
+                />
+              )}
+              {/* ข้อมูลห้อง */}
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px', color: '#1a202c' }}>
+                  {bookingToBook.booking_title}
+                </h3>
+                <p style={{ fontSize: '14px', margin: 0, color: '#4a5568' }}>
+                  {bookingToBook.booking_description}
+                </p>
+              </div>
             </div>
-          ) : (
-            <div style={{
-              textAlign: 'center',
-              padding: '24px',
-              color: '#6b7280'
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const reservationData = {
+                ...bookingReservation,
+                booking_id: bookingToBook.booking_id,
+                user_id: currentUserId
+              };
+              fetch(`${API_BASE_URL}/api/booked`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reservationData)
+              })
+                .then(async res => {
+                  if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`API Error ${res.status}: ${text}`);
+                  }
+                  return res.json();
+                })
+                .then(result => {
+                  if (result.success) {
+                    // ✅ แก้เป็น PATCH พร้อม JSON body
+                    console.log("Booking ID to update:", bookingToBook.booking_id);
+                    fetch(`${API_BASE_URL}/api/booking/status/${bookingToBook.booking_id}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ booking_status: 'Booked' })
+                    })
+                      .then(res => res.json())
+                      .then(updateResult => {
+                        if (updateResult.success) {
+                          showNotification("Reservation confirmed and status updated!", "success");
+                          setShowBookModal(false);
+                          fetchProjectsAndCounts();
+                        } else {
+                          showNotification("Reservation saved but status update failed", "warning");
+                        }
+                      });
+                  } else {
+                    showNotification("Error: " + result.error, "error");
+                  }
+                })
+                .catch(err => {
+                  console.error("Booking Error:", err);
+                  showNotification("Something went wrong: " + err.message, "error");
+                });
             }}>
-              <p>You don't have any upcoming bookings</p>
-            </div>
-          )}
-          
-          {bookedSlots.length > 3 && (
-            <div style={{
-              textAlign: 'center',
-              marginTop: '16px'
-            }}>
-              <button style={{
-                backgroundColor: 'transparent',
-                color: '#2563eb',
-                border: 'none',
-                padding: '8px 16px',
-                fontSize: '14px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}>
-                View All Bookings
-              </button>
-            </div>
-          )}
+              <label>Start Date</label>
+              <input type="date" required
+                value={bookingReservation.booked_startdate}
+                onChange={e => setBookingReservation(prev => ({ ...prev, booked_startdate: e.target.value }))}
+                style={{ width: '100%', marginBottom: '12px' }}
+              />
+
+              <label>End Date</label>
+              <input type="date" required
+                value={bookingReservation.booked_enddate}
+                onChange={e => setBookingReservation(prev => ({ ...prev, booked_enddate: e.target.value }))}
+                style={{ width: '100%', marginBottom: '12px' }}
+              />
+
+              <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>Start Time</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                {['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map(time => (
+                  <button
+                    key={time}
+                    type="button"
+                    disabled={isTimeBooked(time)}
+                    onClick={() => setBookingReservation(prev => ({ ...prev, booked_starttime: time }))}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '999px',
+                      border: '1px solid #d1d5db',
+                      backgroundColor: isTimeBooked(time)
+                        ? '#e5e7eb'
+                        : bookingReservation.booked_starttime === time ? '#e0e7ff' : 'transparent',
+                      color: isTimeBooked(time) ? '#9ca3af' : '#1f2937',
+                      fontWeight: 500,
+                      cursor: isTimeBooked(time) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {time}
+                  </button>
+                ))}
+              </div>
+
+              <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>End Time</label>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
+                {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'].map(time => (
+                  <button
+                    key={time}
+                    type="button"
+                    disabled={isTimeBooked(time, 'end')}
+                    onClick={() => setBookingReservation(prev => ({ ...prev, booked_endtime: time }))}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '999px',
+                      border: '1px solid #d1d5db',
+                      backgroundColor: isTimeBooked(time, 'end')
+                        ? '#e5e7eb'
+                        : bookingReservation.booked_endtime === time
+                          ? '#e0e7ff'
+                          : 'transparent',
+                      color: isTimeBooked(time, 'end') ? '#9ca3af' : '#1f2937',
+                      fontWeight: 500,
+                      cursor: isTimeBooked(time, 'end') ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    {time}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button type="button" onClick={() => setShowBookModal(false)}>Cancel</button>
+                <button type="submit" style={{ backgroundColor: '#4f46e5', color: 'white', padding: '8px 16px', borderRadius: '6px' }}>
+                  Confirm Booking
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-      </div>
+      )}
+      <Snackbar
+        open={notification.open}
+        autoHideDuration={6000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert onClose={handleCloseNotification} severity={notification.type} sx={{ width: '100%' }}>
+          {notification.message}
+        </Alert>
+      </Snackbar>
+      {showArchiveModal && (
+        <ArchiveModal open={showArchiveModal} onClose={() => setShowArchiveModal(false)} onProjectRestored={handleProjectRestored} />
+      )}
     </div>
   );
 };
 
-export default BookingFacilityPage;
+export default BookingPage;

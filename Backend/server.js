@@ -10,10 +10,19 @@ import commentRoutes from "./src/routes/commentRoutes.js";
 import meetingRoutes from './src/routes/meetingRoutes.js';
 import userProfileRoutes from './src/controllers/UserProfileController.js';
 import calendarRoutes from "./src/routes/calendarpageRoutes.js";
+import bookingRoutes from './src/routes/bookingRoutes.js';
+import bookedRoutes from "./src/routes/bookedRoutes.js";
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 dotenv.config();
 
 const app = express();
+
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Middleware
 app.use(express.json());
@@ -29,11 +38,12 @@ app.use(taskRoutes);
 app.use('/api', commentRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use('/api', meetingRoutes); // ✅ path หลักเดียวกัน
-
 app.use('/meeting', meetingRoutes);
-
 app.use('/api/calendar', calendarRoutes);
-
+app.use('/api', bookingRoutes);
+app.use("/api", bookedRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use('/uploads', express.static(path.join(__dirname, 'src/uploads')));
 
 
 // ทดสอบการเชื่อมต่อฐานข้อมูล (Optional)
