@@ -1,158 +1,138 @@
-// src/controllers/zoomController.js
-import axios from 'axios';
+// src/controllers/meetingsController.js
 import db from '../config/database.js';
-import { v4 as uuidv4 } from 'uuid';
-import { createGoogleMeet } from './googleController.js';
-import { createMicrosoftTeamsMeeting } from './microsoftController.js';
+import { createZoomMeeting } from './zoomController.js';
+import { createGoogleMeeting } from './googleController.js';
+import { createTeamsMeeting } from './microsoftController.js';
+import { createWebexMeeting } from './webexController.js';
+import { sendInvitationEmail } from '../services/emailService.js';
 
-
-let accessToken = ''; // NOTE: ใน production ควรเก็บแบบปลอดภัย
-
-export const redirectToZoom = (req, res) => {
-  const authUrl = `https://zoom.us/oauth/authorize?response_type=code&client_id=${process.env.ZOOM_CLIENT_ID}&redirect_uri=${process.env.ZOOM_REDIRECT_URI}`;
-  res.redirect(authUrl);
-};
-
-export const handleZoomCallback = async (req, res) => {
-  const code = req.query.code;
-  try {
-    const response = await axios.post('https://zoom.us/oauth/token', null, {
-      params: {
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: process.env.ZOOM_REDIRECT_URI
-      },
-      auth: {
-        username: process.env.ZOOM_CLIENT_ID,
-        password: process.env.ZOOM_CLIENT_SECRET
-      }
-    });
-
-    const { access_token, refresh_token } = response.data;
-    const userInfo = await axios.get('https://api.zoom.us/v2/users/me', {
-      headers: { Authorization: `Bearer ${access_token}` }
-    });
-    const email = userInfo.data.email;
-
-    await db.query(`UPDATE users SET token = ?, refresh_token = ?, provider = 'zoom' WHERE email = ?`, [access_token, refresh_token, email]);
-    res.send('<h3 style="color:green">✅ Zoom connected and token saved successfully</h3>');
-  } catch (err) {
-    console.error('Zoom callback error:', err.response?.data || err.message);
-    res.status(500).send('Zoom authentication failed');
-  }
-};
-
+// 🔹 CREATE
 export const createMeeting = async (req, res) => {
-  const { user_id, title, date, time, duration, platform } = req.body;
-
   try {
-    let join_url = '';
-    let meetingId = uuidv4();
-    const cleanPlatform = platform?.toLowerCase();
+    const {
+      title,
+      description,
+      start_time,
+      end_time,
+      duration,
+      platform,
+      frequency,
+      reminder,
+      participants = [],
+      user_id,
+      token,
+      provider
+    } = req.body;
 
-    if (cleanPlatform === 'zoom') {
-      const [[user]] = await db.query('SELECT token, refresh_token FROM users WHERE user_id = ?', [user_id]);
-      if (!user?.token) return res.status(401).json({ error: 'Zoom not authenticated.' });
+    let join_url = '', start_url = '', meeting_id = '';
 
-      const createZoomMeeting = async (token) => {
-        const payload = {
-          topic: title,
-          type: 2,
-          start_time: new Date(`${date}T${time}:00`).toISOString(),
-          duration: parseInt(duration),
-          timezone: 'Asia/Bangkok',
-          settings: { join_before_host: true, approval_type: 0 }
-        };
-
-        const zoomRes = await axios.post('https://api.zoom.us/v2/users/me/meetings', payload, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        return zoomRes.data;
-      };
-
-      let accessToken = user.token;
-      let meeting;
+    if (platform === 'Zoom') {
       try {
-        meeting = await createZoomMeeting(accessToken);
-      } catch (error) {
-        if (error.response?.status === 401) {
-          const refresh = await axios.post('https://zoom.us/oauth/token', null, {
-            params: {
-              grant_type: 'refresh_token',
-              refresh_token: user.refresh_token
-            },
-            auth: {
-              username: process.env.ZOOM_CLIENT_ID,
-              password: process.env.ZOOM_CLIENT_SECRET
-            }
-          });
-          accessToken = refresh.data.access_token;
-          await db.query('UPDATE users SET token = ?, refresh_token = ? WHERE user_id = ?', [accessToken, refresh.data.refresh_token, user_id]);
-          meeting = await createZoomMeeting(accessToken);
-        } else throw error;
+        const zoomRes = await createZoomMeeting(
+          { body: { topic: title, start_time, duration, timezone: 'Asia/Bangkok', agenda: description } },
+          { status: () => ({ json: (d) => d }) }
+        );
+        join_url = zoomRes.join_url;
+        start_url = zoomRes.start_url;
+        meeting_id = zoomRes.meeting_id;
+      } catch (zoomError) {
+        console.error('Error creating Zoom meeting:', zoomError);
+        return res.status(500).json({ error: 'Failed to create Zoom meeting: ' + zoomError.message });
       }
-
-      join_url = meeting.join_url;
-      meetingId = meeting.id;
-
-    } else if (cleanPlatform === 'google meet') {
-      join_url = await createGoogleMeet({ user_id, title, date, time, duration });
-
-    } else if (cleanPlatform === 'microsoft teams') {
-      join_url = await createMicrosoftTeamsMeeting({ user_id, title, date, time, duration });
-
-    } else if (cleanPlatform === 'webex') {
-      join_url = `https://webex.com/meeting/${meetingId}`;
-
-    } else {
-      return res.status(400).json({ error: 'Unknown platform' });
+    } else if (platform === 'Google Meet') {
+      try {
+        const googleRes = await createGoogleMeeting(title, start_time, end_time, description, token);
+        join_url = googleRes.join_url;
+        meeting_id = googleRes.event_id;
+      } catch (googleError) {
+        console.error('Error creating Google Meet:', googleError);
+        return res.status(500).json({ error: 'Failed to create Google Meet: ' + googleError.message });
+      }
+    } else if (platform === 'Microsoft Teams') {
+      try {
+        const msRes = await createTeamsMeeting(title, start_time, end_time, description, token);
+        join_url = msRes.join_url;
+        meeting_id = msRes.meeting_id;
+      } catch (msError) {
+        console.error('Error creating Microsoft Teams meeting:', msError);
+        return res.status(500).json({ error: 'Failed to create Microsoft Teams meeting: ' + msError.message });
+      }
+    } else if (platform === 'Webex') {
+      try {
+        const webexRes = await createWebexMeeting(title, start_time, duration, description);
+        join_url = webexRes.join_url;
+        meeting_id = webexRes.meeting_id;
+      } catch (webexError) {
+        console.error('Error creating Webex meeting:', webexError);
+        return res.status(500).json({ error: 'Failed to create Webex meeting: ' + webexError.message });
+      }
     }
 
     await db.query(
-      `INSERT INTO meetings (id, user_id, title, date, time, duration, platform, join_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [meetingId, user_id, title, date, time, parseInt(duration), platform, join_url]
+      `INSERT INTO meetings
+        (id, title, description, start_time, end_time, duration, platform, frequency, reminder, join_url, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [meeting_id, title, description, start_time, end_time, duration, platform, frequency, reminder, join_url, user_id] // <-- เพิ่ม meeting_id ตรงนี้
     );
 
-    res.json({ meetingLink: join_url });
-  } catch (err) {
-    console.error('❌ Failed to create meeting:', err);
-    res.status(500).json({ error: 'Failed to create meeting' });
+    if (participants.length > 0) {
+      try {
+        await sendInvitationEmail(title, start_time, duration, join_url, participants);
+      } catch (emailError) {
+        console.error('Error sending invitation email:', emailError);
+        // ⚠️ Decide: Should this prevent meeting creation? Or just log and continue?
+      }
+    }
+
+    return res.status(201).json({ message: 'Meeting created successfully', meeting_id, join_url, start_url });
+
+  } catch (error) {
+    console.error('Create Meeting Error:', error);
+    return res.status(500).json({ error: 'Failed to create meeting: ' + error.message });
   }
 };
 
-export const getMeetingsByUserId = async (req, res) => {
-  const { userId } = req.params;
-  if (!userId) return res.status(400).json({ error: 'Missing userId' });
-
+// 🔹 READ
+export const listMeetings = async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM meetings WHERE user_id = ?', [userId]);
-    res.json(rows);
-  } catch (err) {
-    console.error('❌ Error fetching meetings:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    const { userId } = req.query;
+    const [meetings] = await db.query(
+      `SELECT * FROM meetings WHERE user_id = ? ORDER BY start_time ASC`,
+      [userId]
+    );
+    res.status(200).json(meetings);
+  } catch (error) {
+    console.error('List Meeting Error:', error);
+    res.status(500).json({ error: 'Failed to fetch meetings: ' + error.message });
   }
 };
 
-export const deleteMeetingById = async (req, res) => {
-  const { id } = req.params;
+// 🔹 UPDATE
+export const updateMeeting = async (req, res) => {
   try {
-    await db.query('DELETE FROM meetings WHERE id = ?', [id]);
-    res.status(200).json({ message: 'Meeting deleted successfully' });
-  } catch (err) {
-    console.error('❌ Failed to delete meeting:', err.message);
-    res.status(500).json({ error: 'Failed to delete meeting' });
-  }
-};
+    const { id } = req.params;
+    const { title, description, start_time, end_time } = req.body;
 
-export const updateMeetingById = async (req, res) => {
-  const { id } = req.params;
-  const { title, date, time, duration } = req.body;
-  try {
-    await db.query('UPDATE meetings SET title = ?, date = ?, time = ?, duration = ? WHERE id = ?', [title, date, time, duration, id]);
+    await db.query(
+      `UPDATE meetings SET title = ?, description = ?, start_time = ?, end_time = ? WHERE id = ?`,
+      [title, description, start_time, end_time, id]
+    );
+
     res.status(200).json({ message: 'Meeting updated successfully' });
-  } catch (err) {
-    console.error('❌ Failed to update meeting:', err.message);
-    res.status(500).json({ error: 'Failed to update meeting' });
+  } catch (error) {
+    console.error('Update Meeting Error:', error);
+    res.status(500).json({ error: 'Failed to update meeting: ' + error.message });
+  }
+};
+
+// 🔹 DELETE
+export const deleteMeeting = async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.query(`DELETE FROM meetings WHERE id = ?`, [id]);
+    res.status(200).json({ message: 'Meeting deleted successfully' });
+  } catch (error) {
+    console.error('Delete Meeting Error:', error);
+    res.status(500).json({ error: 'Failed to delete meeting: ' + error.message });
   }
 };

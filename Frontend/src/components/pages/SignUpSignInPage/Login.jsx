@@ -76,7 +76,7 @@ const LoginPage = () => {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "azure",
       options: {
-        scopes: "openid email profile offline_access Calendars.ReadWrite",
+        scopes: "openid email profile offline_access Calendars.ReadWrite OnlineMeetings.ReadWrite",
         redirectTo: "https://klauwpmsqqkxfjyxfpbx.supabase.co/auth/v1/callback",
       },
     });

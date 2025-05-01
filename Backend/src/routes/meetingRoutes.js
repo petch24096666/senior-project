@@ -1,45 +1,54 @@
-// routes/meetingRoutes.js (อัปเดตใหม่ รองรับ Google + Microsoft + Zoom + CRUD)
-import express from 'express';
-const router = express.Router();
+// src/routes/meetingRoute.js
 
-// ✅ Import Zoom controller
+import express from 'express';
+
 import {
-  redirectToZoom,
-  handleZoomCallback,
   createMeeting,
-  updateMeetingById,
-  deleteMeetingById,
-  getMeetingsByUserId
+  listMeetings,
+  updateMeeting,
+  deleteMeeting
 } from '../controllers/meetingsController.js';
 
-// ✅ Import Google controller
 import {
-  redirectToGoogle,
-  handleGoogleCallback
+  createZoomMeeting,
+  getZoomAccessToken
+} from '../controllers/zoomController.js';
+
+import {
+  createGoogleMeeting,
+  redirectToGoogleOAuth,
+  handleGoogleOAuthCallback
 } from '../controllers/googleController.js';
 
-// ✅ Import Microsoft controller
 import {
-  redirectToMicrosoft,
-  handleMicrosoftCallback
+  createTeamsMeeting,
+  redirectToMicrosoftOAuth,
+  handleMicrosoftOAuthCallback
 } from '../controllers/microsoftController.js';
 
-// ✅ Zoom OAuth
-router.get('/auth/zoom', redirectToZoom);
-router.get('/auth/zoom/callback', handleZoomCallback);
+import {
+  createWebexMeeting,
+  redirectToWebexOAuth,
+  handleWebexOAuthCallback
+} from '../controllers/webexController.js';
 
-// ✅ Google OAuth
-router.get('/auth/google', redirectToGoogle);
-router.get('/auth/google/callback', handleGoogleCallback);
+const router = express.Router();
 
-// ✅ Microsoft OAuth
-router.get('/auth/microsoft', redirectToMicrosoft);
-router.get('/auth/microsoft/callback', handleMicrosoftCallback);
-
-// ✅ Meeting APIs
+// 🔁 CRUD routes — เส้นทางเดียว /meeting
 router.post('/', createMeeting);
-router.patch('/api/:id', updateMeetingById);
-router.delete('/api/:id', deleteMeetingById);
-router.get('/api/:userId', getMeetingsByUserId);
+router.get('/', listMeetings);
+router.put('/:id', updateMeeting);
+router.delete('/:id', deleteMeeting);
+
+// 🔐 OAuth callback routes
+router.get('/oauth/google', redirectToGoogleOAuth);
+router.get('/oauth/google/callback', handleGoogleOAuthCallback);
+router.get('/oauth/microsoft', redirectToMicrosoftOAuth);
+router.get('/oauth/microsoft/callback', handleMicrosoftOAuthCallback);
+router.get('/oauth/webex', redirectToWebexOAuth);
+router.get('/oauth/webex/callback', handleWebexOAuthCallback);
+
+// 🧪 Optional: ทดสอบสร้าง Zoom โดยตรง
+router.post('/zoom/direct', createZoomMeeting);
 
 export default router;
