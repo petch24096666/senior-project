@@ -298,15 +298,6 @@ const getDaysInMonth = (date) => {
   return daysArray;
 };
 
-  // Calendar integration placeholder functions
-  const connectGoogleCalendar = () => {
-    console.log("Trigger OAuth flow for Google Calendar");
-  };
-
-  const connectMicrosoftCalendar = () => {
-    console.log("Trigger OAuth flow for Microsoft Calendar");
-  };
-
   // Navigate to project page
   const goToProjectsPage = () => {
     navigate('/projects');
@@ -337,43 +328,6 @@ const getDaysInMonth = (date) => {
           margin: 0
         }}>Here's what's happening with your projects today.</p>
       </header>
-
-      {/* Calendar Connection Buttons */}
-      <div style={{ marginBottom: '24px', display: 'flex', gap: '16px' }}>
-        <button
-          onClick={connectGoogleCalendar}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#2563EB',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          Connect Google Calendar
-        </button>
-        <button
-          onClick={connectMicrosoftCalendar}
-          style={{
-            padding: '8px 16px',
-            backgroundColor: '#2563EB',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '14px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            transition: 'all 0.2s ease'
-          }}
-        >
-          Connect Microsoft Calendar
-        </button>
-      </div>
-
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
