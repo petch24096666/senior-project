@@ -254,13 +254,20 @@ export const RBACProvider = ({ children }) => {
     return !!customUser; // Authenticated user can create booking
   };
 
-  const canEditBooking = (bookingId) => {
-    // ใช้ projectId แทน bookingId ถ้าระบบ booking ผูกกับ project
-    return hasPermission(BOOKING_PERMISSIONS.EDIT_BOOKING, bookingId);
+  const canEditBooking = (bookingId, creatorId) => {
+    if (!customUser) return false;
+    return (
+      creatorId === customUser.user_id ||
+      hasPermission(BOOKING_PERMISSIONS.EDIT_BOOKING, bookingId)
+    );
   };
-
-  const canDeleteBooking = (bookingId) => {
-    return hasPermission(BOOKING_PERMISSIONS.DELETE_BOOKING, bookingId);
+  
+  const canDeleteBooking = (bookingId, creatorId) => {
+    if (!customUser) return false;
+    return (
+      creatorId === customUser.user_id || // ✅ ถ้าเป็นผู้สร้าง
+      hasPermission(BOOKING_PERMISSIONS.DELETE_BOOKING, bookingId)
+    );
   };
 
   return (

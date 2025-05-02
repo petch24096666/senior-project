@@ -132,7 +132,7 @@ const Sidebar = () => {
               <InsertDriveFileIcon />
             </ListItemIcon>
             <ListItemText
-              primary="Booking"
+              primary="Facility"
               primaryTypographyProps={{
                 sx: { fontSize: "16px" },
               }}

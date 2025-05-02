@@ -44,10 +44,6 @@ const BookingPage = () => {
     booking_title: '',
     booking_description: '',
     booking_type: '',
-    booking_startdate: '', // 👈 ใหม่
-    booking_enddate: '',   // 👈 ใหม่
-    booking_starttime: '',
-    booking_endtime: '',
     booking_status: '',
     team: [],
     booking_image: null,
@@ -75,12 +71,17 @@ const BookingPage = () => {
   const [bookingToBook, setBookingToBook] = useState(null);
   const [bookedSlots, setBookedSlots] = useState([]);
   const [bookedTimes, setBookedTimes] = useState([]); // เก็บเวลาที่ถูกจองไว้
+  const [activeTab, setActiveTab] = useState('available'); // 'available' หรือ 'myBookings'
+  const [myReservations, setMyReservations] = useState([]);
+  const [selectedReservation, setSelectedReservation] = useState(null);
+  const [showReservationModal, setShowReservationModal] = useState(false);
+  const [showCancelPopup, setShowCancelPopup] = useState(false);
+  const [reservationToCancel, setReservationToCancel] = useState(null);
+  const [bookingCreators, setBookingCreators] = useState({});
   const [bookingReservation, setBookingReservation] = useState({
     booked_id: '', // ไม่จำเป็นต้องกำหนดเองก็ได้
-    booked_startdate: '',
-    booked_enddate: '',
-    booked_starttime: '',
-    booked_endtime: '',
+    booked_date: '',
+    booked_time: '',
     booking_id: '', // จะ set ตอนกดปุ่ม Book Now
     user_id: currentUserId
   });
@@ -117,33 +118,93 @@ const BookingPage = () => {
   };
 
   useEffect(() => {
-    if (bookingToBook && bookingReservation.booked_startdate) {
-      fetchBookedTimes(bookingToBook.booking_id, bookingReservation.booked_startdate);
+    if (bookingToBook && bookingReservation.booked_date) {
+      fetchBookedTimes(bookingToBook.booking_id, bookingReservation.booked_date);
     }
-  }, [bookingToBook, bookingReservation.booked_startdate]);
+  }, [bookingToBook, bookingReservation.booked_date]);
 
-  const isTimeBooked = (time, type) => {
-    const timeValue = dayjs(`2000-01-01T${time}`);
-    return bookedTimes.some(({ booked_starttime, booked_endtime }) => {
-      const start = dayjs(`2000-01-01T${booked_starttime}`);
-      const end = dayjs(`2000-01-01T${booked_endtime}`);
-      return timeValue.isSame(start) || timeValue.isAfter(start) && timeValue.isBefore(end);
-    });
+  const isTimeBooked = (time) => {
+    return bookedTimes.includes(time); // ['08:00', '09:00']
   };
 
   const fetchBookedTimes = async (bookingId, date) => {
     const res = await fetch(`${API_BASE_URL}/api/booked/times?booking_id=${bookingId}&date=${date}`);
     const data = await res.json();
+
     if (data.success) {
-      setBookedTimes(data.data); // [{ booked_starttime: '10:00', booked_endtime: '12:00' }, ...]
+      setBookedTimes(data.data.map(t => t.booked_time)); // เช่น '08:00'
     }
   };
+
+  const fetchMyReservations = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/booked/user/${currentUserId}`);
+      const result = await res.json();
+      if (result.success) {
+        setMyReservations(result.data);
+      } else {
+        showNotification("Failed to load your reservations", 'error');
+      }
+    } catch (err) {
+      console.error("Error fetching my reservations:", err);
+      showNotification("Error fetching your reservations", 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'myBookings') {
+      fetchMyReservations();
+    }
+  }, [activeTab]);
+
+  const handleCancelReservation = async (bookedId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/booked/${bookedId}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (result.success) {
+        showNotification("Reservation cancelled", 'success');
+        setMyReservations(prev => prev.filter(b => b.booked_id !== bookedId));
+      } else {
+        showNotification("Failed to cancel reservation", 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showNotification("Error cancelling reservation", 'error');
+    }
+  };
+
+  const fetchBookingCreator = async (bookingId) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/booking/${bookingId}`);
+      if (response.data.success) {
+        const creatorId = response.data.data.creator_id;
+        setBookingCreators(prev => ({ ...prev, [bookingId]: creatorId }));
+        return creatorId;
+      }
+    } catch (err) {
+      console.error('Error fetching booking creator:', err);
+    }
+    return null;
+  };
+
+  const isBookingCreator = (bookingId) => {
+    return bookingCreators[bookingId] === currentUserId;
+  };
+
+  useEffect(() => {
+    if (booking.length > 0) {
+      booking.forEach(b => {
+        if (!bookingCreators[b.booking_id]) {
+          fetchBookingCreator(b.booking_id); // จะเก็บ creator_id ไว้ใน state
+        }
+      });
+    }
+  }, [booking]);
 
   const getTypeColor = (type) => {
     const colors = {
       'Meeting Rooms': { bg: '#3b82f6', text: '#1e40af', light: '#dbeafe' },
       Workstations: { bg: '#22c55e', text: '#065f46', light: '#dcfce7' },
-      Computer: { bg: '#8b5cf6', text: '#4c1d95', light: '#ede9fe' },
     };
     return colors[type] || { bg: '#9ca3af', text: '#374151', light: '#f3f4f6' };
   };
@@ -151,7 +212,6 @@ const BookingPage = () => {
   const typeOptions = [
     { label: 'Meeting Rooms', value: 'Meeting Rooms' },
     { label: 'Workstations', value: 'Workstations' },
-    { label: 'Computer', value: 'Computer' }
   ];
 
   // Fetch projects
@@ -161,8 +221,6 @@ const BookingPage = () => {
       const projRes = await axios.get(`http://localhost:8081/api/booking?userId=${currentUserId}`);
       const bookingData = projRes.data.data.map(p => ({
         ...p,
-        startdate: (p.booking_startdate || '').split(' ')[0],
-        duedate: (p.booking_enddate || '').split(' ')[0],
         tasks: 0,
         totalTasks: 0
       }));
@@ -451,10 +509,6 @@ const BookingPage = () => {
     const mapping = {
       bookingTitle: 'booking_title',
       bookingDescription: 'booking_description',
-      bookingStartDate: 'booking_startdate',
-      bookingEndDate: 'booking_enddate',
-      bookingStartTime: 'booking_starttime',
-      bookingEndTime: 'booking_endtime',
       bookingStatus: 'booking_status',
       bookingType: 'booking_type',
       bookingTeam: 'team'
@@ -479,19 +533,11 @@ const BookingPage = () => {
     const {
       booking_title,
       booking_type,
-      booking_startdate,
-      booking_enddate,
-      booking_starttime,
-      booking_endtime
     } = booking;
 
     if (
       !booking_title ||
-      !booking_type ||
-      !booking_startdate ||
-      !booking_enddate ||
-      !booking_starttime ||
-      !booking_endtime
+      !booking_type
     ) {
       alert('Please fill out all required fields');
       return false;
@@ -529,11 +575,8 @@ const BookingPage = () => {
     bookingData.append('booking_title', newBooking.booking_title);
     bookingData.append('booking_description', newBooking.booking_description);
     bookingData.append('booking_type', newBooking.booking_type || selectedType || customType);
-    bookingData.append('booking_startdate', newBooking.booking_startdate); // ✅ แยก start
-    bookingData.append('booking_enddate', newBooking.booking_enddate);     // ✅ แยก end
-    bookingData.append('booking_starttime', newBooking.booking_starttime);
-    bookingData.append('booking_endtime', newBooking.booking_endtime);
     bookingData.append('booking_status', newBooking.booking_status);
+    bookingData.append('creator_id', currentUserId);
     //bookingData.append('creator_id', currentUserId);
     bookingData.team = JSON.stringify(teamMembers);
 
@@ -593,10 +636,6 @@ const BookingPage = () => {
         booking_title: data.booking_title,
         booking_description: data.booking_description,
         booking_type: data.booking_type,
-        booking_startdate: data.booking_startdate,
-        booking_enddate: data.booking_enddate,
-        booking_starttime: data.booking_starttime,
-        booking_endtime: data.booking_endtime,
         booking_status: data.booking_status,
         team: teamArray,
         booking_image: null, // ไว้รองรับรูปใหม่ที่เลือก
@@ -675,10 +714,6 @@ const BookingPage = () => {
     bookingData.append('booking_title', editingBooking.booking_title);
     bookingData.append('booking_description', editingBooking.booking_description);
     bookingData.append('booking_type', editingBooking.booking_type);
-    bookingData.append('booking_startdate', editingBooking.booking_startdate);
-    bookingData.append('booking_enddate', editingBooking.booking_enddate);
-    bookingData.append('booking_starttime', editingBooking.booking_starttime);
-    bookingData.append('booking_endtime', editingBooking.booking_endtime);
     bookingData.append('booking_status', editingBooking.booking_status);
     bookingData.append('creator_id', currentUserId);
     bookingData.append('team', JSON.stringify(teamMembers));
@@ -729,10 +764,6 @@ const BookingPage = () => {
         booking_title: '',
         booking_description: '',
         booking_type: '',
-        booking_startdate: '',
-        booking_enddate: '',
-        booking_starttime: '',
-        booking_endtime: '',
         booking_status: '',
         team: [],
         booking_image: null,
@@ -782,7 +813,6 @@ const BookingPage = () => {
     }
     return booking.map(item => {
       const typeStyle = getTypeColor(item.booking_type || '');
-      const formattedDate = formatDate(item.booking_startdate);
       const imageUrl = item.booking_image ? `${API_BASE_URL}/uploads/${item.booking_image}` : null;
       return (
         <div
@@ -801,14 +831,20 @@ const BookingPage = () => {
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              {canEditBooking(booking.booking_id) && (
+            <div style={{
+              display: 'flex',
+              gap: '8px',
+              minHeight: '30px',
+              minWidth: '68px', // 👈 กันเลื่อน
+              justifyContent: 'flex-end'
+            }}>
+              {isBookingCreator(item.booking_id) && (
                 <button
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    handleEditBooking(item);
                     console.log("Edit button clicked for booking:", booking);
-                    handleEditBooking(booking);
                   }}
                   style={{
                     width: '30px',
@@ -828,25 +864,27 @@ const BookingPage = () => {
                   </svg>
                 </button>
               )}
-              <button
-                onClick={() => initiateDelete(item.booking_id)}
-                style={{
-                  width: '30px',
-                  height: '30px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: '#FEE2E2',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
+              {isBookingCreator(item.booking_id) && (
+                <button
+                  onClick={() => initiateDelete(item.booking_id)}
+                  style={{
+                    width: '30px',
+                    height: '30px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#FEE2E2',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              )}
             </div>
           </div>
 
@@ -908,10 +946,8 @@ const BookingPage = () => {
               onClick={() => {
                 setBookingToBook(item);
                 setBookingReservation({
-                  booked_startdate: '',
-                  booked_enddate: '',
-                  booked_starttime: '',
-                  booked_endtime: ''
+                  booked_date: '',
+                  booked_time: '',
                 });
                 setShowBookModal(true);
                 fetch(`${API_BASE_URL}/api/booked?booking_id=${item.booking_id}`)
@@ -919,9 +955,12 @@ const BookingPage = () => {
                   .then(data => {
                     setBookedSlots(data?.data || []);
                   });
+                setBookedTimes([]); // ✅ Reset เวลาที่เคยจองไว้
               }}
               style={{
-                padding: '10px 100px',
+                width: '100%',
+                maxWidth: '200px',
+                padding: '10px 16px',
                 backgroundColor: '#4f46e5',
                 color: 'white',
                 border: 'none',
@@ -930,7 +969,8 @@ const BookingPage = () => {
                 fontSize: '14px',
                 cursor: 'pointer',
                 transition: 'background-color 0.2s',
-                animation: 'fadeIn 0.5s ease-out'
+                animation: 'fadeIn 0.5s ease-out',
+                whiteSpace: 'nowrap'
               }}
               onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#4338ca'}
               onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
@@ -1142,7 +1182,7 @@ const BookingPage = () => {
           alignItems: 'center'
         }}>
           <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>Booking</h1>
+            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>Facility</h1>
             <p style={{ color: '#718096', marginTop: '5px', fontSize: '16px' }}>
               Get an overview of your projects and track progress.
             </p>
@@ -1162,7 +1202,7 @@ const BookingPage = () => {
                 boxShadow: '0 4px 6px rgba(79, 70, 229, 0.1)'
               }}
             >
-              + Add Booking
+              + Add Facility
             </button>
           )}
         </div>
@@ -1187,6 +1227,37 @@ const BookingPage = () => {
             flexWrap: 'wrap',
             gap: '15px'
           }}>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => setActiveTab('available')}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  backgroundColor: activeTab === 'available' ? '#4f46e5' : '#e5e7eb',
+                  color: activeTab === 'available' ? 'white' : '#374151',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                All Facility
+              </button>
+              <button
+                onClick={() => setActiveTab('myBookings')}
+                style={{
+                  padding: '10px 20px',
+                  borderRadius: '8px',
+                  backgroundColor: activeTab === 'myBookings' ? '#4f46e5' : '#e5e7eb',
+                  color: activeTab === 'myBookings' ? 'white' : '#374151',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                My Reservations
+              </button>
+            </div>
+
             <div style={{
               display: 'flex',
               flex: 1,
@@ -1306,8 +1377,8 @@ const BookingPage = () => {
             </div>
           </div>
 
-          {/* Projects View (Grid or List) */}
-          {viewMode === 'grid' ? (
+          {/* Projects View */}
+          {activeTab === 'available' && (viewMode === 'grid' ? (
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
@@ -1319,119 +1390,142 @@ const BookingPage = () => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               {renderListView()}
             </div>
+          ))}
+
+          {activeTab === 'myBookings' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
+              {myReservations.length === 0 ? (
+                <div style={{
+                  gridColumn: '1 / -1',
+                  textAlign: 'center',
+                  padding: '60px 20px',
+                  backgroundColor: 'white',
+                  borderRadius: '12px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+                }}>
+                  <h3 style={{
+                    color: '#4a5568',
+                    fontSize: '18px',
+                    marginBottom: '12px'
+                  }}>No bookings found</h3>
+                  <p style={{
+                    color: '#718096',
+                    marginBottom: '24px'
+                  }}>Try adjusting your search or filter criteria</p>
+                  <button
+                    onClick={resetFilters}
+                    style={{
+                      backgroundColor: '#4f46e5',
+                      color: 'white',
+                      border: 'none',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              ) : (
+                myReservations.map(item => {
+                  const typeStyle = getTypeColor(item.booking_type || '');
+                  const imageUrl = item.booking_image ? `${API_BASE_URL}/uploads/${item.booking_image}` : null;
+
+                  return (
+                    <div key={item.booked_id} style={{
+                      backgroundColor: 'white',
+                      borderRadius: '12px',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                      padding: '20px',
+                      borderTop: `6px solid ${typeStyle.bg}`,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      animation: 'fadeIn 0.5s ease-out',
+                      justifyContent: 'space-between'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={() => {
+                            setReservationToCancel(item.booked_id);
+                            setShowCancelPopup(true);
+                          }}
+                          style={{
+                            width: '30px',
+                            height: '30px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: '#fee2e2',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            marginBottom: '20px'
+                          }}
+                        >
+                          ❌
+                        </button>
+                      </div>
+
+                      {imageUrl && (
+                        <img
+                          src={imageUrl}
+                          alt="Room"
+                          style={{
+                            width: '100%',
+                            height: '160px',
+                            objectFit: 'cover',
+                            borderRadius: '8px',
+                            marginBottom: '16px'
+                          }}
+                        />
+                      )}
+
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', margin: 0 }}>
+                        {item.booking_title}
+                      </h3>
+                      <p style={{ fontSize: '14px', color: '#4b5563', margin: '12px 0' }}>
+                        {item.booking_description}
+                      </p>
+
+                      <div style={{
+                        backgroundColor: typeStyle.light,
+                        color: typeStyle.text,
+                        borderRadius: '50px',
+                        padding: '5px 12px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        width: 'fit-content',
+                        marginBottom: '16px'
+                      }}>
+                        {item.booking_type}
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'center' }}>
+                        <button
+                          onClick={() => {
+                            setSelectedReservation(item);
+                            setShowReservationModal(true);
+                          }}
+                          style={{
+                            padding: '10px 40px',
+                            backgroundColor: '#4f46e5',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontWeight: 600,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Detail Booking
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
           )}
-
-          {/* Stats Section */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-            gap: '24px',
-            marginTop: '40px'
-          }}>
-            <div style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              border: '1px solid #f1f1f1'
-            }}>
-              <div style={{
-                marginBottom: '12px',
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#4f46e5'
-              }}>
-                <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-              </div>
-              <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Total Projects</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.totalProjects}</div>
-            </div>
-
-            <div style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              border: '1px solid #f1f1f1'
-            }}>
-              <div style={{
-                marginBottom: '12px',
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#0ea5e9'
-              }}>
-                <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-              </div>
-              <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Completed Tasks</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.completedTasks}</div>
-            </div>
-
-            <div style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              border: '1px solid #f1f1f1'
-            }}>
-              <div style={{
-                marginBottom: '12px',
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#8b5cf6'
-              }}>
-                <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>High Priority</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.highPriorityCount}</div>
-            </div>
-
-            <div style={{
-              backgroundColor: 'white',
-              padding: '20px',
-              borderRadius: '12px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-              transition: 'transform 0.2s, box-shadow 0.2s',
-              border: '1px solid #f1f1f1'
-            }}>
-              <div style={{
-                marginBottom: '12px',
-                width: '40px',
-                height: '40px',
-                borderRadius: '8px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: '#ec4899'
-              }}>
-                <svg style={{ width: '20px', height: '20px', color: 'white' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <div style={{ fontSize: '15px', color: '#718096', marginBottom: '8px', fontWeight: 500 }}>Due This Week</div>
-              <div style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>{stats.dueThisWeek}</div>
-            </div>
-          </div>
         </div>
       </div>
       {/* Add/Edit Project Modal */}
@@ -1507,9 +1601,13 @@ const BookingPage = () => {
                       border: '2px dashed #cbd5e0',
                       borderRadius: '10px',
                       padding: '20px',
-                      textAlign: 'center',
                       backgroundColor: '#f9fafb',
-                      position: 'relative'
+                      minHeight: '240px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '12px'
                     }}
                   >
                     {((isEditMode && editingBooking.booking_image_preview) || (!isEditMode && newBooking.booking_image_preview)) ? (
@@ -1518,25 +1616,29 @@ const BookingPage = () => {
                         alt="Preview"
                         style={{
                           maxWidth: '100%',
-                          maxHeight: '200px',
+                          maxHeight: '160px',
                           objectFit: 'contain',
-                          borderRadius: '6px',
-                          marginBottom: '12px'
+                          borderRadius: '6px'
                         }}
                       />
                     ) : (
-                      <div>
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           fill="none"
                           viewBox="0 0 24 24"
                           strokeWidth="1.5"
                           stroke="currentColor"
-                          style={{ width: '50px', height: '50px', color: '#a78bfa', margin: '0 auto 8px' }}
+                          style={{ width: '50px', height: '50px', color: '#a78bfa', marginBottom: '8px' }}
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 16V4m0 0L8 8m4-4l4 4m-4 8v4m0 0H8m4 0h4" />
                         </svg>
-                        <p style={{ color: '#718096', marginBottom: '12px' }}>No file chosen, yet!</p>
+                        <p style={{ color: '#718096', margin: 0 }}>No file chosen, yet!</p>
                       </div>
                     )}
                     <input
@@ -1602,8 +1704,9 @@ const BookingPage = () => {
                       padding: '10px 12px',
                       border: '1px solid #e2e8f0',
                       borderRadius: '6px',
-                      fontSize: '15px',
-                      transition: 'all 0.2s'
+                      fontSize: '17px',
+                      transition: 'all 0.2s',
+                      fontFamily: 'inherit'
                     }}
                   />
                 </div>
@@ -1621,7 +1724,8 @@ const BookingPage = () => {
                       padding: '10px 12px',
                       border: '1px solid #e2e8f0',
                       borderRadius: '6px',
-                      fontSize: '15px',
+                      fontSize: '17px',
+                      fontFamily: 'inherit',
                       transition: 'all 0.2s'
                     }}
                   />
@@ -1693,158 +1797,6 @@ const BookingPage = () => {
                       }}
                     />
                   )}
-                </div>
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }}>
-                    Due Date
-                  </label>
-                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1 }}>
-                      <label
-                        htmlFor="bookingStartDate"
-                        style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}
-                      >
-                        Start Date
-                      </label>
-                      <input
-                        type="date"
-                        id="bookingStartDate"
-                        value={isEditMode ? editingBooking.booking_startdate : newBooking.booking_startdate}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (isEditMode) {
-                            setEditingBooking(prev => ({ ...prev, booking_startdate: value }));
-                          } else {
-                            setNewBooking(prev => ({ ...prev, booking_startdate: value }));
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          fontSize: '15px',
-                          outline: 'none',
-                          backgroundColor: '#fff',
-                          color: '#1a202c',
-                          transition: 'border-color 0.2s, box-shadow 0.2s',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                        }}
-                        required
-                      />
-                    </div>
-
-                    <div style={{ flex: 1 }}>
-                      <label
-                        htmlFor="bookingEndDate"
-                        style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}
-                      >
-                        End Date
-                      </label>
-                      <input
-                        type="date"
-                        id="bookingEndDate"
-                        value={isEditMode ? editingBooking.booking_enddate : newBooking.booking_enddate}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (isEditMode) {
-                            setEditingBooking(prev => ({ ...prev, booking_enddate: value }));
-                          } else {
-                            setNewBooking(prev => ({ ...prev, booking_enddate: value }));
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          fontSize: '15px',
-                          outline: 'none',
-                          backgroundColor: '#fff',
-                          color: '#1a202c',
-                          transition: 'border-color 0.2s, box-shadow 0.2s',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                        }}
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div style={{ marginBottom: '20px' }}>
-                  <label style={{ display: 'block', marginBottom: '8px', fontWeight: 500, color: '#4a5568' }}>
-                    Time
-                  </label>
-                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1 }}>
-                      <label
-                        htmlFor="bookingStartTime"
-                        style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}
-                      >
-                        Start Time
-                      </label>
-                      <input
-                        type="time"
-                        id="bookingStartTime"
-                        value={isEditMode ? editingBooking.booking_starttime : newBooking.booking_starttime}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (isEditMode) {
-                            setEditingBooking(prev => ({ ...prev, booking_starttime: value }));
-                          } else {
-                            setNewBooking(prev => ({ ...prev, booking_starttime: value }));
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          fontSize: '15px',
-                          outline: 'none',
-                          backgroundColor: '#fff',
-                          color: '#1a202c',
-                          transition: 'border-color 0.2s, box-shadow 0.2s',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                        }}
-                        required
-                      />
-                    </div>
-
-                    <div style={{ flex: 1 }}>
-                      <label
-                        htmlFor="bookingEndTime"
-                        style={{ display: 'block', marginBottom: '4px', fontSize: '14px', color: '#94a3b8', fontWeight: 500 }}
-                      >
-                        End Time
-                      </label>
-                      <input
-                        type="time"
-                        id="bookingEndTime"
-                        value={isEditMode ? editingBooking.booking_endtime : newBooking.booking_endtime}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (isEditMode) {
-                            setEditingBooking(prev => ({ ...prev, booking_endtime: value }));
-                          } else {
-                            setNewBooking(prev => ({ ...prev, booking_endtime: value }));
-                          }
-                        }}
-                        style={{
-                          width: '100%',
-                          padding: '10px 14px',
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          fontSize: '15px',
-                          outline: 'none',
-                          backgroundColor: '#fff',
-                          color: '#1a202c',
-                          transition: 'border-color 0.2s, box-shadow 0.2s',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                        }}
-                        required
-                      />
-                    </div>
-                  </div>
                 </div>
               </form>
             </div>
@@ -2003,10 +1955,13 @@ const BookingPage = () => {
             <form onSubmit={(e) => {
               e.preventDefault();
               const reservationData = {
-                ...bookingReservation,
-                booking_id: bookingToBook.booking_id,
-                user_id: currentUserId
+                booked_id: uuidv4(), // เพิ่ม id ใหม่ทุกครั้ง
+                booked_date: bookingReservation.booked_date || null,
+                booked_time: bookingReservation.booked_time || null,
+                booking_id: bookingToBook.booking_id || null,
+                user_id: currentUserId || null
               };
+
               fetch(`${API_BASE_URL}/api/booked`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2021,23 +1976,9 @@ const BookingPage = () => {
                 })
                 .then(result => {
                   if (result.success) {
-                    // ✅ แก้เป็น PATCH พร้อม JSON body
-                    console.log("Booking ID to update:", bookingToBook.booking_id);
-                    fetch(`${API_BASE_URL}/api/booking/status/${bookingToBook.booking_id}`, {
-                      method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ booking_status: 'Booked' })
-                    })
-                      .then(res => res.json())
-                      .then(updateResult => {
-                        if (updateResult.success) {
-                          showNotification("Reservation confirmed and status updated!", "success");
-                          setShowBookModal(false);
-                          fetchProjectsAndCounts();
-                        } else {
-                          showNotification("Reservation saved but status update failed", "warning");
-                        }
-                      });
+                    showNotification("Reservation confirmed!", "success");
+                    setShowBookModal(false);
+                    fetchProjectsAndCounts();
                   } else {
                     showNotification("Error: " + result.error, "error");
                   }
@@ -2047,65 +1988,33 @@ const BookingPage = () => {
                   showNotification("Something went wrong: " + err.message, "error");
                 });
             }}>
-              <label>Start Date</label>
+
+              <label>Date</label>
               <input type="date" required
-                value={bookingReservation.booked_startdate}
-                onChange={e => setBookingReservation(prev => ({ ...prev, booked_startdate: e.target.value }))}
+                value={bookingReservation.booked_date}
+                min={dayjs().format('YYYY-MM-DD')}
+                onChange={e => setBookingReservation(prev => ({ ...prev, booked_date: e.target.value }))}
                 style={{ width: '100%', marginBottom: '12px' }}
               />
 
-              <label>End Date</label>
-              <input type="date" required
-                value={bookingReservation.booked_enddate}
-                onChange={e => setBookingReservation(prev => ({ ...prev, booked_enddate: e.target.value }))}
-                style={{ width: '100%', marginBottom: '12px' }}
-              />
-
-              <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>Start Time</label>
+              <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>Time</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
                 {['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'].map(time => (
                   <button
                     key={time}
                     type="button"
                     disabled={isTimeBooked(time)}
-                    onClick={() => setBookingReservation(prev => ({ ...prev, booked_starttime: time }))}
+                    onClick={() => setBookingReservation(prev => ({ ...prev, booked_time: time }))}
                     style={{
                       padding: '6px 14px',
                       borderRadius: '999px',
                       border: '1px solid #d1d5db',
                       backgroundColor: isTimeBooked(time)
                         ? '#e5e7eb'
-                        : bookingReservation.booked_starttime === time ? '#e0e7ff' : 'transparent',
+                        : bookingReservation.booked_time === time ? '#e0e7ff' : 'transparent',
                       color: isTimeBooked(time) ? '#9ca3af' : '#1f2937',
                       fontWeight: 500,
                       cursor: isTimeBooked(time) ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    {time}
-                  </button>
-                ))}
-              </div>
-
-              <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>End Time</label>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '16px' }}>
-                {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'].map(time => (
-                  <button
-                    key={time}
-                    type="button"
-                    disabled={isTimeBooked(time, 'end')}
-                    onClick={() => setBookingReservation(prev => ({ ...prev, booked_endtime: time }))}
-                    style={{
-                      padding: '6px 14px',
-                      borderRadius: '999px',
-                      border: '1px solid #d1d5db',
-                      backgroundColor: isTimeBooked(time, 'end')
-                        ? '#e5e7eb'
-                        : bookingReservation.booked_endtime === time
-                          ? '#e0e7ff'
-                          : 'transparent',
-                      color: isTimeBooked(time, 'end') ? '#9ca3af' : '#1f2937',
-                      fontWeight: 500,
-                      cursor: isTimeBooked(time, 'end') ? 'not-allowed' : 'pointer'
                     }}
                   >
                     {time}
@@ -2134,6 +2043,131 @@ const BookingPage = () => {
       </Snackbar>
       {showArchiveModal && (
         <ArchiveModal open={showArchiveModal} onClose={() => setShowArchiveModal(false)} onProjectRestored={handleProjectRestored} />
+      )}
+      {showReservationModal && selectedReservation && (
+        <div style={{
+          position: 'fixed',
+          zIndex: 200,
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            width: '90%',
+            maxWidth: '500px',
+            boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <button onClick={() => setShowReservationModal(false)} style={{
+              position: 'absolute',
+              top: '12px',
+              right: '12px',
+              border: 'none',
+              background: 'none',
+              fontSize: '20px',
+              color: '#999',
+              cursor: 'pointer',
+              zIndex: 10
+            }}>
+              &times;
+            </button>
+
+            {/* Image on top */}
+            {selectedReservation.booking_image && (
+              <img
+                src={`${API_BASE_URL}/uploads/${selectedReservation.booking_image}`}
+                alt="Room"
+                style={{
+                  width: '100%',
+                  height: '200px',
+                  objectFit: 'cover',
+                  borderTopLeftRadius: '12px',
+                  borderTopRightRadius: '12px'
+                }}
+              />
+            )}
+
+            {/* Content below image */}
+            <div style={{ padding: '20px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>{selectedReservation.booking_title}</h3>
+              <p style={{ color: '#6b7280' }}>{selectedReservation.booking_description}</p>
+              <p><strong>Date:</strong> {dayjs(selectedReservation.booked_date).format('D MMMM YYYY')}</p>
+              <p><strong>Time:</strong> {
+                dayjs(new Date(`1970-01-01T${selectedReservation.booked_time}`)).format('H:mm')
+              }</p>
+
+            </div>
+          </div>
+        </div>
+      )}
+      {showCancelPopup && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '8px',
+            padding: '20px',
+            width: '400px',
+            maxWidth: '90%',
+            boxShadow: '0 4px 8px rgba(0, 0, 0, 0.2)'
+          }}>
+            <h3 style={{ marginTop: 0 }}>Confirm Cancellation</h3>
+            <p>Are you sure you want to cancel this reservation?</p>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              marginTop: '20px'
+            }}>
+              <button
+                onClick={() => setShowCancelPopup(false)}
+                style={{
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  border: '1px solid #d9d9d9',
+                  backgroundColor: 'white'
+                }}
+              >
+                Back
+              </button>
+              <button
+                onClick={() => {
+                  if (reservationToCancel) {
+                    handleCancelReservation(reservationToCancel);
+                    setShowCancelPopup(false);
+                    setReservationToCancel(null);
+                  }
+                }}
+                style={{
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  border: 'none',
+                  backgroundColor: '#ef4444',
+                  color: 'white'
+                }}
+              >
+                Cancel Reservation
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
