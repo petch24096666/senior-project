@@ -28,11 +28,10 @@ const BookingPage = () => {
   const [booking, setBooking] = useState([]);
   // State variables
   const [viewMode, setViewMode] = useState('grid');
-  const [selectedCategory, setSelectedCategory] = useState('all');
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingBooking, setEditingBooking] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filteredProjects, setFilteredProjects] = useState([]);
+  const [filteredBooking, setFilteredBooking] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const navigate = useNavigate();
   const [menuOpenId, setMenuOpenId] = useState(null);
@@ -78,6 +77,9 @@ const BookingPage = () => {
   const [showCancelPopup, setShowCancelPopup] = useState(false);
   const [reservationToCancel, setReservationToCancel] = useState(null);
   const [bookingCreators, setBookingCreators] = useState({});
+  const standardTypes = ['Meeting Rooms', 'Workstations'];
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState('all');
+  const [filteredReservations, setFilteredReservations] = useState([]);
   const [bookingReservation, setBookingReservation] = useState({
     booked_id: '', // ไม่จำเป็นต้องกำหนดเองก็ได้
     booked_date: '',
@@ -252,32 +254,67 @@ const BookingPage = () => {
   }, [fetchProjectsAndCounts]);
 
   // Memoized filter function
-  const filterProjects = useCallback(() => {
+  const filterBooking = useCallback(() => {
     let filtered = [...booking];
 
-    // Apply category filter
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(project => project.category === selectedCategory);
+    if (searchTerm.trim() !== '') {
+      const lowerSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(item =>
+        (item.booking_title || '').toLowerCase().includes(lowerSearch)
+      );
     }
 
-    // Apply search filter
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase().trim();
-      filtered = filtered.filter(booking => {
-        return booking.title.toLowerCase().includes(term) ||
-          booking.category.toLowerCase().includes(term) ||
-          (booking.team && booking.team.some(member => member.toLowerCase().includes(term)));
+    if (selectedTypeFilter !== 'all') {
+      filtered = filtered.filter(project => {
+        const type = project.booking_type;
+        if (selectedTypeFilter === 'Other') {
+          return !['Meeting Rooms', 'Workstations'].includes(type);
+        }
+        return type === selectedTypeFilter;
       });
     }
 
-    setFilteredProjects(filtered);
-  }, [booking, searchTerm, selectedCategory]);
+    setFilteredBooking(filtered);
+  }, [booking, selectedTypeFilter, searchTerm]);
 
   // Run filter and update stats when projects change
   useEffect(() => {
-    filterProjects();
+    filterBooking();
     updateStats();
-  }, [filterProjects, booking]);
+  }, [filterBooking, booking]);
+
+  const filterReservations = useCallback(() => {
+    let filtered = [...myReservations];
+
+    if (searchTerm.trim() !== '') {
+      const lowerSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(item =>
+        (item.booking_title || '').toLowerCase().includes(lowerSearch)
+      );
+    }
+
+    if (selectedTypeFilter !== 'all') {
+      filtered = filtered.filter(item => {
+        const type = item.booking_type;
+        if (selectedTypeFilter === 'Other') {
+          return !['Meeting Rooms', 'Workstations'].includes(type);
+        }
+        return type === selectedTypeFilter;
+      });
+    }
+
+    filtered.sort((a, b) => {
+      const dateTimeA = dayjs(`${a.booked_date}T${a.booked_time}`);
+      const dateTimeB = dayjs(`${b.booked_date}T${b.booked_time}`);
+      return dateTimeA - dateTimeB;
+    });
+
+    setFilteredReservations(filtered);
+  }, [myReservations, selectedTypeFilter, searchTerm]);
+
+  useEffect(() => {
+    filterReservations();
+  }, [filterReservations, myReservations]);
 
   // Add this useEffect to handle clicks outside the menu
   useEffect(() => {
@@ -296,7 +333,8 @@ const BookingPage = () => {
   // Handle search input keypress
   const handleSearchKeyPress = (e) => {
     if (e.key === 'Enter') {
-      filterProjects();
+      filterBooking();
+      filterReservations();
     }
   };
 
@@ -543,6 +581,11 @@ const BookingPage = () => {
       return false;
     }
 
+    if (!booking_title || !selectedType || (selectedType === 'Other' && !customType.trim())) {
+      alert('Please fill out all required fields');
+      return false;
+    }
+
     return true;
   };
 
@@ -574,7 +617,10 @@ const BookingPage = () => {
     bookingData.append('booking_id', newId); // ✅ ใช้ newId แทน
     bookingData.append('booking_title', newBooking.booking_title);
     bookingData.append('booking_description', newBooking.booking_description);
-    bookingData.append('booking_type', newBooking.booking_type || selectedType || customType);
+    bookingData.append(
+      'booking_type',
+      selectedType === 'Other' ? customType : selectedType
+    );
     bookingData.append('booking_status', newBooking.booking_status);
     bookingData.append('creator_id', currentUserId);
     //bookingData.append('creator_id', currentUserId);
@@ -641,6 +687,16 @@ const BookingPage = () => {
         booking_image: null, // ไว้รองรับรูปใหม่ที่เลือก
         booking_image_preview: `${API_BASE_URL}/uploads/${data.booking_image}` // ✅ หรือ path ที่ backend ให้มา
       });
+      setSelectedType(
+        ['Meeting Rooms', 'Workstations'].includes(data.booking_type)
+          ? data.booking_type
+          : 'Other'
+      );
+      setCustomType(
+        ['Meeting Rooms', 'Workstations'].includes(data.booking_type)
+          ? ''
+          : data.booking_type
+      );
       setIsEditMode(true);
       setShowModal(true);
     } catch (err) {
@@ -713,7 +769,10 @@ const BookingPage = () => {
     bookingData.append('booking_id', editingBooking.booking_id);
     bookingData.append('booking_title', editingBooking.booking_title);
     bookingData.append('booking_description', editingBooking.booking_description);
-    bookingData.append('booking_type', editingBooking.booking_type);
+    bookingData.append(
+      'booking_type',
+      selectedType === 'Other' ? customType : selectedType
+    );
     bookingData.append('booking_status', editingBooking.booking_status);
     bookingData.append('creator_id', currentUserId);
     bookingData.append('team', JSON.stringify(teamMembers));
@@ -775,7 +834,7 @@ const BookingPage = () => {
 
   // Render grid view
   const renderGridView = () => {
-    if (!booking || booking.length === 0) {
+    if (!filteredBooking || filteredBooking.length === 0) {
       return (
         <div style={{
           gridColumn: '1 / -1',
@@ -784,14 +843,16 @@ const BookingPage = () => {
           backgroundColor: 'white',
           borderRadius: '12px',
           boxShadow: '0 2px 10px rgba(0,0,0,0.05)',
+          minHeight: '150px'
         }}>
           <h3 style={{
-            color: '#4a5568',
+            color: '#1f2937',
             fontSize: '18px',
+            fontWeight: 600,
             marginBottom: '12px'
           }}>No bookings found</h3>
           <p style={{
-            color: '#718096',
+            color: '#6b7280',
             marginBottom: '24px'
           }}>Try adjusting your search or filter criteria</p>
           <button
@@ -811,176 +872,189 @@ const BookingPage = () => {
         </div>
       );
     }
-    return booking.map(item => {
-      const typeStyle = getTypeColor(item.booking_type || '');
-      const imageUrl = item.booking_image ? `${API_BASE_URL}/uploads/${item.booking_image}` : null;
-      return (
-        <div
-          key={item.booking_id}
-          style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-            padding: '20px',
-            borderTop: `6px solid ${typeStyle.bg}`,
-            transition: 'transform 0.3s ease',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            animation: 'fadeIn 0.5s ease-out'
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <div style={{
+    return [...filteredBooking]
+      .sort((a, b) => {
+        const aIsCustom = !standardTypes.includes(a.booking_type);
+        const bIsCustom = !standardTypes.includes(b.booking_type);
+        if (aIsCustom && !bIsCustom) return 1;
+        if (!aIsCustom && bIsCustom) return -1;
+        return 0;
+      })
+      .map(item => {
+        const typeStyle = getTypeColor(item.booking_type || '');
+        const imageUrl = item.booking_image ? `${API_BASE_URL}/uploads/${item.booking_image}` : null;
+        return (
+          <div
+            key={item.booking_id}
+            onMouseEnter={() => setHoveredCard(item.booking_id)}
+            onMouseLeave={() => setHoveredCard(null)}
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              boxShadow: hoveredCard === item.booking_id
+                ? '0 8px 20px rgba(0,0,0,0.12)'
+                : '0 4px 12px rgba(0,0,0,0.05)',
+              transform: hoveredCard === item.booking_id ? 'translateY(-4px)' : 'none',
+              padding: '20px',
+              borderTop: `6px solid ${typeStyle.bg}`,
+              transition: 'all 0.3s ease',
               display: 'flex',
-              gap: '8px',
-              minHeight: '30px',
-              minWidth: '68px', // 👈 กันเลื่อน
-              justifyContent: 'flex-end'
-            }}>
-              {isBookingCreator(item.booking_id) && (
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleEditBooking(item);
-                    console.log("Edit button clicked for booking:", booking);
-                  }}
-                  style={{
-                    width: '30px',
-                    height: '30px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#EDF2F7',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                      stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              )}
-              {isBookingCreator(item.booking_id) && (
-                <button
-                  onClick={() => initiateDelete(item.booking_id)}
-                  style={{
-                    width: '30px',
-                    height: '30px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: '#FEE2E2',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              )}
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              animation: 'fadeIn 0.5s ease-out'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{
+                display: 'flex',
+                gap: '8px',
+                minHeight: '30px',
+                minWidth: '68px', // 👈 กันเลื่อน
+                justifyContent: 'flex-end'
+              }}>
+                {isBookingCreator(item.booking_id) && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleEditBooking(item);
+                      console.log("Edit button clicked for booking:", booking);
+                    }}
+                    style={{
+                      width: '30px',
+                      height: '30px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#EDF2F7',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        stroke="#4A5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+                {isBookingCreator(item.booking_id) && (
+                  <button
+                    onClick={() => initiateDelete(item.booking_id)}
+                    style={{
+                      width: '30px',
+                      height: '30px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#FEE2E2',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        stroke="#E53E3E" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
 
-          {imageUrl && (
-            <div style={{ position: 'relative', width: '100%', height: '160px', marginTop: '12px', marginBottom: '16px' }}>
-              <img
-                src={imageUrl}
-                alt="Booking"
+            {imageUrl && (
+              <div style={{ position: 'relative', width: '100%', height: '160px', marginTop: '12px', marginBottom: '16px' }}>
+                <img
+                  src={imageUrl}
+                  alt="Booking"
+                  style={{
+                    width: '100%',
+                    height: '160px',
+                    objectFit: 'cover',
+                    borderRadius: '8px',
+                    marginTop: '12px',
+                    marginBottom: '16px',
+                    animation: 'fadeIn 0.5s ease-out'
+                  }}
+                />
+                <span style={{
+                  position: 'absolute',
+                  top: '-35px',
+                  left: '-1px', // 👈 เปลี่ยนจาก right: '-1px'
+                  backgroundColor: item.booking_status === 'Booked' ? '#ef4444' : '#10b981',
+                  color: 'white',
+                  padding: '4px 10px',
+                  fontSize: '15px',
+                  borderRadius: '999px',
+                  fontWeight: 600,
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                  zIndex: 10,
+                  animation: 'fadeIn 0.5s ease-out'
+                }}>
+                  {item.booking_status}
+                </span>
+              </div>
+            )}
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', margin: 0, marginTop: '16px' }}>
+              {item.booking_title}
+            </h3>
+            <p style={{ fontSize: '14px', color: '#4b5563', marginTop: '16px', marginBottom: '16px' }}>
+              {item.booking_description}
+            </p>
+            <div style={{
+              display: 'inline-flex',
+              padding: '5px 12px',
+              borderRadius: '50px',
+              fontSize: '13px',
+              fontWeight: 500,
+              backgroundColor: typeStyle.light,
+              color: typeStyle.text,
+              width: 'fit-content',
+              marginBottom: '16px',
+              animation: 'fadeIn 0.5s ease-out'
+            }}>
+              {item.booking_type}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <button
+                onClick={() => {
+                  setBookingToBook(item);
+                  setBookingReservation({
+                    booked_date: '',
+                    booked_time: '',
+                  });
+                  setShowBookModal(true);
+                  fetch(`${API_BASE_URL}/api/booked?booking_id=${item.booking_id}`)
+                    .then(res => res.json())
+                    .then(data => {
+                      setBookedSlots(data?.data || []);
+                    });
+                  setBookedTimes([]); // ✅ Reset เวลาที่เคยจองไว้
+                }}
                 style={{
                   width: '100%',
-                  height: '160px',
-                  objectFit: 'cover',
-                  borderRadius: '8px',
-                  marginTop: '12px',
-                  marginBottom: '16px',
-                  animation: 'fadeIn 0.5s ease-out'
+                  maxWidth: '200px',
+                  padding: '10px 16px',
+                  backgroundColor: '#4f46e5',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s',
+                  animation: 'fadeIn 0.5s ease-out',
+                  whiteSpace: 'nowrap'
                 }}
-              />
-              <span style={{
-                position: 'absolute',
-                top: '-35px',
-                left: '-1px', // 👈 เปลี่ยนจาก right: '-1px'
-                backgroundColor: item.booking_status === 'Booked' ? '#ef4444' : '#10b981',
-                color: 'white',
-                padding: '4px 10px',
-                fontSize: '15px',
-                borderRadius: '999px',
-                fontWeight: 600,
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                zIndex: 10,
-                animation: 'fadeIn 0.5s ease-out'
-              }}>
-                {item.booking_status}
-              </span>
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#4338ca'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
+              >
+                Book Now
+              </button>
             </div>
-          )}
-          <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#1a202c', margin: 0, marginTop: '16px' }}>
-            {item.booking_title}
-          </h3>
-          <p style={{ fontSize: '14px', color: '#4b5563', marginTop: '16px', marginBottom: '16px' }}>
-            {item.booking_description}
-          </p>
-          <div style={{
-            display: 'inline-flex',
-            padding: '5px 12px',
-            borderRadius: '50px',
-            fontSize: '13px',
-            fontWeight: 500,
-            backgroundColor: typeStyle.light,
-            color: typeStyle.text,
-            width: 'fit-content',
-            marginBottom: '16px',
-            animation: 'fadeIn 0.5s ease-out'
-          }}>
-            {item.booking_type}
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <button
-              onClick={() => {
-                setBookingToBook(item);
-                setBookingReservation({
-                  booked_date: '',
-                  booked_time: '',
-                });
-                setShowBookModal(true);
-                fetch(`${API_BASE_URL}/api/booked?booking_id=${item.booking_id}`)
-                  .then(res => res.json())
-                  .then(data => {
-                    setBookedSlots(data?.data || []);
-                  });
-                setBookedTimes([]); // ✅ Reset เวลาที่เคยจองไว้
-              }}
-              style={{
-                width: '100%',
-                maxWidth: '200px',
-                padding: '10px 16px',
-                backgroundColor: '#4f46e5',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: 600,
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s',
-                animation: 'fadeIn 0.5s ease-out',
-                whiteSpace: 'nowrap'
-              }}
-              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#4338ca'}
-              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4f46e5'}
-            >
-              Book Now
-            </button>
-          </div>
-        </div>
-      );
-    });
+        );
+      });
   };
 
   // Render list view (ไม่ซ้ำกับ grid มากนัก)
@@ -1170,9 +1244,12 @@ const BookingPage = () => {
     <div style={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
       {/* Header on white background */}
       <div style={{
-        backgroundColor: '#ffffff',
-        padding: '20px 20px 0',
-        borderBottom: '1px solid #eaeaea'
+        backgroundColor: '#f8f9fa',       // พื้นหลังเทาอ่อน
+        padding: '20px 0 0 0',            // ตัด padding ซ้าย-ขวาออก
+        borderBottom: '1px solid #e5e7eb', // เส้นสีเทาอ่อน (บาง)
+        margin: '0 50px',
+        marginBottom: '10px',
+        fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif"
       }}>
         <div style={{
           maxWidth: '1280px',
@@ -1183,7 +1260,7 @@ const BookingPage = () => {
         }}>
           <div>
             <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#1a202c' }}>Facility</h1>
-            <p style={{ color: '#718096', marginTop: '5px', fontSize: '16px' }}>
+            <p style={{ color: '#718096', marginTop: '5px', fontSize: '16px', marginBottom: '35px' }}>
               Get an overview of your projects and track progress.
             </p>
           </div>
@@ -1229,7 +1306,11 @@ const BookingPage = () => {
           }}>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button
-                onClick={() => setActiveTab('available')}
+                onClick={() => {
+                  setActiveTab('available');
+                  setSelectedTypeFilter('all');
+                  setSearchTerm('');
+                }}
                 style={{
                   padding: '10px 20px',
                   borderRadius: '8px',
@@ -1243,7 +1324,11 @@ const BookingPage = () => {
                 All Facility
               </button>
               <button
-                onClick={() => setActiveTab('myBookings')}
+                onClick={() => {
+                  setActiveTab('myBookings');
+                  setSelectedTypeFilter('all');
+                  setSearchTerm('');
+                }}
                 style={{
                   padding: '10px 20px',
                   borderRadius: '8px',
@@ -1260,102 +1345,65 @@ const BookingPage = () => {
 
             <div style={{
               display: 'flex',
-              flex: 1,
-              maxWidth: '500px',
-              boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-              borderRadius: '8px',
-              overflow: 'hidden'
+              justifyContent: 'flex-end',
+              gap: '12px',
+              alignItems: 'center',
+              flexWrap: 'wrap',  // ยังคงอยู่เพื่อ responsive
+              marginBottom: '25px'
             }}>
-              <input
-                type="text"
-                placeholder="Search projects..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onKeyPress={handleSearchKeyPress}
-                style={{
-                  flex: 1,
-                  padding: '12px 16px',
-                  border: '1px solid #e2e8f0',
-                  borderRight: 'none',
-                  borderRadius: '8px 0 0 8px',
-                  fontSize: '15px',
-                  outline: 'none',
-                  transition: 'all 0.2s'
-                }}
-              />
-              <button
-                onClick={filterProjects}
-                style={{
-                  backgroundColor: '#4f46e5',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0 20px',
-                  borderRadius: '0 8px 8px 0',
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  transition: 'background-color 0.2s'
-                }}
-              >
-                Search
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px' }}>
+              {/* Search Box */}
               <div style={{
                 display: 'flex',
-                border: '1px solid #e2e8f0',
+                minWidth: '500px', // 👈 เปลี่ยนจาก width: '100%'
+                maxWidth: '500px',
+                boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
                 borderRadius: '8px',
                 overflow: 'hidden',
-                backgroundColor: 'white',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+                flexGrow: 1
               }}>
-                <button
-                  onClick={() => setViewMode('grid')}
+                <input
+                  type="text"
+                  placeholder="Search facility..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyPress={handleSearchKeyPress}
                   style={{
-                    backgroundColor: viewMode === 'grid' ? '#f0f0ff' : 'white',
-                    border: 'none',
-                    padding: '10px 16px',
-                    cursor: 'pointer',
-                    fontWeight: viewMode === 'grid' ? 600 : 500,
-                    color: viewMode === 'grid' ? '#4f46e5' : '#718096',
+                    flex: 1,
+                    padding: '12px 16px',
+                    border: '1px solid #e2e8f0',
+                    borderRight: 'none',
+                    borderRadius: '8px 0 0 8px',
+                    fontSize: '15px',
+                    outline: 'none',
                     transition: 'all 0.2s'
                   }}
-                  onMouseOver={(e) => {
-                    if (viewMode !== 'grid') { e.currentTarget.style.backgroundColor = '#f9fafb'; }
-                  }}
-                  onMouseOut={(e) => {
-                    if (viewMode !== 'grid') { e.currentTarget.style.backgroundColor = 'white'; }
-                  }}
-                >
-                  Grid
-                </button>
+                />
                 <button
-                  onClick={() => setViewMode('list')}
+                  onClick={() => {
+                    filterBooking();
+                    filterReservations(); // ✅ ต้องเพิ่มด้วย
+                  }}
                   style={{
-                    backgroundColor: viewMode === 'list' ? '#f0f0ff' : 'white',
+                    backgroundColor: '#4f46e5',
+                    color: 'white',
                     border: 'none',
-                    padding: '10px 16px',
-                    cursor: 'pointer',
-                    fontWeight: viewMode === 'list' ? 600 : 500,
-                    color: viewMode === 'list' ? '#4f46e5' : '#718096',
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseOver={(e) => {
-                    if (viewMode !== 'list') { e.currentTarget.style.backgroundColor = '#f9fafb'; }
-                  }}
-                  onMouseOut={(e) => {
-                    if (viewMode !== 'list') { e.currentTarget.style.backgroundColor = 'white'; }
+                    padding: '0 20px',
+                    borderRadius: '0 8px 8px 0',
+                    fontWeight: 600,
+                    transition: 'background-color 0.2s'
                   }}
                 >
-                  List
+                  Search
                 </button>
               </div>
 
+              {/* All Type Dropdown */}
               <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
+                value={selectedTypeFilter}
+                onChange={(e) => setSelectedTypeFilter(e.target.value)}
                 style={{
-                  padding: '10px 16px',
+                  height: '44px',
+                  padding: '0 40px 0 16px', // ✅ padding ขวากว้างขึ้นเพื่อเว้นไอคอน
                   border: '1px solid #e2e8f0',
                   borderRadius: '8px',
                   backgroundColor: 'white',
@@ -1365,15 +1413,20 @@ const BookingPage = () => {
                   minWidth: '160px',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                  appearance: 'none', // ✅ ซ่อนลูกศรดั้งเดิม
+                  backgroundImage: 'url("data:image/svg+xml,%3Csvg fill=\'%23343a40\' height=\'18\' viewBox=\'0 0 24 24\' width=\'18\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M7 10l5 5 5-5z\'/%3E%3C/svg%3E")',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundPosition: 'right 12px center', // ✅ เว้นจากขอบขวา
+                  backgroundSize: '16px 16px',
                 }}
               >
-                <option value="all">All Categories</option>
-                <option value="design">Design</option>
-                <option value="development">Development</option>
-                <option value="marketing">Marketing</option>
-                <option value="operations">Operations</option>
+                <option value="all">All Facility</option>
+                <option value="Meeting Rooms">Meeting Rooms</option>
+                <option value="Workstations">Workstations</option>
+                <option value="Other">Other</option>
               </select>
+
             </div>
           </div>
 
@@ -1394,7 +1447,7 @@ const BookingPage = () => {
 
           {activeTab === 'myBookings' && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '24px' }}>
-              {myReservations.length === 0 ? (
+              {filteredReservations.length === 0 ? (
                 <div style={{
                   gridColumn: '1 / -1',
                   textAlign: 'center',
@@ -1428,22 +1481,29 @@ const BookingPage = () => {
                   </button>
                 </div>
               ) : (
-                myReservations.map(item => {
+                filteredReservations.map(item => {
                   const typeStyle = getTypeColor(item.booking_type || '');
                   const imageUrl = item.booking_image ? `${API_BASE_URL}/uploads/${item.booking_image}` : null;
 
                   return (
-                    <div key={item.booked_id} style={{
-                      backgroundColor: 'white',
-                      borderRadius: '12px',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-                      padding: '20px',
-                      borderTop: `6px solid ${typeStyle.bg}`,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      animation: 'fadeIn 0.5s ease-out',
-                      justifyContent: 'space-between'
-                    }}>
+                    <div key={item.booked_id}
+                      onMouseEnter={() => setHoveredCard(item.booked_id)}
+                      onMouseLeave={() => setHoveredCard(null)}
+                      style={{
+                        backgroundColor: 'white',
+                        borderRadius: '12px',
+                        boxShadow: hoveredCard === item.booked_id
+                          ? '0 8px 20px rgba(0,0,0,0.12)'
+                          : '0 4px 12px rgba(0,0,0,0.05)',
+                        transform: hoveredCard === item.booked_id ? 'translateY(-4px)' : 'none',
+                        transition: 'all 0.3s ease',
+                        padding: '20px',
+                        borderTop: `6px solid ${typeStyle.bg}`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        animation: 'fadeIn 0.5s ease-out',
+                        justifyContent: 'space-between',
+                      }}>
                       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                         <button
                           onClick={() => {
@@ -1989,12 +2049,41 @@ const BookingPage = () => {
                 });
             }}>
 
-              <label>Date</label>
-              <input type="date" required
+              <label
+                style={{
+                  display: 'block',
+                  fontWeight: 600,
+                  marginBottom: '8px',
+                  color: '#374151'
+                }}
+              >
+                Date
+              </label>
+
+              <input
+                type="date"
+                required
                 value={bookingReservation.booked_date}
                 min={dayjs().format('YYYY-MM-DD')}
-                onChange={e => setBookingReservation(prev => ({ ...prev, booked_date: e.target.value }))}
-                style={{ width: '100%', marginBottom: '12px' }}
+                onChange={e =>
+                  setBookingReservation(prev => ({
+                    ...prev,
+                    booked_date: e.target.value
+                  }))
+                }
+                style={{
+                  width: '92%',
+                  padding: '10px 14px',
+                  fontSize: '15px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  backgroundColor: '#ffffff',
+                  color: '#1f2937',
+                  outline: 'none',
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                  marginBottom: '12px'
+                }}
               />
 
               <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>Time</label>
@@ -2022,8 +2111,33 @@ const BookingPage = () => {
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button type="button" onClick={() => setShowBookModal(false)}>Cancel</button>
-                <button type="submit" style={{ backgroundColor: '#4f46e5', color: 'white', padding: '8px 16px', borderRadius: '6px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowBookModal(false)}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#f3f4f6',
+                    color: '#1f2937',
+                    border: 'none',                 // 🔥 ลบขอบดำ
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontWeight: 500
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    backgroundColor: '#4f46e5',
+                    color: 'white',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    border: 'none',                 // 🔥 ลบขอบดำ
+                    cursor: 'pointer',
+                    fontWeight: 500
+                  }}
+                >
                   Confirm Booking
                 </button>
               </div>
@@ -2056,31 +2170,38 @@ const BookingPage = () => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center'
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            borderRadius: '12px',
-            width: '90%',
-            maxWidth: '500px',
-            boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-            position: 'relative',
-            overflow: 'hidden'
-          }}>
-            <button onClick={() => setShowReservationModal(false)} style={{
+        }}
+          onClick={() => setShowReservationModal(false)} // ปิดเมื่อคลิกพื้นหลัง
+        >
+          <div
+            onClick={(e) => e.stopPropagation()} // ป้องกันคลิกในกล่องแล้วปิด
+            style={{
+              backgroundColor: 'white',
+              borderRadius: '16px',
+              width: '90%',
+              maxWidth: '400px',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              overflow: 'hidden',
+              padding: '20px',
+              position: 'relative'
+            }}
+          >
+            {/* Top Border Bar */}
+            <div style={{
               position: 'absolute',
-              top: '12px',
-              right: '12px',
-              border: 'none',
-              background: 'none',
-              fontSize: '20px',
-              color: '#999',
-              cursor: 'pointer',
-              zIndex: 10
-            }}>
-              &times;
-            </button>
+              top: 0,
+              left: 0,
+              height: '10px',
+              width: '100%',
+              backgroundColor: getTypeColor(selectedReservation.booking_type || '').bg,
+              borderTopLeftRadius: '16px',
+              borderTopRightRadius: '16px'
+            }} />
 
-            {/* Image on top */}
+            {/* Image */}
             {selectedReservation.booking_image && (
               <img
                 src={`${API_BASE_URL}/uploads/${selectedReservation.booking_image}`}
@@ -2089,25 +2210,51 @@ const BookingPage = () => {
                   width: '100%',
                   height: '200px',
                   objectFit: 'cover',
-                  borderTopLeftRadius: '12px',
-                  borderTopRightRadius: '12px'
+                  borderRadius: '12px',
+                  marginBottom: '16px',
+                  marginTop: '10px' // รองรับ bar ด้านบน
                 }}
               />
             )}
 
-            {/* Content below image */}
-            <div style={{ padding: '20px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: 'bold' }}>{selectedReservation.booking_title}</h3>
-              <p style={{ color: '#6b7280' }}>{selectedReservation.booking_description}</p>
-              <p><strong>Date:</strong> {dayjs(selectedReservation.booked_date).format('D MMMM YYYY')}</p>
-              <p><strong>Time:</strong> {
-                dayjs(new Date(`1970-01-01T${selectedReservation.booked_time}`)).format('H:mm')
-              }</p>
-
+            {/* Content */}
+            <h3 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#1f2937' }}>
+              {selectedReservation.booking_title}
+            </h3>
+            <p style={{ fontSize: '14px', color: '#6b7280', marginBottom: '16px' }}>
+              {selectedReservation.booking_description}
+            </p>
+            <div style={{ fontSize: '14px', color: '#374151', lineHeight: '1.6', marginBottom: '20px' }}>
+              <div><strong>Date:</strong> {dayjs(selectedReservation.booked_date).format('D MMMM YYYY')}</div>
+              <div><strong>Time:</strong> {
+                (() => {
+                  const start = dayjs(`1970-01-01T${selectedReservation.booked_time}`);
+                  const end = start.add(1, 'hour');
+                  return `${start.format('H:mm')} - ${end.format('H:mm')}`;
+                })()
+              }</div>
             </div>
+
+            {/* Close Button */}
+            <button
+              onClick={() => setShowReservationModal(false)}
+              style={{
+                backgroundColor: '#e5e7eb',
+                color: '#374151',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                fontWeight: 500,
+                cursor: 'pointer',
+                marginTop: '8px'
+              }}
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
+
       {showCancelPopup && (
         <div style={{
           position: 'fixed',
