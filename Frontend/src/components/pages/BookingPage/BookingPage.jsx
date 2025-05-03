@@ -19,6 +19,7 @@ const fadeInKeyframes = `
 const BookingPage = () => {
   // ดึงข้อมูลผู้ใช้จาก context
   const ctx = useContext(UserContext);
+  const user_id = ctx?.customUser?.id;
   if (!ctx || !ctx.customUser) {
     return <div>Please log in to view your projects.</div>;
   }
@@ -80,6 +81,10 @@ const BookingPage = () => {
   const standardTypes = ['Meeting Rooms', 'Workstations'];
   const [selectedTypeFilter, setSelectedTypeFilter] = useState('all');
   const [filteredReservations, setFilteredReservations] = useState([]);
+  const [bookedList, setBookedList] = useState([]);
+  const [showBookedModal, setShowBookedModal] = useState(false);
+  const [showBookingViewModal, setShowBookingViewModal] = useState(false);
+  const [viewedBookingList, setViewedBookingList] = useState([]);
   const [bookingReservation, setBookingReservation] = useState({
     booked_id: '', // ไม่จำเป็นต้องกำหนดเองก็ได้
     booked_date: '',
@@ -216,6 +221,17 @@ const BookingPage = () => {
     { label: 'Workstations', value: 'Workstations' },
   ];
 
+  // BookingPage.jsx
+  const handleViewBooked = async (bookingId) => {
+    try {
+      const response = await axios.get(`http://localhost:8081/api/booked/${bookingId}`);
+      setBookedList(response.data);
+      setShowBookedModal(true);
+    } catch (err) {
+      console.error("Error fetching booked list", err);
+    }
+  };
+
   // Fetch projects
   const fetchProjectsAndCounts = useCallback(async () => {
     try {
@@ -315,6 +331,12 @@ const BookingPage = () => {
   useEffect(() => {
     filterReservations();
   }, [filterReservations, myReservations]);
+
+  useEffect(() => {
+    if (viewedBookingList.length > 0) {
+      setShowBookingViewModal(true); // แบบนี้จะเปิด popup เมื่อ list มีข้อมูล
+    }
+  }, [viewedBookingList]);
 
   // Add this useEffect to handle clicks outside the menu
   useEffect(() => {
@@ -720,12 +742,14 @@ const BookingPage = () => {
       })
         .then(response => response.json())
         .then(result => {
+          console.log("Delete response:", result);
           if (result.success) {
             setBooking(prev => prev.filter(booking => booking.booking_id !== bookingToDelete));
           } else {
             console.error("Delete error:", result.error);
           }
         })
+
         .catch(error => console.error("Error deleting booking:", error))
         .finally(() => {
           setShowDeletePopup(false);
@@ -912,6 +936,35 @@ const BookingPage = () => {
                 minWidth: '68px', // 👈 กันเลื่อน
                 justifyContent: 'flex-end'
               }}>
+                {isBookingCreator(item.booking_id) && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleViewBooked(item.booking_id);
+                      console.log("View button clicked for booking:", item);
+                    }}
+                    style={{
+                      width: '30px',
+                      height: '30px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#E6FFFA',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      marginLeft: '4px'
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                      xmlns="http://www.w3.org/2000/svg">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" stroke="#319795" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      <circle cx="12" cy="12" r="3" stroke="#319795" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+
                 {isBookingCreator(item.booking_id) && (
                   <button
                     onClick={(e) => {
@@ -2311,6 +2364,103 @@ const BookingPage = () => {
                 }}
               >
                 Cancel Reservation
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showBookedModal && (
+        <div style={{
+          position: 'fixed',
+          zIndex: 999,
+          top: 0, left: 0,
+          width: '100%',
+          height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '12px',
+            width: '90%',
+            maxWidth: '700px',
+            maxHeight: '80vh',
+            overflowY: 'auto',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
+            fontFamily: 'sans-serif'
+          }}>
+            <h3 style={{
+              marginBottom: '20px',
+              fontSize: '20px',
+              fontWeight: '600',
+              color: '#333',
+              textAlign: 'center'
+            }}>Booked List</h3>
+
+            {/* Header Row */}
+            <div style={{
+              display: 'flex',
+              fontWeight: '600',
+              borderBottom: '2px solid #ccc',
+              padding: '10px 16px',
+              backgroundColor: '#f2f2f2',
+              textAlign: 'center'
+            }}>
+              <div style={{ flex: 2, textAlign: 'center' }}>Email</div>
+              <div style={{ flex: 1, textAlign: 'center' }}>Date</div>
+              <div style={{ flex: 1, textAlign: 'center' }}>Time</div>
+            </div>
+
+            {/* Data Rows */}
+            {bookedList?.length > 0 ? (
+              [...bookedList]
+                .sort((a, b) => {
+                  const dateA = dayjs(`${a.booked_date} ${a.booked_time}`);
+                  const dateB = dayjs(`${b.booked_date} ${b.booked_time}`);
+                  return dateA.isBefore(dateB) ? -1 : 1;
+                })
+                .map((b, i) => {
+                  const [h, m] = b.booked_time.split(':');
+                  const startHour = parseInt(h, 10);
+                  const startMin = parseInt(m, 10);
+                  const endHour = (startHour + 1) % 24;
+                  const formattedTime = `${startHour}:${startMin.toString().padStart(2, '0')} - ${endHour}:${startMin.toString().padStart(2, '0')}`;
+
+                  return (
+                    <div key={i} style={{
+                      display: 'flex',
+                      padding: '12px 16px',
+                      borderBottom: '1px solid #eee',
+                      backgroundColor: i % 2 === 0 ? '#fff' : '#fafafa',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ flex: 2, textAlign: 'center' }}>{b.user_email}</div>
+                      <div style={{ flex: 1, textAlign: 'center' }}>{dayjs(b.booked_date).format('D MMMM YYYY')}</div>
+                      <div style={{ flex: 1, textAlign: 'center' }}>{formattedTime}</div>
+                    </div>
+                  );
+                })
+            ) : (
+              <p style={{ padding: '16px', textAlign: 'center' }}>No bookings found.</p>
+            )}
+
+            {/* Close Button */}
+            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+              <button
+                style={{
+                  padding: '10px 24px',
+                  backgroundColor: '#e0e0e0',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+                onClick={() => setShowBookedModal(false)}
+              >
+                Close
               </button>
             </div>
           </div>

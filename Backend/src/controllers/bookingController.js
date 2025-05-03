@@ -1,4 +1,5 @@
 import path from "path";
+import db from '../config/database.js';
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { v4 as uuidv4 } from "uuid";
@@ -102,27 +103,25 @@ export const updateBooking = async (req, res) => {
 
 // DELETE BOOKING
 export const deleteBooking = async (req, res) => {
-  try {
-    const { id } = req.params;
+  const { id } = req.params;
 
-    const booking = await getBookingByIdModel(id);
-    if (!booking) {
+  try {
+    // ตรวจสอบว่า booking มีอยู่จริง
+    const [bookingRows] = await db.query("SELECT * FROM booking WHERE booking_id = ?", [id]);
+    if (bookingRows.length === 0) {
       return res.status(404).json({ success: false, error: "Booking not found" });
     }
 
-    if (booking.booking_image) {
-      const imgPath = path.join(__dirname, "../uploads", booking.booking_image);
-      if (fs.existsSync(imgPath)) {
-        fs.unlinkSync(imgPath);
-      }
-    }
+    // ลบข้อมูลจาก booked ที่ booking_id ตรงกัน
+    await db.query("DELETE FROM booked WHERE booking_id = ?", [id]);
 
-    const deleted = await deleteBookingModel(id);
-    res.status(200).json({ success: true, data: deleted });
+    // ลบ booking หลัก
+    await db.query("DELETE FROM booking WHERE booking_id = ?", [id]);
 
+    res.status(200).json({ success: true, message: "Booking and related bookings deleted successfully" });
   } catch (error) {
-    console.error("❌ Failed to delete booking:", error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error("Delete Booking Error:", error);
+    res.status(500).json({ success: false, error: "Internal Server Error" });
   }
 };
 

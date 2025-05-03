@@ -78,3 +78,36 @@ export const deleteBooked = async (req, res) => {
     res.status(500).json({ success: false, error: "Failed to delete reservation." });
   }
 };
+
+export const getBookedByBookingId = async (req, res) => {
+  const { booking_id } = req.params;
+
+  try {
+    const [bookingRows] = await db.query(
+      "SELECT * FROM booking WHERE booking_id = ?",
+      [booking_id]
+    );
+
+    if (bookingRows.length === 0) {
+      return res.status(404).json({ error: "Booking not found" });
+    }
+
+    // 👇 เพิ่ม JOIN users เพื่อให้ได้ user_email
+    const [bookedList] = await db.query(
+      `SELECT 
+        b.booked_id, 
+        b.booked_date, 
+        b.booked_time,
+        u.email AS user_email
+      FROM booked b
+      JOIN users u ON b.user_id = u.user_id  -- <-- แก้จาก u.id เป็น u.user_id
+      WHERE b.booking_id = ?`,
+      [booking_id]
+    );
+
+    res.json(bookedList);
+  } catch (err) {
+    console.error("Error in getBookedByBookingId:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
