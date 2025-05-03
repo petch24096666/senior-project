@@ -6,7 +6,8 @@ const MonthView = ({
   handleDateClick,
   isToday,
   formatDate,
-  getEventsForDate
+  getEventsForDate,
+  setEditingEvent
 }) => {
   const daysOfWeekShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   
@@ -41,6 +42,7 @@ const MonthView = ({
                     style={{ backgroundColor: event.color }}
                     onClick={(e) => {
                       e.stopPropagation();
+                      setEditingEvent(event);
                     }}
                   >
                     {event.title}

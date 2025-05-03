@@ -9,7 +9,8 @@ const WeekView = ({
   getEventsForHour,
   setSelectedDate,
   setShowEventModal,
-  setEditingEvent
+  setEditingEvent,
+  onSlotClick 
 }) => {
   const daysInWeek = getDaysInWeek();
   const daysOfWeekShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -41,10 +42,10 @@ const WeekView = ({
               className="week-all-day-cell"
               style={{ borderRight: index < 6 ? '1px solid #E5E7EB' : 'none' }}
               onClick={() => {
-                setSelectedDate(day);
-                setEditingEvent(null);
-                setShowEventModal(true);
-              }}
+                  setSelectedDate(day);
+                  setEditingEvent(null);
+                  onSlotClick(day);       // ← เรียก create handler
+                }}
             >
               {dayEvents.map(event => (
                 <div
@@ -79,8 +80,8 @@ const WeekView = ({
                     date.setHours(hour, 0, 0, 0);
                     setSelectedDate(date);
                     setEditingEvent(null);
-                    setShowEventModal(true);
-                  }}
+                    onSlotClick(date);     // ← เรียก create handler
+                    }}
                 >
                   {hourEvents.map(event => (
                     <div

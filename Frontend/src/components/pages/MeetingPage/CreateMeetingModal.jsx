@@ -195,8 +195,18 @@ const CreateMeetingModal = ({ onClose, onSuccess }) => {
           </div>
 
           <div className="form-group">
-            <label className="form-label"><UserPlus size={16} className="input-icon" /> Participants (comma separated emails)</label>
-            <input type="text" name="participants" className="form-input" value={formData.participants} onChange={handleChange} placeholder="example@email.com, another@email.com" />
+            <label className="form-label">
+              <UserPlus size={16} className="input-icon" />
+              Participants (comma separated emails)
+            </label>
+            <input
+              type="text"
+              name="participants"
+              className="form-control"
+              value={formData.participants}
+              onChange={handleChange}
+              placeholder="alice@example.com, bob@example.com"
+            />
           </div>
 
           <div className="form-group">

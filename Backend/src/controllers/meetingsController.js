@@ -76,12 +76,15 @@ export const createMeeting = async (req, res) => {
     );
 
     if (participants.length > 0) {
-      try {
-        await sendInvitationEmail(title, start_time, duration, join_url, participants);
-      } catch (emailError) {
-        console.error('Error sending invitation email:', emailError);
-        // ⚠️ Decide: Should this prevent meeting creation? Or just log and continue?
-      }
+      await Promise.all(
+        participants.map(email =>
+          db.query(
+            `INSERT INTO meeting_participants (meeting_id, participant_email)
+             VALUES (?, ?)`,
+            [meeting_id, email]
+          )
+        )
+      );
     }
 
     return res.status(201).json({ message: 'Meeting created successfully', meeting_id, join_url, start_url });
@@ -95,15 +98,22 @@ export const createMeeting = async (req, res) => {
 // 🔹 READ
 export const listMeetings = async (req, res) => {
   try {
-    const { userId } = req.query;
+    const { userId, participantEmail } = req.query;
+
     const [meetings] = await db.query(
-      `SELECT * FROM meetings WHERE user_id = ? ORDER BY start_time ASC`,
-      [userId]
+      `SELECT m.* 
+       FROM meetings m
+       LEFT JOIN meeting_participants mp
+         ON m.id = mp.meeting_id
+       WHERE m.user_id = ? OR mp.participant_email = ?
+       ORDER BY m.start_time ASC`,
+      [ userId, participantEmail ]       // <-- ต้องมี 2 ค่า ให้ตรงกับ 2 เครื่องหมาย '?'
     );
-    res.status(200).json(meetings);
+
+    return res.status(200).json(meetings);
   } catch (error) {
     console.error('List Meeting Error:', error);
-    res.status(500).json({ error: 'Failed to fetch meetings: ' + error.message });
+    return res.status(500).json({ error: 'Failed to fetch meetings: ' + error.message });
   }
 };
 

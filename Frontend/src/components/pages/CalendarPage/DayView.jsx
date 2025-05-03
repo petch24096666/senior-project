@@ -7,9 +7,9 @@ const DayView = ({
   getAllDayEvents,
   getEventsForHour,
   setSelectedDate,
-  setShowEventModal,
   setEditingEvent,
-  formatDate
+  formatDate,
+  onSlotClick,
 }) => {
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -71,7 +71,7 @@ const DayView = ({
               onClick={() => {
                 setSelectedDate(new Date(currentDate));
                 setEditingEvent(null);
-                setShowEventModal(true);
+                onSlotClick(new Date(currentDate));
               }}
             ></div>
           )}
@@ -105,7 +105,7 @@ const DayView = ({
                 date.setHours(hour, 0, 0, 0);
                 setSelectedDate(date);
                 setEditingEvent(null);
-                setShowEventModal(true);
+                onSlotClick(new Date(currentDate));
               }}
             >
               {getEventsForHour(currentDate, hour).map(event => (

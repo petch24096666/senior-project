@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Calendar, Clock, Video, FileText } from 'lucide-react';
 import axios from 'axios';
+import dayjs from 'dayjs';
 import './MeetingPage.css';
 
 const EditMeetingModal = ({ open, handleClose, meeting, refreshMeetings }) => {
@@ -57,17 +58,30 @@ const EditMeetingModal = ({ open, handleClose, meeting, refreshMeetings }) => {
 
   const handleUpdate = async () => {
     if (!validateForm()) return;
-    
     setIsSubmitting(true);
+  
+    // คำนวณ ISO timestamps
+    const start_time = dayjs(`${formData.date}T${formData.time}`).toISOString();
+    const end_time   = dayjs(start_time).add(Number(formData.duration), 'minute').toISOString();
+  
     try {
-      await axios.patch(`${import.meta.env.VITE_API_BASE_URL}/api/meeting/api/${meeting.id}`, formData);
+      // เรียก PUT /meeting/:id (ไม่ใช่ PATCH)
+      await axios.put(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/meeting/${meeting.id}`,
+        {
+          title:       formData.title,
+          description: formData.description,
+          start_time,
+          end_time
+        }
+      );
       refreshMeetings();
       handleClose();
     } catch (err) {
       console.error('Failed to update meeting:', err);
-      setErrors(prev => ({ 
-        ...prev, 
-        general: err.response?.data?.message || "Failed to update meeting. Please try again."
+      setErrors(prev => ({
+        ...prev,
+        general: err.response?.data?.error || err.message
       }));
     } finally {
       setIsSubmitting(false);

@@ -8,12 +8,20 @@ import WeekView from './WeekView';
 import MonthView from './MonthView';
 import EventModal from './EventModal';
 import CategoryModal from './CategoryModal';
+import { supabase } from "../../../utils/supabaseClient";
 // --- !!! [สำคัญ] แก้ไข Path นี้ให้ถูกต้องตามโครงสร้างโปรเจกต์ Frontend ของคุณ !!! ---
-import { fetchEvents, createEvent, updateEvent, deleteEvent } from '../../../services/calendarAPI.js';
+import {
+  fetchEvents,
+  createEvent,
+  updateEvent,
+  deleteEvent
+} from '../../../services/calendarAPI.js';
 
 const ModernCalendar = () => {
 
   const location = useLocation(); // <--- 2. เรียกใช้ useLocation ที่ Top Level
+
+
 
   // --- ตรวจสอบว่าประกาศ getInitialDate และ getInitialViewMode ตรงนี้ ---
   const getInitialDate = useCallback(() => {
@@ -62,6 +70,7 @@ const ModernCalendar = () => {
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
 
   useEffect(() => {
@@ -81,6 +90,23 @@ const ModernCalendar = () => {
 
     // Dependency ควรเป็น location.search เพื่อให้ทำงานเมื่อ URL query string เปลี่ยน
   }, [location.search, getInitialDate]); // getInitialDate ต้องใส่เพราะถูกใช้ข้างใน แต่ getInitialViewMode ไม่ต้องแล้ว
+
+  useEffect(() => {
+  (async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      const provider = session.user.identities[0].provider;           // "google" หรือ "azure"
+      const token    = session.provider_token;                        // access_token
+      localStorage.setItem("authProvider", provider);
+      if (provider === "google") {
+        localStorage.setItem("googleToken", token);
+      } else if (provider === "azure") {
+        localStorage.setItem("microsoftToken", token);
+      }
+    }
+    setSessionReady(true);
+  })();
+}, []);
 
   // --- Helper Functions ---
   const formatDateTimeForInput = useCallback((date) => {
@@ -223,8 +249,22 @@ const ModernCalendar = () => {
   }, []);
 
   useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        const provider = session.user.identities[0].provider; // "google" หรือ "azure"
+        const token    = session.provider_token;
+        localStorage.setItem('authProvider', provider);
+        if (provider === 'google') localStorage.setItem('googleToken', token);
+        if (provider === 'azure')  localStorage.setItem('microsoftToken', token);
+      }
+      setSessionReady(true);
+    });
+  }, []);
+
+ // ใส่ useEffect ใหม่ที่จะเรียก loadEvents เมื่อ sessionReady เปลี่ยนเป็น true
+  useEffect(() => {
+    if (sessionReady) loadEvents();
+  }, [sessionReady]);
 
   // --- Handlers for Modals ---
   const openEventModalForCreate = useCallback((startTime) => {
@@ -414,31 +454,32 @@ const ModernCalendar = () => {
                     {!isLoading && !error && (
                         <>
                             {viewMode === 'day' &&
-                                <DayView
-                                    currentDate={currentDate}
-                                    timeSlots={timeSlots}
-                                    getTimeLabel={getTimeLabel}
-                                    getAllDayEvents={getAllDayEvents}
-                                    getEventsForHour={getEventsForHour}
-                                    formatDate={formatDate}
-                                    // ส่ง Handlers ให้ DayView
-                                    openEventModalForCreate={openEventModalForCreate}
-                                    openEventModalForEdit={openEventModalForEdit}
-                                />
+                              <DayView
+                                currentDate={currentDate}
+                                timeSlots={timeSlots}
+                                getTimeLabel={getTimeLabel}
+                                getAllDayEvents={getAllDayEvents}
+                                getEventsForHour={getEventsForHour}
+                                formatDate={formatDate}
+                                // **pass the actual setters** so DayView can open the modal
+                                setSelectedDate={setSelectedDate}
+                                setEditingEvent={openEventModalForEdit}
+                                onSlotClick={openEventModalForCreate}
+                              />
                             }
                             {viewMode === 'week' &&
-                                <WeekView
-                                    timeSlots={timeSlots}
-                                    getTimeLabel={getTimeLabel}
-                                    getDaysInWeek={getDaysInWeek}
-                                    isToday={isToday}
-                                    getAllDayEvents={getAllDayEvents}
-                                    getEventsForHour={getEventsForHour}
-                                    formatDate={formatDate}
-                                    // ส่ง Handlers ให้ WeekView
-                                    openEventModalForCreate={openEventModalForCreate}
-                                    openEventModalForEdit={openEventModalForEdit}
-                                />
+                              <WeekView
+                                timeSlots={timeSlots}
+                                getTimeLabel={getTimeLabel}
+                                getDaysInWeek={getDaysInWeek}
+                                isToday={isToday}
+                                getAllDayEvents={getAllDayEvents}
+                                getEventsForHour={getEventsForHour}
+                                // **pass the three setters**
+                                setSelectedDate={setSelectedDate}
+                                setEditingEvent={openEventModalForEdit}
+                                onSlotClick={openEventModalForCreate}
+                              />
                             }
                             {viewMode === 'month' &&
                                 <MonthView

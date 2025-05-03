@@ -24,21 +24,22 @@ const MeetingPage = () => {
   const [notification, setNotification] = useState({ show: false, message: '', type: 'success' });
 
   const fetchMeetings = async () => {
-    if (!customUser) {
-      setLoading(false);
-      return;
-    }
-
+    if (!customUser) { setLoading(false); return; }
     try {
       setLoading(true);
-      // *** แก้ไข Endpoint การ fetch list ให้ถูกต้องตาม backend route ***
-      // จาก meetingRoutes.js endpoint คือ /meeting และรับ userId เป็น query param
-      const res = await axios.get(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/meeting?userId=${customUser.user_id}`);
-      setMeetings(res.data); // response.data ควรจะเป็น array ของ meetings โดยตรง
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081'}/meeting`,
+        { params: {
+            userId:           customUser.user_id,
+            participantEmail: customUser.email
+          } 
+        }
+      );
+      setMeetings(res.data);
       setError(null);
     } catch (err) {
-      console.error('Failed to fetch meetings:', err.response?.data || err.message || err);
-      setError('Failed to load your meetings. Please try again later.');
+      console.error('Failed to fetch meetings:', err);
+      setError('Failed to load your meetings. Please try again.');
     } finally {
       setLoading(false);
     }

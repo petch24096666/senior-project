@@ -11,6 +11,7 @@ const Dashboard = () => {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081';
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [projects, setProjects] = useState([]);
+  const [calendarEvents, setCalendarEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({
     totalProjects: 0,
@@ -212,6 +213,23 @@ const Dashboard = () => {
     }
   }, [currentUserId, fetchProjectsAndCounts]);
 
+  // load real events into calendarEvents
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    axios.get(`${API_BASE_URL}/meeting`, {
+      params: {
+        userId:           currentUserId,
+        participantEmail: currentUserEmail
+      }
+    })
+    .then(res => {
+      console.log('fetched calendar events:', res.data); // make sure it’s what you expect
+      setCalendarEvents(res.data);
+    })
+    .catch(err => console.error('Load calendar events failed', err));
+  }, [currentUserId, currentUserEmail]);
+
   const fetchActiveTasksCount = useCallback(async () => {
     if (!currentUserEmail) return;
     try {
@@ -272,29 +290,47 @@ const getDaysInMonth = (date) => {
   const year = date.getFullYear();
   const month = date.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday, 1 = Monday...
+  const firstDayOfMonth = new Date(year, month, 1).getDay();
 
   const daysArray = [];
-  // Add empty cells for padding before the first day
+  // padding ก่อนหน้า
   for (let i = 0; i < firstDayOfMonth; i++) {
-    daysArray.push({ day: '', date: null, isToday: false, hasEvent: false });
+    daysArray.push({ day: '', date: null, isToday: false, hasEvent: false, eventColors: [] });
   }
-  // Add actual days of the month
+
   const today = new Date();
   for (let i = 1; i <= daysInMonth; i++) {
     const dateObj = new Date(year, month, i);
+    const isToday = dateObj.toDateString() === today.toDateString();
+
+    // ← ตรงนี้! หา events ในวันนั้นจาก state calendarEvents
+    const evs = calendarEvents.filter(ev => {
+      const start = new Date(ev.start_time);
+      // ถ้าไม่มี end_time ให้ถือว่าสิ้นสุดวันเดียวกับเริ่ม
+      const end   = ev.end_time ? new Date(ev.end_time) : start;
+    
+      // normalize ให้เปรียบเทียบแค่วันที่ (เที่ยงคืน)
+      const startDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      const endDate   = new Date(end.getFullYear(),   end.getMonth(),   end.getDate());
+    
+      // dateObj คือวันที่ของ cell (normalized จาก loop ด้านบน)
+      return dateObj >= startDate && dateObj <= endDate;
+    });
+
     daysArray.push({
-      day: i,
-      date: dateObj,
-      isToday: dateObj.toDateString() === today.toDateString(),
-      // *** หมายเหตุ: hasEvent ยังเป็น Static ต้องแก้ถ้าต้องการแสดง Event จริง ***
-      hasEvent: i % 7 === 0 // ตัวอย่าง: ใส่จุดทุกวันที่ 7
+      day:         i,
+      date:        dateObj,
+      isToday,
+      hasEvent:    evs.length > 0,                 // มี event ไหม
+      eventColors: evs.map(e => e.color || '#0072e5') // ดึงสีมา
     });
   }
-  // Add empty cells for padding after the last day to fill the grid (optional)
-  // while (daysArray.length % 7 !== 0) {
-  //    daysArray.push({ day: '', date: null, isToday: false, hasEvent: false });
-  // }
+
+  // padding หลัง ถ้าต้องการให้เต็ม 7 คอลัมน์
+  while (daysArray.length % 7 !== 0) {
+    daysArray.push({ day: '', date: null, isToday: false, hasEvent: false, eventColors: [] });
+  }
+
   return daysArray;
 };
 
@@ -528,7 +564,21 @@ const getDaysInMonth = (date) => {
                 >
                   {dayInfo.day}
                   {/* Event Indicator Dot (Static for now) */}
-                  {dayInfo.hasEvent && <div style={{ position: 'absolute', width: '4px', height: '4px', backgroundColor: dayInfo.isToday ? 'white' : '#2563eb', borderRadius: '50%', bottom: '4px', left: '50%', transform: 'translateX(-50%)' }}></div>}
+                  {dayInfo.hasEvent && dayInfo.eventColors.map((col, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        position: 'absolute',
+                        width:  '4px',
+                        height: '4px',
+                        borderRadius: '50%',
+                        backgroundColor: col,
+                        bottom: '4px',
+                        left:   `${50 + (idx - (dayInfo.eventColors.length-1)/2)*6}%`,
+                        transform: 'translateX(-50%)'
+                      }}
+                    />
+                  ))}
                 </div>
               ))}
             </div>

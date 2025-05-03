@@ -1,214 +1,254 @@
-// src/controllers/CalendarController.js
+// src/controllers/calendarController.js
 import db from '../config/database.js';
-import { v4 as uuidv4 } from 'uuid'; // ใช้สำหรับสร้าง event_id ที่ไม่ซ้ำกัน
-import dayjs from 'dayjs'; // ใช้สำหรับจัดการ/format วันที่และเวลา
+import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
+import dayjs from 'dayjs';
+
+const GOOGLE_BASE = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+const MS_BASE     = 'https://graph.microsoft.com/v1.0/me/events';
+
+// helper: ดึง token + provider จาก Header
+function getAuth(req) {
+  const authHeader = req.headers.authorization?.split(' ');
+  return {
+    provider: req.headers['x-auth-provider'],
+    token: authHeader?.[1]
+  };
+}
 
 // --- GET /api/calendar/events ---
-// ดึงข้อมูล Event ทั้งหมด (สำหรับ User ที่ Login อยู่ - ต้องใส่ Logic เพิ่มเติม)
 export const getAllEvents = async (req, res) => {
-  // const userId = req.user?.id; // ควรดึง userId จากระบบ Auth
-  // if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-
   try {
-    const [events] = await db.query(
-      `SELECT
-         event_id AS id,  -- ส่งกลับไปเป็น id ให้ Frontend ใช้งานง่าย
-         user_id,
-         title,
-         description,
-         start_datetime AS \`start\`, -- ตั้งชื่อเป็น start
-         end_datetime AS \`end\`,     -- ตั้งชื่อเป็น end
-         all_day AS allDay,         -- ตั้งชื่อเป็น allDay
-         location,
-         color
+    // 1) ดึงจากฐานข้อมูล
+    const [dbEvents] = await db.query(
+      `SELECT event_id AS id, user_id, title, description,
+              start_datetime AS start, end_datetime AS end,
+              all_day AS allDay, location, color
        FROM calendar_events
-       -- WHERE user_id = ? -- ควรจะ Filter ตาม User ID
-       ORDER BY start_datetime ASC`,
-      // [userId] // ใส่ userId ถ้า Filter
+       ORDER BY start_datetime`
     );
+    const local = dbEvents.map(e => ({ ...e, allDay: Boolean(e.allDay) }));
 
-    // แปลงค่า all_day (TINYINT 0/1) ให้เป็น Boolean (true/false)
-    const formattedEvents = events.map(event => ({
-      ...event,
-      allDay: Boolean(event.allDay)
-    }));
+    // 2) ดึงจาก Google/Microsoft (ถ้ามี)
+    const { provider, token } = getAuth(req);
+    let third = [];
+    if (provider === 'google' && token) {
+      const { data } = await axios.get(GOOGLE_BASE, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      third = (data.items||[]).map(item => ({
+        id: item.id,
+        title: item.summary,
+        start: item.start.dateTime||item.start.date,
+        end:   item.end.dateTime  ||item.end.date,
+        allDay: Boolean(item.start.date && !item.start.dateTime),
+        description: item.description||'',
+        location: item.location||'',
+        color: '#4285F4'
+      }));
+    }
+    else if (provider === 'microsoft' && token) {
+      const { data } = await axios.get(MS_BASE, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      third = (data.value||[]).map(item => ({
+        id: item.id,
+        title: item.subject,
+        start: item.start.dateTime,
+        end:   item.end.dateTime,
+        allDay: item.isAllDay||false,
+        description: item.body?.content||'',
+        location: item.location?.displayName||'',
+        color: '#0078D4'
+      }));
+    }
 
-    res.status(200).json(formattedEvents);
+    res.json([...local, ...third]);
   } catch (error) {
-    console.error('Error fetching calendar events:', error);
-    res.status(500).json({ error: 'Failed to fetch calendar events', details: error.message });
+    console.error(error);
+    res.status(500).json({ error: error.message });
   }
 };
 
 // --- POST /api/calendar/events ---
-// สร้าง Event ใหม่
 export const createCalendarEvent = async (req, res) => {
-  const { title, description = null, start, end, allDay = false, location = null, color = '#3366FF' } = req.body;
-
-  // --- [สำคัญ] ต้องดึง User ID จริงจากระบบ Auth ---
-  // const userId = req.user?.id;
-  const userId = '723563d1-c92e-4ee1-b151-8d0cc14837fd'; // <<== ตัวอย่าง Hardcode (ต้องแก้!)
-  if (!userId) {
-     return res.status(401).json({ error: 'Unauthorized or User ID missing' });
-  }
-  // ---
-
-  // --- ตรวจสอบข้อมูลเบื้องต้น ---
-  if (!title || !start || !end) {
-    return res.status(400).json({ error: 'Missing required fields: title, start, end' });
-  }
-  // ---
+  const { title, description, start, end, allDay=false, location, color } = req.body;
+  const { provider, token } = getAuth(req);
 
   try {
-    // สร้าง event_id ที่ไม่ซ้ำกันด้วย UUID
-    const eventId = uuidv4();
-
-    // แปลงเวลาจาก Frontend (ที่ควรเป็น local time string) เป็น Format ที่ DB ต้องการ
-    // โดยไม่ยุ่งกับ Timezone เพื่อเก็บค่าตามที่ผู้ใช้เห็น
-    const startTimeSQL = dayjs(start).format('YYYY-MM-DD HH:mm:ss');
-    const endTimeSQL = dayjs(end).format('YYYY-MM-DD HH:mm:ss');
-    const allDayValue = allDay ? 1 : 0; // แปลง boolean เป็น 0/1 สำหรับ TINYINT
-
-    // เตรียมข้อมูลสำหรับ INSERT (รวม event_id และ user_id)
-    const [result] = await db.query(
-      `INSERT INTO calendar_events
-         (event_id, user_id, title, description, start_datetime, end_datetime, all_day, location, color)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        eventId,      // ค่า event_id ที่สร้างใหม่
-        userId,       // ค่า user_id
-        title,
+    if (provider === 'google') {
+      const { data } = await axios.post(GOOGLE_BASE, {
+        summary:     title,
         description,
-        startTimeSQL, // เวลาที่ Format แล้ว
-        endTimeSQL,   // เวลาที่ Format แล้ว
-        allDayValue,
         location,
-        color
-      ]
-    );
-
-    // ดึงข้อมูล Event ที่เพิ่งสร้างเสร็จกลับไปให้ Frontend
-    // ใช้ eventId ที่เราสร้างขึ้นในการ Query กลับ
-    const [newEventResult] = await db.query(
-        `SELECT
-           event_id AS id, user_id, title, description,
-           start_datetime AS \`start\`, end_datetime AS \`end\`,
-           all_day AS allDay, location, color
-         FROM calendar_events
-         WHERE event_id = ?`,
-         [eventId] // ใช้ eventId ที่สร้างจาก uuidv4()
-    );
-
-    if (newEventResult.length > 0) {
-      // แปลง allDay กลับเป็น Boolean ก่อนส่งกลับ
-      const newEvent = {
-          ...newEventResult[0],
-          allDay: Boolean(newEventResult[0].allDay)
-      };
-      res.status(201).json(newEvent);
-    } else {
-      // กรณีนี้ไม่ควรเกิดขึ้นถ้า INSERT สำเร็จ
-      console.error(`Inconsistency: Inserted event with event_id ${eventId} but could not retrieve it.`);
-      res.status(500).json({ error: 'Failed to retrieve created event after insert.' });
+        start: { dateTime: start, timeZone: 'Asia/Bangkok' },
+        end:   { dateTime: end,   timeZone: 'Asia/Bangkok' }
+      }, { headers: { Authorization: `Bearer ${token}` }});
+      return res.status(201).json({
+        id: data.id, title: data.summary,
+        start: data.start.dateTime||data.start.date,
+        end:   data.end.dateTime  ||data.end.date,
+        allDay: Boolean(data.start.date&&!data.start.dateTime),
+        description: data.description||'',
+        location: data.location||'',
+        color: '#4285F4'
+      });
     }
-  } catch (error) {
-    console.error('Error creating calendar event:', error);
-    // แสดง SQL ที่ Error ด้วย (ถ้ามี) จะช่วย Debug
-    if(error.sql) console.error('Failing SQL:', error.sql);
-    res.status(500).json({ error: 'Failed to create calendar event', details: error.message });
+    if (provider === 'microsoft') {
+      const { data } = await axios.post(MS_BASE, {
+        subject: title,
+        body: { contentType: 'HTML', content: description||'' },
+        start: { dateTime: start, timeZone: 'Asia/Bangkok' },
+        end:   { dateTime: end,   timeZone: 'Asia/Bangkok' },
+        location: { displayName: location||'' }
+      }, { headers: { Authorization: `Bearer ${token}` }});
+      return res.status(201).json({
+        id: data.id, title: data.subject,
+        start: data.start.dateTime, end: data.end.dateTime,
+        allDay: data.isAllDay||false,
+        description: data.body?.content||'',
+        location: data.location?.displayName||'',
+        color: '#0078D4'
+      });
+    }
+
+    // ถ้า local: สร้างที่ DB
+    const eventId = uuidv4();
+    await db.query(
+      `INSERT INTO calendar_events
+         (event_id,user_id,title,description,start_datetime,end_datetime,all_day,location,color)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [ eventId, /*TODO: ดึง userId จาก Auth*/ 'user-id', title, description,
+        dayjs(start).format('YYYY-MM-DD HH:mm:ss'),
+        dayjs(end).format('YYYY-MM-DD HH:mm:ss'),
+        allDay?1:0, location, color||'#3366FF' ]
+    );
+    const [[newEv]] = await db.query(
+      `SELECT event_id AS id,title,description,
+              start_datetime AS start,end_datetime AS end,
+              all_day AS allDay,location,color
+       FROM calendar_events WHERE event_id = ?`,
+      [eventId]
+    );
+    res.status(201).json({ ...newEv, allDay: Boolean(newEv.allDay) });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 };
 
 // --- PUT /api/calendar/events/:id ---
-// อัปเดต Event ที่มีอยู่ (id ที่รับมาคือ event_id)
 export const updateCalendarEvent = async (req, res) => {
-  const eventIdFromParam = req.params.id; // รับ event_id จาก URL
-  const { title, description, start, end, allDay, location, color } = req.body;
-  // const userId = req.user?.id; // ควรดึง userId และตรวจสอบสิทธิ์ความเป็นเจ้าของ
-
-  // --- ตรวจสอบข้อมูลเบื้องต้น ---
-  if (!title || !start || !end) {
-    return res.status(400).json({ error: 'Missing required fields: title, start, end' });
-  }
-  // ---
+  const { id } = req.params;
+  const { title, description, start, end, location } = req.body;
+  const { provider, token } = getAuth(req);
 
   try {
-    // แปลงเวลาจาก Frontend เป็น Format ที่ DB ต้องการ (เหมือนตอน Create)
-    const startTimeSQL = dayjs(start).format('YYYY-MM-DD HH:mm:ss');
-    const endTimeSQL = dayjs(end).format('YYYY-MM-DD HH:mm:ss');
-    const allDayValue = allDay ? 1 : 0;
+    if (provider === 'google') {
+      // 1) เข้ารหัส ID เผื่อมีอักขระพิเศษ
+      const encodedId = encodeURIComponent(id);
 
-    // ทำการ UPDATE โดยใช้ event_id ใน WHERE clause
-    const [result] = await db.query(
-      `UPDATE calendar_events
-       SET title = ?, description = ?, start_datetime = ?, end_datetime = ?, all_day = ?, location = ?, color = ?
-       WHERE event_id = ?`,
-       // หากต้องการตรวจสอบสิทธิ์: WHERE event_id = ? AND user_id = ?`, [..., eventIdFromParam, userId]
-      [
-        title, description, startTimeSQL, endTimeSQL, allDayValue, location, color,
-        eventIdFromParam // ID ที่ใช้ใน WHERE clause
-      ]
-    );
+      // 2) ฟอร์แมตวันที่ให้เป็น ISO 8601 พร้อมวินาที+offset
+      const formattedStart = dayjs(start).toISOString(); // e.g. "2025-05-06T07:00:00+07:00"
+      const formattedEnd   = dayjs(end  ).toISOString(); // e.g. "2025-05-07T07:00:00+07:00"
 
-    // ตรวจสอบว่ามีการอัปเดตเกิดขึ้นจริงหรือไม่
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Event not found or no changes made' });
+      // 3) ใช้ PUT (อัปเดต resource ทั้งหมด) แทน PATCH
+      const { data } = await axios.put(
+        `${GOOGLE_BASE}/${encodedId}`,
+        {
+          summary:     title,
+          description,
+          location,
+          start: { dateTime: formattedStart, timeZone: 'Asia/Bangkok' },
+          end:   { dateTime: formattedEnd,   timeZone: 'Asia/Bangkok' },
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      return res.json({
+        id:          data.id,
+        title:       data.summary,
+        start:       data.start.dateTime,
+        end:         data.end.dateTime,
+        allDay:      Boolean(data.start.date && !data.start.dateTime),
+        description: data.description || '',
+        location:    data.location    || '',
+        color:       '#4285F4'        // สีเดียวกับตอน fetch Google events
+        });
     }
+    if (provider === 'microsoft') {
+      const url = `${MS_BASE}/${id}`;
+      const { data } = await axios.patch(url, {
+        subject: title,
+        body: { contentType: 'HTML', content: description||'' },
+        start: { dateTime: start, timeZone: 'Asia/Bangkok' },
+        end:   { dateTime: end,   timeZone: 'Asia/Bangkok' },
+        location: { displayName: location||'' }
+      }, { headers: { Authorization: `Bearer ${token}` }});
+      return res.json({
+              id:          data.id,
+              title:       data.subject,
+              start:       data.start.dateTime,
+              end:         data.end.dateTime,
+              allDay:      data.isAllDay || false,
+              description: data.body?.content || '',
+              location:    data.location?.displayName || '',
+              color:       '#0078D4'      // สีของ Microsoft events
+            });
+          }
 
-    // ดึงข้อมูล Event ที่เพิ่งอัปเดตกลับไปให้ Frontend
-    const [updatedEventResult] = await db.query(
-        `SELECT
-           event_id AS id, user_id, title, description,
-           start_datetime AS \`start\`, end_datetime AS \`end\`,
-           all_day AS allDay, location, color
-         FROM calendar_events
-         WHERE event_id = ?`,
-         [eventIdFromParam]
+    // local update
+    await db.query(
+      `UPDATE calendar_events
+         SET title=?,description=?,start_datetime=?,end_datetime=?,all_day=?,location=?,color=?
+       WHERE event_id = ?`,
+      [ title, description,
+        dayjs(start).format('YYYY-MM-DD HH:mm:ss'),
+        dayjs(end).format('YYYY-MM-DD HH:mm:ss'),
+        allDay?1:0, location, color, id ]
     );
-
-     if (updatedEventResult.length > 0) {
-        // แปลง allDay กลับเป็น Boolean ก่อนส่งกลับ
-        const updatedEvent = {
-            ...updatedEventResult[0],
-            allDay: Boolean(updatedEventResult[0].allDay)
-        };
-        res.status(200).json(updatedEvent);
-     } else {
-       // ไม่ควรเกิดขึ้นถ้า Update สำเร็จ
-       res.status(404).json({ error: 'Event not found after update' });
-     }
-
-  } catch (error) {
-    console.error('Error updating calendar event:', error);
-     if(error.sql) console.error('Failing SQL:', error.sql);
-    res.status(500).json({ error: 'Failed to update calendar event', details: error.message });
+    const [[upd]] = await db.query(
+      `SELECT event_id AS id,title,description,
+              start_datetime AS start,end_datetime AS end,
+              all_day AS allDay,location,color
+       FROM calendar_events WHERE event_id = ?`,
+      [id]
+    );
+    res.json({ ...upd, allDay: Boolean(upd.allDay) });
+  } catch (err) {
+    console.error('Google update error:', err.response?.data || err.message);
+    // ส่งกลับข้อความ error จาก Google เพื่อดีบักต่อ
+    return res.status(400).json({
+      error: err.response?.data?.error?.message || err.message
+    });
   }
 };
 
 // --- DELETE /api/calendar/events/:id ---
-// ลบ Event (id ที่รับมาคือ event_id)
 export const deleteCalendarEvent = async (req, res) => {
-  const eventIdFromParam = req.params.id; // รับ event_id จาก URL
-  // const userId = req.user?.id; // ควรดึง userId และตรวจสอบสิทธิ์ความเป็นเจ้าของ
+  const { id } = req.params;
+  const { provider, token } = getAuth(req);
 
   try {
-    // ทำการ DELETE โดยใช้ event_id ใน WHERE clause
-    const [result] = await db.query(
-      `DELETE FROM calendar_events WHERE event_id = ?`,
-       // หากต้องการตรวจสอบสิทธิ์: WHERE event_id = ? AND user_id = ?`, [eventIdFromParam, userId]
-      [eventIdFromParam]
-    );
-
-    // ตรวจสอบว่ามีการลบเกิดขึ้นจริงหรือไม่
-    if (result.affectedRows === 0) {
-       return res.status(404).json({ error: 'Event not found' });
+    if (provider === 'google') {
+      // เข้ารหัส ID แล้วเรียก delete แบบเดียวกับ update
+      const encodedId = encodeURIComponent(id);
+      await axios.delete(
+        `${GOOGLE_BASE}/${encodedId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return res.json({ id });
     }
-
-    // ส่ง id (ซึ่งคือ event_id) ที่ลบกลับไปให้ Frontend ยืนยัน
-    res.status(200).json({ message: 'Event deleted successfully', id: eventIdFromParam });
-  } catch (error) {
-    console.error('Error deleting calendar event:', error);
-     if(error.sql) console.error('Failing SQL:', error.sql);
-    res.status(500).json({ error: 'Failed to delete calendar event', details: error.message });
+    // local delete
+    const [result] = await db.query(
+      `DELETE FROM calendar_events WHERE event_id = ?`, [id]
+    );
+    if (result.affectedRows===0) return res.status(404).json({ error:'Not found' });
+    res.json({ id });
+  } catch (err) {
+    console.error('Google delete error:', err.response?.data || err.message);
+    return res.status(400).json({
+      error: err.response?.data?.error?.message || err.message
+    });
   }
 };
