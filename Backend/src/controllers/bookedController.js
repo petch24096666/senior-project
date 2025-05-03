@@ -1,15 +1,12 @@
-// controllers/bookedController.js
+import db from '../config/database.js';
 import { v4 as uuidv4 } from "uuid";
-import { createBookedModel } from "../models/bookedModel.js";
-import { getBookedTimesModel } from "../models/bookedModel.js";
+import { createBookedModel, getBookedTimesModel } from "../models/bookedModel.js";
 
 export const createBooked = async (req, res) => {
   try {
     const {
-      booked_startdate,
-      booked_enddate,
-      booked_starttime,
-      booked_endtime,
+      booked_date,
+      booked_time,
       booking_id,
       user_id
     } = req.body;
@@ -18,10 +15,8 @@ export const createBooked = async (req, res) => {
 
     await createBookedModel({
       booked_id,
-      booked_startdate,
-      booked_enddate,
-      booked_starttime,
-      booked_endtime,
+      booked_date,
+      booked_time,
       booking_id,
       user_id
     });
@@ -34,17 +29,52 @@ export const createBooked = async (req, res) => {
 };
 
 export const getBookedTimes = async (req, res) => {
-    try {
-      const { booking_id, date } = req.query;
-      if (!booking_id || !date) {
-        return res.status(400).json({ success: false, error: "Missing booking_id or date" });
-      }
-  
-      const times = await getBookedTimesModel(booking_id, date);
-      res.json({ success: true, data: times });
-    } catch (error) {
-      console.error("Get Booked Times Error:", error);
-      res.status(500).json({ success: false, error: "Internal Server Error" });
-    }
+  const { booking_id, date } = req.query;
+
+  try {
+    const data = await getBookedTimesModel(booking_id, date);
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 };
-  
+
+export const getBookedByUser = async (req, res) => {
+  const userId = req.params.userId;
+  try {
+    const [rows] = await db.query(`
+      SELECT 
+        b.booked_id,
+        b.booked_date,
+        b.booked_time,
+        b.booking_id,
+        bk.booking_title,
+        bk.booking_description,
+        bk.booking_type,
+        bk.booking_image
+      FROM booked b
+      JOIN booking bk ON b.booking_id = bk.booking_id
+      WHERE b.user_id = ?
+      ORDER BY b.booked_date DESC, b.booked_time ASC
+    `, [userId]);
+
+    res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Error fetching reservations by user:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch reservations." });
+  }
+};
+
+export const deleteBooked = async (req, res) => {
+  const bookedId = req.params.bookedId;
+  try {
+    const [result] = await db.query('DELETE FROM booked WHERE booked_id = ?', [bookedId]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, error: 'Reservation not found' });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting reservation:", error);
+    res.status(500).json({ success: false, error: "Failed to delete reservation." });
+  }
+};

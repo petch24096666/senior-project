@@ -298,6 +298,7 @@ const getDaysInMonth = (date) => {
   return daysArray;
 };
 
+
   // Navigate to project page
   const goToProjectsPage = () => {
     navigate('/projects');
