@@ -7,10 +7,8 @@ import {
   getAllBookingModel,
   getBookingByIdModel,
   updateBookingModel,
-  deleteBookingModel
+  deleteBookingModel,
 } from "../models/bookingModel.js";
-
-import { updateBookingStatusModel } from '../models/bookingModel.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,11 +21,7 @@ export const createBooking = async (req, res) => {
       booking_title,
       booking_description,
       booking_type,
-      booking_startdate,
-      booking_enddate,
-      booking_starttime,
-      booking_endtime,
-      team
+      creator_id
     } = req.body;
 
     let booking_image = null;
@@ -36,8 +30,8 @@ export const createBooking = async (req, res) => {
       const fileExt = path.extname(req.file.originalname);
       const filename = `${uuidv4()}${fileExt}`;
       const savePath = path.join(__dirname, "../uploads", filename);
-      fs.writeFileSync(savePath, req.file.buffer); // เขียนไฟล์จริง
-      booking_image = filename; // เก็บชื่อใหม่
+      fs.writeFileSync(savePath, req.file.buffer);
+      booking_image = filename;
     }
 
     const booking_status = "Available";
@@ -47,12 +41,9 @@ export const createBooking = async (req, res) => {
       booking_title,
       booking_description,
       booking_type,
-      booking_startdate,
-      booking_enddate,
-      booking_starttime,
-      booking_endtime,
       booking_image,
-      booking_status
+      booking_status,
+      creator_id
     };
 
     const result = await createBookingModel(bookingData);
@@ -64,7 +55,6 @@ export const createBooking = async (req, res) => {
   }
 };
 
-
 // UPDATE BOOKING
 export const updateBooking = async (req, res) => {
   try {
@@ -73,17 +63,12 @@ export const updateBooking = async (req, res) => {
       booking_title,
       booking_description,
       booking_type,
-      booking_startdate,
-      booking_enddate,
-      booking_starttime,
-      booking_endtime,
       booking_status
     } = req.body;
 
     const existingBooking = await getBookingByIdModel(id);
     let booking_image = existingBooking.booking_image;
 
-    // ✅ กรณีอัปโหลดใหม่
     if (req.file && req.file.originalname) {
       if (booking_image) {
         const oldImagePath = path.join(__dirname, "../uploads", booking_image);
@@ -104,10 +89,6 @@ export const updateBooking = async (req, res) => {
       booking_title,
       booking_description,
       booking_type,
-      booking_startdate,
-      booking_enddate,
-      booking_starttime,
-      booking_endtime,
       booking_status,
       booking_image
     });
@@ -129,20 +110,13 @@ export const deleteBooking = async (req, res) => {
       return res.status(404).json({ success: false, error: "Booking not found" });
     }
 
-    // ✅ ถ้ามี booking_image ให้ลบไฟล์
     if (booking.booking_image) {
       const imgPath = path.join(__dirname, "../uploads", booking.booking_image);
-      console.log("🔍 Trying to delete image:", imgPath);
-
       if (fs.existsSync(imgPath)) {
         fs.unlinkSync(imgPath);
-        console.log("✅ Deleted image:", imgPath);
-      } else {
-        console.warn("⚠️ Image file not found:", imgPath);
       }
     }
 
-    // ✅ ลบข้อมูลจาก DB
     const deleted = await deleteBookingModel(id);
     res.status(200).json({ success: true, data: deleted });
 
@@ -154,7 +128,7 @@ export const deleteBooking = async (req, res) => {
 
 export const getAllBooking = async (req, res) => {
   try {
-    const data = await getAllBookingModel(); // ← ดึงข้อมูลทั้งหมดจาก model
+    const data = await getAllBookingModel();
     res.status(200).json({ success: true, data });
   } catch (error) {
     console.error("Get all bookings error:", error);
@@ -169,18 +143,6 @@ export const getBookingById = async (req, res) => {
     res.status(200).json({ success: true, data });
   } catch (error) {
     console.error("Get booking by ID error:", error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-export const updateBookingStatus = async (req, res) => {
-  const { id } = req.params;
-  const { booking_status } = req.body;
-
-  try {
-    const result = await updateBookingStatusModel(id, booking_status);
-    res.json({ success: true, message: "Booking status updated", data: result });
-  } catch (error) {
-    console.error("Update Booking Status Error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
