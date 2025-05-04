@@ -3,8 +3,12 @@
 import React, { useState, useContext } from 'react';
 import { X, Calendar, Clock, Video, UserPlus, Repeat, Bell, FileText } from 'lucide-react';
 import axios from 'axios';
+import Autocomplete from '@mui/material/Autocomplete';
+import TextField    from '@mui/material/TextField';
 import { UserContext } from '../../../context/Usercontext'; // ตรวจสอบ Path ให้ถูกต้อง
 import dayjs from 'dayjs';
+import { SiZoom, SiGooglemeet, SiMicrosoftteams } from 'react-icons/si';
+
 import './MeetingPage.css'; // ตรวจสอบ Path ให้ถูกต้อง
 import { useSupabaseClient } from '@supabase/auth-helpers-react';
 
@@ -24,6 +28,12 @@ const CreateMeetingModal = ({ onClose, onSuccess }) => {
   });
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const durations = [15, 30, 45, 60, 90, 120];
+  const PLATFORM_ICONS = {
+    'Zoom':            <SiZoom size={24} />,
+    'Google Meet':   <SiGooglemeet size={24} />,
+    'Microsoft Teams': <SiMicrosoftteams size={24} />
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -168,10 +178,28 @@ const CreateMeetingModal = ({ onClose, onSuccess }) => {
               <input type="time" name="time" value={formData.time} onChange={handleChange} className={`form-input ${errors.time ? 'input-error' : ''}`} />
             </div>
             <div className="form-group">
-              <label className="form-label">Duration</label>
-              <select name="duration" className="form-select" value={formData.duration} onChange={handleChange}>
-                {[15, 30, 45, 60, 90, 120].map(min => <option key={min} value={min}>{min} mins</option>)}
-              </select>
+              <label className="form-label">Duration (minutes)</label>
+              <Autocomplete
+                freeSolo
+                options={durations.map(d => d.toString())}      // รายการให้เลือก
+                value={formData.duration?.toString() || ''}     // สะท้อนค่าที่กรอก/เลือก
+                onInputChange={(e, v) =>                       // เมื่อเปลี่ยน ให้เรียก handleChange
+                  handleChange({
+                    target: { name: 'duration', value: v }
+                  })
+                }
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    name="duration"
+                    className="form-input"
+                    placeholder="e.g. 60"
+                    variant="outlined"
+                    size="small"
+                  />
+                )}
+              />
+              {errors.duration && <div className="error-text">{errors.duration}</div>}
             </div>
           </div>
 
@@ -212,13 +240,15 @@ const CreateMeetingModal = ({ onClose, onSuccess }) => {
           <div className="form-group">
             <label className="form-label"><Video size={16} className="input-icon" /> Platform {errors.platform && <span className="error-text">*{errors.platform}</span>}</label>
             <div className="platform-grid">
-              {['Zoom', 'Google Meet', 'Microsoft Teams', 'Webex'].map((platform) => (
+            {['Zoom','Google Meet','Microsoft Teams'].map(platform => (
                 <div
                   key={platform}
                   className={`platform-card ${formData.platform === platform ? 'selected' : ''}`}
                   onClick={() => handlePlatformSelect(platform)}
                 >
-                  <div className={`platform-icon ${platform.toLowerCase().replace(/\s+/g, '-')}-icon`} />
+                  <div className="platform-icon">
+                    {PLATFORM_ICONS[platform]}
+                  </div>
                   <div className="platform-info">
                     <span className="platform-name">{platform}</span>
                   </div>

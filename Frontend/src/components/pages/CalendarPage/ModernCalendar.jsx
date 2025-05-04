@@ -330,6 +330,8 @@ const ModernCalendar = () => {
     setEventForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   }, []);
 
+  const ensureSeconds = (dt) => (dt.length === 16 ? dt + ':00' : dt); // ถ้าไม่มีวินาทีให้เติม
+
   const handleEventSubmit = useCallback(async (e) => {
     e.preventDefault();
     setIsLoading(true);

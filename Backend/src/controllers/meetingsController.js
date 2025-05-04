@@ -4,7 +4,7 @@ import { createZoomMeeting } from './zoomController.js';
 import { createGoogleMeeting } from './googleController.js';
 import { createTeamsMeeting } from './microsoftController.js';
 import { createWebexMeeting } from './webexController.js';
-import { sendInvitationEmail } from '../services/emailService.js';
+
 
 // 🔹 CREATE
 export const createMeeting = async (req, res) => {
@@ -13,69 +13,55 @@ export const createMeeting = async (req, res) => {
       title,
       description,
       start_time,
-      end_time,
       duration,
       platform,
       frequency,
       reminder,
       participants = [],
       user_id,
-      token,
-      provider
+      token
     } = req.body;
 
-    let join_url = '', start_url = '', meeting_id = '';
+    // คำนวณ end_time จาก duration
+    const end_time = new Date(new Date(start_time).getTime() + Number(duration) * 60000).toISOString();
+
+    // สร้าง meeting กับ provider และรับ join_url + meeting_id
+    let join_url = '';
+    let start_url = '';
+    let meeting_id = '';
 
     if (platform === 'Zoom') {
-      try {
-        const zoomRes = await createZoomMeeting(
-          { body: { topic: title, start_time, duration, timezone: 'Asia/Bangkok', agenda: description } },
-          { status: () => ({ json: (d) => d }) }
-        );
-        join_url = zoomRes.join_url;
-        start_url = zoomRes.start_url;
-        meeting_id = zoomRes.meeting_id;
-      } catch (zoomError) {
-        console.error('Error creating Zoom meeting:', zoomError);
-        return res.status(500).json({ error: 'Failed to create Zoom meeting: ' + zoomError.message });
-      }
+      const z = await createZoomMeeting({ topic: title, start_time, duration: Number(duration), timezone: 'Asia/Bangkok', agenda: description });
+      join_url    = z.join_url;
+      start_url   = z.start_url;
+      meeting_id  = z.meeting_id;
+
     } else if (platform === 'Google Meet') {
-      try {
-        const googleRes = await createGoogleMeeting(title, start_time, end_time, description, token);
-        join_url = googleRes.join_url;
-        meeting_id = googleRes.event_id;
-      } catch (googleError) {
-        console.error('Error creating Google Meet:', googleError);
-        return res.status(500).json({ error: 'Failed to create Google Meet: ' + googleError.message });
-      }
+      const g = await createGoogleMeeting(title, start_time, end_time, description, token);
+      join_url   = g.join_url;
+      meeting_id = g.event_id;
+
     } else if (platform === 'Microsoft Teams') {
-      try {
-        const msRes = await createTeamsMeeting(title, start_time, end_time, description, token);
-        join_url = msRes.join_url;
-        meeting_id = msRes.meeting_id;
-      } catch (msError) {
-        console.error('Error creating Microsoft Teams meeting:', msError);
-        return res.status(500).json({ error: 'Failed to create Microsoft Teams meeting: ' + msError.message });
-      }
+      const t = await createTeamsMeeting(title, start_time, end_time, description, token);
+      join_url   = t.join_url;
+      meeting_id = t.meeting_id;
+
     } else if (platform === 'Webex') {
-      try {
-        const webexRes = await createWebexMeeting(title, start_time, duration, description);
-        join_url = webexRes.join_url;
-        meeting_id = webexRes.meeting_id;
-      } catch (webexError) {
-        console.error('Error creating Webex meeting:', webexError);
-        return res.status(500).json({ error: 'Failed to create Webex meeting: ' + webexError.message });
-      }
+      const w = await createWebexMeeting(title, start_time, Number(duration), description);
+      join_url   = w.join_url;
+      meeting_id = w.meeting_id;
     }
 
+    // บันทึกลงฐานข้อมูล meetings
     await db.query(
       `INSERT INTO meetings
-        (id, title, description, start_time, end_time, duration, platform, frequency, reminder, join_url, user_id)
+         (id, title, description, start_time, end_time, duration, platform, frequency, reminder, join_url, user_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [meeting_id, title, description, start_time, end_time, duration, platform, frequency, reminder, join_url, user_id] // <-- เพิ่ม meeting_id ตรงนี้
+      [meeting_id, title, description, start_time, end_time, duration, platform, frequency, reminder, join_url, user_id]
     );
 
-    if (participants.length > 0) {
+    // บันทึก participants (ถ้ามี)
+    if (participants.length) {
       await Promise.all(
         participants.map(email =>
           db.query(
@@ -87,11 +73,24 @@ export const createMeeting = async (req, res) => {
       );
     }
 
-    return res.status(201).json({ message: 'Meeting created successfully', meeting_id, join_url, start_url });
+    // ดึงข้อมูล meeting กลับมา พร้อม participants
+    const [[meeting]] = await db.query(
+      `SELECT m.*, GROUP_CONCAT(mp.participant_email) AS participant_list
+       FROM meetings m
+       LEFT JOIN meeting_participants mp ON m.id = mp.meeting_id
+       WHERE m.id = ?
+       GROUP BY m.id`,
+      [meeting_id]
+    );
+    meeting.participants = meeting.participant_list
+      ? meeting.participant_list.split(',')
+      : [];
+
+    return res.status(201).json(meeting);
 
   } catch (error) {
     console.error('Create Meeting Error:', error);
-    return res.status(500).json({ error: 'Failed to create meeting: ' + error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
 
@@ -121,17 +120,67 @@ export const listMeetings = async (req, res) => {
 export const updateMeeting = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, start_time, end_time } = req.body;
+    const {
+      title,
+      description,
+      start_time,
+      duration,
+      platform,
+      frequency,
+      reminder,
+      participants = []
+    } = req.body;
 
+    // คำนวณ end_time ใหม่
+    const end_time = new Date(new Date(start_time).getTime() + Number(duration) * 60000).toISOString();
+
+    // อัปเดตตาราง meetings
     await db.query(
-      `UPDATE meetings SET title = ?, description = ?, start_time = ?, end_time = ? WHERE id = ?`,
-      [title, description, start_time, end_time, id]
+      `UPDATE meetings
+         SET title       = ?,
+             description = ?,
+             start_time  = ?,
+             end_time    = ?,
+             duration    = ?,
+             platform    = ?,
+             frequency   = ?,
+             reminder    = ?
+       WHERE id = ?`,
+      [title, description, start_time, end_time, duration, platform, frequency, reminder, id]
     );
 
-    res.status(200).json({ message: 'Meeting updated successfully' });
+    // ซิงก์ participants ใหม่
+    await db.query(`DELETE FROM meeting_participants WHERE meeting_id = ?`, [id]);
+    if (participants.length) {
+      await Promise.all(
+        participants.map(email =>
+          db.query(
+            `INSERT INTO meeting_participants (meeting_id, participant_email)
+             VALUES (?, ?)`,
+            [id, email]
+          )
+        )
+      );
+    }
+
+    // ดึงข้อมูล meeting ที่อัปเดตกลับมา
+    const [[meeting]] = await db.query(
+      `SELECT m.*, GROUP_CONCAT(mp.participant_email) AS participant_list
+       FROM meetings m
+       LEFT JOIN meeting_participants mp ON m.id = mp.meeting_id
+       WHERE m.id = ?
+       GROUP BY m.id`,
+      [id]
+    );
+    meeting.participants = meeting.participant_list
+      ? meeting.participant_list.split(',')
+      : [];
+
+    return res.status(200).json(meeting);
+
   } catch (error) {
     console.error('Update Meeting Error:', error);
-    res.status(500).json({ error: 'Failed to update meeting: ' + error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
 
