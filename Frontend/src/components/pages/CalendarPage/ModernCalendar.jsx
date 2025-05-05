@@ -330,12 +330,20 @@ const ModernCalendar = () => {
     setEventForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
   }, []);
 
+  const ensureSeconds = (dt) => (dt.length === 16 ? dt + ':00' : dt); // ถ้าไม่มีวินาทีให้เติม
+
   const handleEventSubmit = useCallback(async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-    const payload = { ...eventForm, allDay: Boolean(eventForm.allDay) };
-
+  
+    const payload = {
+      ...eventForm,
+      start: ensureSeconds(eventForm.start),
+      end: ensureSeconds(eventForm.end),
+      allDay: Boolean(eventForm.allDay)
+    };
+  
     try {
       let resultEventData;
       if (editingEvent) {
@@ -343,30 +351,37 @@ const ModernCalendar = () => {
       } else {
         resultEventData = await createEvent(payload);
       }
-       const processedEvent = {
-           ...resultEventData,
-           start: resultEventData.start ? new Date(resultEventData.start) : null,
-           end: resultEventData.end ? new Date(resultEventData.end) : null,
-           allDay: Boolean(resultEventData.allDay)
-       };
+  
+      const processedEvent = {
+        ...resultEventData,
+        start: resultEventData.start ? new Date(resultEventData.start) : null,
+        end: resultEventData.end ? new Date(resultEventData.end) : null,
+        allDay: Boolean(resultEventData.allDay)
+      };
+  
       if (editingEvent) {
-        setEvents(prevEvents => prevEvents.map(event => event.id === processedEvent.id ? processedEvent : event));
+        setEvents(prevEvents =>
+          prevEvents.map(event =>
+            event.id === processedEvent.id ? processedEvent : event
+          )
+        );
         console.log("Event updated:", processedEvent);
       } else {
         setEvents(prevEvents => [...prevEvents, processedEvent]);
         console.log("Event created:", processedEvent);
       }
+  
       setShowEventModal(false);
       setEditingEvent(null);
     } catch (err) {
       const errorMsg = `Failed to ${editingEvent ? 'update' : 'create'} event. ${err.message || ''}`;
       setError(errorMsg);
       console.error(errorMsg, err);
-      // alert(`Error: ${errorMsg}`);
     } finally {
       setIsLoading(false);
     }
   }, [eventForm, editingEvent, setIsLoading, setError, setEvents, setShowEventModal, setEditingEvent]);
+  
 
   const handleDeleteEvent = useCallback(async () => {
     if (!editingEvent || !editingEvent.id) return;
