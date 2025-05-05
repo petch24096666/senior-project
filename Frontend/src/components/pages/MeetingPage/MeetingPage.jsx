@@ -6,8 +6,13 @@ import { UserContext } from '../../../context/Usercontext';
 import CreateMeetingModal from './CreateMeetingModal.jsx';
 import EditMeetingModal from './EditMeetingModal.jsx';
 import axios from 'axios';
-
+import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import tz from 'dayjs/plugin/timeZone';
 import './MeetingPage.css';
+
+dayjs.extend(utc);
+dayjs.extend(tz);
 
 const MeetingPage = () => {
   const { customUser } = useContext(UserContext);
@@ -236,7 +241,16 @@ const MeetingPage = () => {
                   <div className="project-meta">
                     <div className="meta-item">
                       <Calendar size={16} className="meta-icon" />
-                      {meeting.date} at {meeting.time}
+                      {meeting.start_time && meeting.end_time
+                        ? `from: ${dayjs
+                            .utc(meeting.start_time)
+                            .tz('Asia/Bangkok')
+                            .format('HH:mm')} to ${dayjs
+                            .utc(meeting.end_time)
+                            .tz('Asia/Bangkok')
+                            .format('HH:mm')}`
+                        : 'No time set'
+                      }
                     </div>
                     <div className="meta-item">
                       <Clock size={16} className="meta-icon" />

@@ -173,7 +173,7 @@ export const updateCalendarEvent = async (req, res) => {
         allDay:      Boolean(data.start.date && !data.start.dateTime),
         description: data.description || '',
         location:    data.location    || '',
-        color:       '#4285F4'        // สีเดียวกับตอน fetch Google events
+        color:       ''        // สีเดียวกับตอน fetch Google events
         });
     }
     if (provider === 'microsoft') {
