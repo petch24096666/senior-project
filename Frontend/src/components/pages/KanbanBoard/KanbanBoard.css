@@ -139,7 +139,7 @@
   }
   
   .kanban-root .filter-button {
-    background-color: #4a6fa5;
+    background-color: #4F46E5;
     border: 1px solid var(--border-color);
     color: white;
     padding: 8px 14px;
@@ -1448,7 +1448,7 @@
 
 .kanban-modal .comment-submit {
   padding: 0 16px;
-  background-color: #0052CC;
+  background-color: #4F46E5;
   color: white;
   border: none;
   border-radius: 3px;
@@ -1459,7 +1459,7 @@
 }
 
 .kanban-modal .comment-submit:hover {
-  background-color: #0747A6;
+  background-color: #4338ca;
 }
 
 .kanban-modal .comment-submit:disabled {

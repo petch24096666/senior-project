@@ -72,7 +72,16 @@ export const getAllEvents = async (req, res) => {
 
 // --- POST /api/calendar/events ---
 export const createCalendarEvent = async (req, res) => {
-  const { title, description, start, end, allDay=false, location, color } = req.body;
+    const {
+      title,
+      description,
+      start,
+      end,
+      allDay = false,
+      location,
+      color,
+      user_id
+    } = req.body;
   const { provider, token } = getAuth(req);
 
   try {
@@ -113,15 +122,26 @@ export const createCalendarEvent = async (req, res) => {
     }
 
     // ถ้า local: สร้างที่ DB
-    const eventId = uuidv4();
-    await db.query(
+    
+    if (!user_id) {
+            return res.status(400).json({ error: 'Missing user_id in request body' });
+          }
+        const eventId = uuidv4();
+        await db.query(
       `INSERT INTO calendar_events
          (event_id,user_id,title,description,start_datetime,end_datetime,all_day,location,color)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [ eventId, /*TODO: ดึง userId จาก Auth*/ 'user-id', title, description,
-        dayjs(start).format('YYYY-MM-DD HH:mm:ss'),
-        dayjs(end).format('YYYY-MM-DD HH:mm:ss'),
-        allDay?1:0, location, color||'#3366FF' ]
+       [
+            eventId,
+            user_id,                 // ← now uses real user_id
+            title,
+            description,
+            dayjs(start).format('YYYY-MM-DD HH:mm:ss'),
+            dayjs(end).format('YYYY-MM-DD HH:mm:ss'),
+            allDay ? 1 : 0,
+            location,
+            color || '#3366FF'
+          ]
     );
     const [[newEv]] = await db.query(
       `SELECT event_id AS id,title,description,
@@ -250,5 +270,101 @@ export const deleteCalendarEvent = async (req, res) => {
     return res.status(400).json({
       error: err.response?.data?.error?.message || err.message
     });
+  }
+};
+
+// GET /api/calendar/categories?user_id=xxx
+export const getAllCategories = async (req, res) => {
+  const userId = req.query.user_id;
+  if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+
+  try {
+    const [rows] = await db.query(
+      `SELECT
+         category_id AS id,
+         user_id,
+         name,
+         color,
+         created_at,
+         updated_at
+       FROM categories
+       WHERE user_id = ?`,
+      [userId]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/calendar/categories
+// body: { user_id, name, color }
+export const createCategory = async (req, res) => {
+  const { user_id: userId, name, color } = req.body;
+  if (!userId || !name || !color) {
+    return res.status(400).json({ error: 'user_id, name and color are required' });
+  }
+
+  try {
+    const id = uuidv4();
+    await db.query(
+      `INSERT INTO categories
+         (category_id, user_id, name, color)
+       VALUES (?, ?, ?, ?)`,
+      [id, userId, name, color]
+    );
+    res.status(201).json({ id, user_id: userId, name, color });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// PUT /api/calendar/categories/:id
+// body: { user_id, name, color }
+export const updateCategory = async (req, res) => {
+  const { id } = req.params;
+  const { user_id: userId, name, color } = req.body;
+  if (!userId || !name || !color) {
+    return res.status(400).json({ error: 'user_id, name and color are required' });
+  }
+
+  try {
+    const [result] = await db.query(
+      `UPDATE categories
+         SET name = ?, color = ?
+       WHERE category_id = ? AND user_id = ?`,
+      [name, color, id, userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Not found or no permission' });
+    }
+    res.json({ id, user_id: userId, name, color });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// DELETE /api/calendar/categories/:id?user_id=xxx
+export const deleteCategory = async (req, res) => {
+  const { id } = req.params;
+  const userId = req.query.user_id;
+  if (!userId) return res.status(400).json({ error: 'Missing user_id' });
+
+  try {
+    const [result] = await db.query(
+      `DELETE FROM categories
+       WHERE category_id = ? AND user_id = ?`,
+      [id, userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Not found or no permission' });
+    }
+    res.json({ id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
   }
 };

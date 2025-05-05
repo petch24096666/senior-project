@@ -1,6 +1,8 @@
 import express from 'express';
 
-import { getAllEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent } from '../controllers/calendarpageController.js';
+import { getAllEvents, createCalendarEvent, updateCalendarEvent, deleteCalendarEvent,
+         getAllCategories, createCategory, updateCategory, deleteCategory
+        } from '../controllers/calendarpageController.js';
 // Import controller functions ที่เราสร้างไว้ใน CalendarController.js
 // ตรวจสอบ Path ให้ถูกต้อง ถ้า Controller อยู่ในโฟลเดอร์อื่น
 // <<=== ตรวจสอบ Path นี้ให้ถูกต้อง
@@ -23,6 +25,12 @@ router.put('/events/:id', updateCalendarEvent);
 
 // DELETE /api/calendar/events/:id - ลบ Event ตาม ID
 router.delete('/events/:id', deleteCalendarEvent);
+
+// Category
+router.get('/categories',      getAllCategories);
+router.post('/categories',     createCategory);
+router.put('/categories/:id',  updateCategory);
+router.delete('/categories/:id', deleteCategory);
 
 
 // Export router เพื่อให้ server.js นำไปใช้

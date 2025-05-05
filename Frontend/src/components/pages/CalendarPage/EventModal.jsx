@@ -25,6 +25,13 @@ const EventModal = ({
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
+  const eventpresetColors = [
+    '#3366FF', // Blue
+    '#33CC66', // Green
+    '#FF6633', // Orange
+    '#FF3366'  // Pink
+  ];
+
   // เมื่อเปิด Modal และไม่ได้อยู่ในโหมดแก้ไข (create new event)
   useEffect(() => {
     if (showEventModal && !editingEvent) {
@@ -126,14 +133,22 @@ const EventModal = ({
         <div className="form-group">
           <label className="form-label">Color</label>
           <div className="color-selector">
-            {categories.map(category => (
-              <div
-                key={category.id}
-                className={`color-option ${eventForm.color === category.color ? 'selected' : ''}`}
-                style={{ backgroundColor: category.color }}
-                onClick={() => setEventForm({ ...eventForm, color: category.color })}
-              ></div>
-            ))}
+          {eventpresetColors.map(color => (
+            <button
+              key={color}
+              type="button"
+              className={`color-option ${eventForm.color === color ? 'selected' : ''}`}
+              style={{
+                backgroundColor: color,
+                width: '24px',
+                height: '24px',
+                border: eventForm.color === color ? '2px solid #000' : '1px solid #ccc',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+              onClick={() => setEventForm({ ...eventForm, color })}
+            />
+          ))}
           </div>
         </div>
         <div className="form-actions">

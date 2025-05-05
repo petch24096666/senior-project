@@ -211,7 +211,6 @@ const MeetingPage = () => {
                 <option value="Zoom">Zoom</option>
                 <option value="Google Meet">Google Meet</option>
                 <option value="Microsoft Teams">Microsoft Teams</option>
-                <option value="Webex">Webex</option> {/* เพิ่ม Webex ถ้าใช้ */}
               </select>
             </div>
           </div>

@@ -9,12 +9,15 @@ import MonthView from './MonthView';
 import EventModal from './EventModal';
 import CategoryModal from './CategoryModal';
 import { supabase } from "../../../utils/supabaseClient";
+
 // --- !!! [สำคัญ] แก้ไข Path นี้ให้ถูกต้องตามโครงสร้างโปรเจกต์ Frontend ของคุณ !!! ---
 import {
   fetchEvents,
   createEvent,
   updateEvent,
-  deleteEvent
+  deleteEvent,
+  fetchCategories, createCategory as apiCreateCategory,
+  updateCategory as apiUpdateCategory, deleteCategory as apiDeleteCategory
 } from '../../../services/calendarAPI.js';
 
 const ModernCalendar = () => {
@@ -55,23 +58,15 @@ const ModernCalendar = () => {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [editingCategory, setEditingCategory] = useState(null);
-  const [eventForm, setEventForm] = useState({
-    title: '', start: '', end: '', allDay: false, description: '', location: '', color: '#3366FF'
-  });
+  const [eventForm, setEventForm] = useState({   title: '', start: '', end: '', allDay: false, description: '', location: '', color: '#3366FF'  });
   const [categoryForm, setCategoryForm] = useState({ id: '', name: '', color: '#3366FF' });
-  const [categories, setCategories] = useState([ // ควรจะ Fetch จาก API ในอนาคต
-    { id: 'work', name: 'Work', color: '#3366FF' },
-    { id: 'personal', name: 'Personal', color: '#33CC66' },
-    { id: 'family', name: 'Family', color: '#FF6633' },
-    { id: 'health', name: 'Health', color: '#9966FF' },
-    { id: 'meeting', name: 'Meeting', color: '#FF3366' },
-    { id: 'other', name: 'Other', color: '#999999' }
-  ]);
+  const [categories, setCategories] = useState([]);
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [sessionReady, setSessionReady] = useState(false);
 
+  // โหลดตอน mount
 
   useEffect(() => {
     console.log("Location search changed:", location.search); // เพิ่ม log เพื่อดูว่า Effect ทำงานเมื่อไหร่
@@ -107,6 +102,27 @@ const ModernCalendar = () => {
     setSessionReady(true);
   })();
 }, []);
+
+  const [userId, setUserId] = useState(null);
+  useEffect(() => {
+    supabase.auth.getSession()
+      .then(({ data: { session } }) => {
+        if (session) setUserId(session.user.id);
+      })
+      .catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        const cats = await fetchCategories(userId);
+        setCategories(cats);
+      } catch (err) {
+        console.error('Load categories failed', err);
+      }
+    })();
+  }, [userId]);
 
   // --- Helper Functions ---
   const formatDateTimeForInput = useCallback((date) => {
@@ -231,6 +247,7 @@ const ModernCalendar = () => {
       if (Array.isArray(fetchedEvents)) {
          setEvents(fetchedEvents.map(event => ({
            ...event,
+           color: event.color,
            start: event.start ? new Date(event.start) : null,
            end: event.end ? new Date(event.end) : null,
            allDay: Boolean(event.allDay)
@@ -336,14 +353,18 @@ const ModernCalendar = () => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-    const payload = { ...eventForm, allDay: Boolean(eventForm.allDay) };
+    const payload = {
+         ...eventForm,
+         user_id: userId,               // ← add this
+         allDay: Boolean(eventForm.allDay)
+       };
 
     try {
       let resultEventData;
-      if (editingEvent) {
-        resultEventData = await updateEvent(editingEvent.id, payload);
+      if (!editingEvent) {
+        resultEventData = await createEvent({ ...payload, user_id: userId });
       } else {
-        resultEventData = await createEvent(payload);
+        resultEventData = await updateEvent(editingEvent.id, payload);
       }
        const processedEvent = {
            ...resultEventData,
@@ -424,6 +445,48 @@ const ModernCalendar = () => {
     return `${h} ${ampm}`;
   }, []);
 
+  // 2) สร้าง / แก้ไข Category
+  const handleCategorySubmit = useCallback(async (e) => {
+    e.preventDefault();
+    if (!userId) return alert('User not ready');
+    
+    const payload = {
+      user_id: userId,
+      name:  categoryForm.name,
+      color: categoryForm.color
+    };
+
+    try {
+      if (editingCategory) {
+        const updated = await apiUpdateCategory(categoryForm.id, payload);
+        setCategories(cs => cs.map(c => c.id === updated.id ? updated : c));
+      } else {
+        const created = await apiCreateCategory(payload);
+        setCategories(cs => [...cs, created]);
+      }
+      setShowCategoryModal(false);
+      setEditingCategory(null);
+    } catch (err) {
+      console.error('Category save failed', err);
+      alert('บันทึกหมวดหมู่ไม่สำเร็จ');
+    }
+  }, [categoryForm, editingCategory, userId]);
+  
+  const handleDeleteCategory = useCallback(async () => {
+    if (!editingCategory || !userId) return;
+    if (!window.confirm('ลบหมวดหมู่นี้จริงหรือไม่?')) return;
+
+    try {
+      await apiDeleteCategory(editingCategory.id, userId);
+      setCategories(cs => cs.filter(c => c.id !== editingCategory.id));
+      setShowCategoryModal(false);
+      setEditingCategory(null);
+    } catch (err) {
+      console.error('Delete category failed', err);
+      alert('ลบหมวดหมู่ไม่สำเร็จ');
+    }
+  }, [editingCategory, userId]);
+  
 
   // --- Render ---
   return (
@@ -518,18 +581,18 @@ const ModernCalendar = () => {
 
         {/* Category Modal */}
         {showCategoryModal &&
-            <CategoryModal
-                showCategoryModal={showCategoryModal}
-                onClose={() => { setShowCategoryModal(false); setEditingCategory(null); }}
-                categoryForm={categoryForm}
-                handleCategoryFormChange={(e) => {
-                    const { name, value } = e.target;
-                    setCategoryForm(prev => ({ ...prev, [name]: value }));
-                }}
-                handleCategorySubmit={(e) => { /* ... Category Submit (Local State) ... */ }}
-                editingCategory={editingCategory}
-                handleDeleteCategory={() => { /* ... Category Delete (Local State) ... */ }}
-            />
+          <CategoryModal
+            showCategoryModal={showCategoryModal}
+            onClose={() => { setShowCategoryModal(false); setEditingCategory(null); }}
+            categoryForm={categoryForm}
+            handleCategoryFormChange={e => {
+              const { name, value } = e.target;
+              setCategoryForm(f => ({ ...f, [name]: value }));
+            }}
+            handleCategorySubmit={handleCategorySubmit}
+            editingCategory={editingCategory}
+            handleDeleteCategory={handleDeleteCategory}
+          />
         }
       </div>
   );

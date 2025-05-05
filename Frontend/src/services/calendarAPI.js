@@ -53,3 +53,49 @@ export async function deleteEvent(id) {
   if (!res.ok) throw new Error(res.status);
   return res.json();
 }
+
+export async function fetchCategories(userId) {
+  const res = await fetch(`${BASE}/categories?user_id=${userId}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Fetch categories failed: ${res.status}`);
+  return res.json();  // ได้ array ของ { id, user_id, name, color, ... }
+}
+
+export async function createCategory(cat) {
+  const res = await fetch(`${BASE}/categories`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(cat)
+  });
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
+}
+
+export async function updateCategory(id, cat) {
+  const res = await fetch(`${BASE}/categories/${id}`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(cat)
+  });
+  if (!res.ok) throw new Error(res.status);
+  return res.json();
+}
+
+export async function deleteCategory(id, userId) {
+  // สร้าง URL แล้วแนบ query param ให้ถูกต้อง
+  const url = new URL(`${BASE}/categories/${id}`);
+  url.searchParams.append('user_id', userId);
+
+  const res = await fetch(url.toString(), {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+ 
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('DeleteCategory failed:', res.status, text);
+      throw new Error(`${res.status} ${text}`);
+    }
+    return res.json();
+  }
