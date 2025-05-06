@@ -1392,7 +1392,7 @@ const BookingPage = () => {
                   cursor: 'pointer'
                 }}
               >
-                My Reservations
+                My Booked
               </button>
             </div>
 
@@ -1630,7 +1630,7 @@ const BookingPage = () => {
                             cursor: 'pointer'
                           }}
                         >
-                          Detail Booking
+                          Detail Booked
                         </button>
                       </div>
                     </div>
@@ -1947,7 +1947,7 @@ const BookingPage = () => {
                   cursor: 'pointer'
                 }}
               >
-                {isEditMode ? 'Update Booking' : 'Save Booking'}
+                {isEditMode ? 'Update Facility' : 'Save Facility'}
               </button>
             </div>
           </div>
@@ -2191,7 +2191,7 @@ const BookingPage = () => {
                     fontWeight: 500
                   }}
                 >
-                  Confirm Booking
+                  Confirm Booked
                 </button>
               </div>
             </form>
@@ -2363,7 +2363,7 @@ const BookingPage = () => {
                   color: 'white'
                 }}
               >
-                Cancel Reservation
+                Cancel Booked
               </button>
             </div>
           </div>
