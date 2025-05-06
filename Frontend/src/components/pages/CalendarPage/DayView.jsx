@@ -1,4 +1,9 @@
 import React, { useState, useEffect }  from 'react';
+import {
+  PIXELS_PER_MINUTE,
+  MINUTES_PER_HOUR,
+  HOUR_SLOT_HEIGHT
+} from '../../../utils/timeGridController';
 
 const DayView = ({
   currentDate,
@@ -11,43 +16,38 @@ const DayView = ({
   formatDate,
   onSlotClick,
 }) => {
+  
   const [currentTime, setCurrentTime] = useState(new Date());
-
+  
   useEffect(() => {
-    // อัปเดตเวลาปัจจุบันทุกๆ 1 นาที
-    const timerId = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 60000); // 60 * 1000 ms = 1 นาที
-
-    // Cleanup เมื่อ component ถูก unmount
+    const timerId = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timerId);
   }, []);
-
-  // ฟังก์ชันคำนวณตำแหน่งของเส้นบอกเวลา
+  
+  // ฟังก์ชันคำนวณตำแหน่ง indicator โดยใช้คอนสแตนต์เดียวกับ event layout
   const calculateIndicatorPosition = () => {
-    const now = currentTime;
+    const now   = currentTime;
     const today = new Date();
-
-    // ตรวจสอบว่าวันที่แสดงใน View เป็นวันปัจจุบันหรือไม่
+  
+    // ถ้าไม่ใช่วันเดียวกับ currentDate ก็ไม่ต้องแสดง
     if (
       currentDate.getDate() !== today.getDate() ||
       currentDate.getMonth() !== today.getMonth() ||
       currentDate.getFullYear() !== today.getFullYear()
     ) {
-      return null; // ไม่แสดงเส้นถ้าไม่ใช่วันนี้
+      return null;
     }
-
-    const totalMinutesPastMidnight = now.getHours() * 60 + now.getMinutes();
-    // *** สมมติว่า 1 ชั่วโมงในตารางสูง 60px ***
-    // *** ถ้าความสูงจริงไม่เท่านี้ ต้องปรับตัวเลข 60 ด้านล่าง ***
-    const hourSlotHeight = 60;
-    const pixelsPerMinute = hourSlotHeight / 60; // จำนวน pixel ต่อนาที
-    const topOffset = totalMinutesPastMidnight * pixelsPerMinute;
-
-    // ให้แน่ใจว่าเส้นไม่เกินขอบเขตของ 24 ชั่วโมง (เผื่อกรณีคำนวณผิดพลาดเล็กน้อย)
-    return Math.min(topOffset, 24 * hourSlotHeight - 2); // -2 เพื่อให้เส้นไม่ตกขอบล่างสุด
+  
+    const totalMinutesPastMidnight =
+      now.getHours() * MINUTES_PER_HOUR + now.getMinutes();
+  
+    const topOffset = totalMinutesPastMidnight * PIXELS_PER_MINUTE;
+  
+    // ไม่ให้เลยขอบล่าง (24 ชั่วโมง)
+    const maxOffset = HOUR_SLOT_HEIGHT * 24 - 2;
+    return Math.min(topOffset, maxOffset);
   };
-
+  
   const indicatorTop = calculateIndicatorPosition();
 
   return (
@@ -80,17 +80,22 @@ const DayView = ({
       {/* --- แก้ไขส่วนนี้ --- */}
       {/* เพิ่ม style={{ position: 'relative' }} ให้กับ container */}
       <div className="time-slots-container" style={{ position: 'relative' }}>
-
+          
         {/* --- เพิ่ม Element เส้นบอกเวลา --- */}
         {indicatorTop !== null && (
-          <div
-            className="current-time-indicator"
-            style={{ top: `${indicatorTop}px` }}
-            aria-hidden="true" // เพิ่ม accessibility
-          >
-            <div className="current-time-indicator-dot"></div>
-          </div>
-        )}
+            <div
+              className="current-time-indicator"
+              style={{
+                position: 'absolute',
+                top: `${indicatorTop}px`,
+                left: 0,
+                right: 0,
+                height: '2px',
+                backgroundColor: 'red',
+                zIndex: 2
+              }}
+            />
+          )}
         {/* --- สิ้นสุด Element เส้นบอกเวลา --- */}
 
 

@@ -14,7 +14,9 @@ import {
   fetchEvents,
   createEvent,
   updateEvent,
-  deleteEvent
+  deleteEvent,
+  fetchCategories, createCategory as apiCreateCategory,
+  updateCategory as apiUpdateCategory, deleteCategory as apiDeleteCategory
 } from '../../../services/calendarAPI.js';
 
 const ModernCalendar = () => {
@@ -49,6 +51,7 @@ const ModernCalendar = () => {
   // --- States (ใช้ Initializer functions แล้ว) ---
   const [currentDate, setCurrentDate] = useState(getInitialDate);
   const [selectedDate, setSelectedDate] = useState(getInitialDate);
+  const [userId, setUserId] = useState(null);
   // ตั้งค่าเริ่มต้นจาก URL แค่ครั้งเดียวตอน useState ทำงาน
   const [viewMode, setViewMode] = useState(getInitialViewMode);
   const [showEventModal, setShowEventModal] = useState(false);
@@ -59,14 +62,7 @@ const ModernCalendar = () => {
     title: '', start: '', end: '', allDay: false, description: '', location: '', color: '#3366FF'
   });
   const [categoryForm, setCategoryForm] = useState({ id: '', name: '', color: '#3366FF' });
-  const [categories, setCategories] = useState([ // ควรจะ Fetch จาก API ในอนาคต
-    { id: 'work', name: 'Work', color: '#3366FF' },
-    { id: 'personal', name: 'Personal', color: '#33CC66' },
-    { id: 'family', name: 'Family', color: '#FF6633' },
-    { id: 'health', name: 'Health', color: '#9966FF' },
-    { id: 'meeting', name: 'Meeting', color: '#FF3366' },
-    { id: 'other', name: 'Other', color: '#999999' }
-  ]);
+  const [categories, setCategories] = useState([]);
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -92,21 +88,29 @@ const ModernCalendar = () => {
   }, [location.search, getInitialDate]); // getInitialDate ต้องใส่เพราะถูกใช้ข้างใน แต่ getInitialViewMode ไม่ต้องแล้ว
 
   useEffect(() => {
-  (async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      const provider = session.user.identities[0].provider;           // "google" หรือ "azure"
-      const token    = session.provider_token;                        // access_token
-      localStorage.setItem("authProvider", provider);
-      if (provider === "google") {
-        localStorage.setItem("googleToken", token);
-      } else if (provider === "azure") {
-        localStorage.setItem("microsoftToken", token);
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session) {
+        const userId = session.user.id; //  นี่คือ user_id ที่ใช้ใน DB
+        console.log(" Supabase user_id:", userId);
+
+        const provider = session.user.identities[0].provider; // "google" หรือ "azure"
+        const token = session.provider_token;
+
+        localStorage.setItem("authProvider", provider);
+        localStorage.setItem("userId", userId); // ←  เก็บไว้ใช้ตอนส่ง event
+
+        if (provider === "google") {
+          localStorage.setItem("googleToken", token);
+        } else if (provider === "azure") {
+          localStorage.setItem("microsoftToken", token);
+        }
       }
-    }
-    setSessionReady(true);
-  })();
-}, []);
+
+      setSessionReady(true);
+    })();
+  }, []);
 
   // --- Helper Functions ---
   const formatDateTimeForInput = useCallback((date) => {
@@ -222,15 +226,30 @@ const ModernCalendar = () => {
     }
   }, [viewMode, setViewMode, setCurrentDate, setSelectedDate]);
 
+  const stripHTML = (html) => {
+    // แปลง HTML → Document แล้วดึง text ออกมา
+    const doc = new DOMParser().parseFromString(html || '', 'text/html');
+    let text = doc.body.textContent || '';
+  
+    // ลบ newlines, tabs และ collapse space หลาย ๆ ตัวให้เหลือช่องว่างเดียว
+    text = text
+      .replace(/[\r\n\t]+/g, ' ')   // new line, return, tab → space
+      .replace(/\s{2,}/g, ' ')      // whitespace >1 → 1
+      .trim();                      // ตัด space ข้างหน้า-หลัง
+  
+    return text;
+  };
+
   // --- Fetch Data ---
-  const loadEvents = useCallback(async () => {
+  const loadEvents = useCallback(async (userId) => {
     setIsLoading(true);
     setError(null);
     try {
-      const fetchedEvents = await fetchEvents();
+      const fetchedEvents = await fetchEvents(userId);
       if (Array.isArray(fetchedEvents)) {
          setEvents(fetchedEvents.map(event => ({
            ...event,
+           description: stripHTML(event.description || ''),
            start: event.start ? new Date(event.start) : null,
            end: event.end ? new Date(event.end) : null,
            allDay: Boolean(event.allDay)
@@ -251,20 +270,38 @@ const ModernCalendar = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        const provider = session.user.identities[0].provider; // "google" หรือ "azure"
-        const token    = session.provider_token;
-        localStorage.setItem('authProvider', provider);
-        if (provider === 'google') localStorage.setItem('googleToken', token);
-        if (provider === 'azure')  localStorage.setItem('microsoftToken', token);
-      }
-      setSessionReady(true);
-    });
-  }, []);
+        const provider = session.user.identities[0].provider;
+            const token    = session.provider_token;
+            // เก็บ provider/token
+            localStorage.setItem('authProvider', provider);
+            if (provider === 'google') localStorage.setItem('googleToken', token);
+            if (provider === 'azure')  localStorage.setItem('microsoftToken', token);
+            // เก็บ user_id ลง state
+            setUserId(session.user.id);
+          }
+          setSessionReady(true);
+      });
+    }, []);
 
  // ใส่ useEffect ใหม่ที่จะเรียก loadEvents เมื่อ sessionReady เปลี่ยนเป็น true
-  useEffect(() => {
-    if (sessionReady) loadEvents();
-  }, [sessionReady]);
+ useEffect(() => {
+  if (!sessionReady) return;
+  const storedUserId = localStorage.getItem("userId");
+  if (!storedUserId) return;
+
+  // โหลด events
+  loadEvents(storedUserId);
+
+  // โหลด categories
+  fetchCategories(storedUserId)
+    .then(rows => {
+      // rows ควรเป็น array ของ { id, user_id, name, color, … }
+      setCategories(rows);
+    })
+    .catch(err => {
+      console.error("Failed to load categories:", err);
+    });
+}, [sessionReady, loadEvents]);
 
   // --- Handlers for Modals ---
   const openEventModalForCreate = useCallback((startTime) => {
@@ -290,7 +327,7 @@ const ModernCalendar = () => {
           start: formatDateTimeForInput(editingEvent.start),
           end: editingEvent.end instanceof Date ? formatDateTimeForInput(editingEvent.end) : '',
           allDay: editingEvent.allDay || false,
-          description: editingEvent.description || '',
+          description: stripHTML(editingEvent.description || ''),
           location: editingEvent.location || '',
           color: editingEvent.color || categories[0]?.color || '#3366FF'
         });
@@ -336,14 +373,23 @@ const ModernCalendar = () => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
-  
+
+    const userId = localStorage.getItem("userId"); //  ดึง user_id ที่ได้จาก Supabase
+    if (!userId) {
+      setError("User ID not found. Please log in again.");
+      console.error(" User ID not found.");
+      setIsLoading(false);
+      return;
+    }
+
     const payload = {
       ...eventForm,
       start: ensureSeconds(eventForm.start),
       end: ensureSeconds(eventForm.end),
-      allDay: Boolean(eventForm.allDay)
+      allDay: Boolean(eventForm.allDay),
+      user_id: userId //  เพิ่ม user_id เข้าไป
     };
-  
+
     try {
       let resultEventData;
       if (editingEvent) {
@@ -351,36 +397,38 @@ const ModernCalendar = () => {
       } else {
         resultEventData = await createEvent(payload);
       }
-  
+
       const processedEvent = {
         ...resultEventData,
         start: resultEventData.start ? new Date(resultEventData.start) : null,
         end: resultEventData.end ? new Date(resultEventData.end) : null,
         allDay: Boolean(resultEventData.allDay)
       };
-  
+
       if (editingEvent) {
         setEvents(prevEvents =>
           prevEvents.map(event =>
             event.id === processedEvent.id ? processedEvent : event
           )
         );
-        console.log("Event updated:", processedEvent);
+        console.log(" Event updated:", processedEvent);
       } else {
         setEvents(prevEvents => [...prevEvents, processedEvent]);
-        console.log("Event created:", processedEvent);
+        console.log(" Event created:", processedEvent);
       }
-  
+
+      await loadEvents(userId);
+
       setShowEventModal(false);
       setEditingEvent(null);
     } catch (err) {
-      const errorMsg = `Failed to ${editingEvent ? 'update' : 'create'} event. ${err.message || ''}`;
+      const errorMsg = ` Failed to ${editingEvent ? 'update' : 'create'} event. ${err.message || ''}`;
       setError(errorMsg);
-      console.error(errorMsg, err);
+      console.error("", errorMsg, err);
     } finally {
       setIsLoading(false);
     }
-  }, [eventForm, editingEvent, setIsLoading, setError, setEvents, setShowEventModal, setEditingEvent]);
+  }, [eventForm, editingEvent, setIsLoading, setError, setEvents, setShowEventModal, setEditingEvent, userId]);
   
 
   const handleDeleteEvent = useCallback(async () => {
@@ -437,6 +485,46 @@ const ModernCalendar = () => {
     return `${h} ${ampm}`;
   }, []);
 
+  const handleCategorySubmit = useCallback(async (e) => {
+    e.preventDefault();
+    if (!userId) return alert('User not ready');
+    
+    const payload = {
+      user_id: userId,
+      name:  categoryForm.name,
+      color: categoryForm.color
+    };
+
+    try {
+      if (editingCategory) {
+        const updated = await apiUpdateCategory(categoryForm.id, payload);
+        setCategories(cs => cs.map(c => c.id === updated.id ? updated : c));
+      } else {
+        const created = await apiCreateCategory(payload);
+        setCategories(cs => [...cs, created]);
+      }
+      setShowCategoryModal(false);
+      setEditingCategory(null);
+    } catch (err) {
+      console.error('Category save failed', err);
+      alert('บันทึกหมวดหมู่ไม่สำเร็จ');
+    }
+  }, [categoryForm, editingCategory, userId]);
+
+  const handleDeleteCategory = useCallback(async () => {
+    if (!editingCategory || !userId) return;
+    if (!window.confirm('ลบหมวดหมู่นี้จริงหรือไม่?')) return;
+
+    try {
+      await apiDeleteCategory(editingCategory.id, userId);
+      setCategories(cs => cs.filter(c => c.id !== editingCategory.id));
+      setShowCategoryModal(false);
+      setEditingCategory(null);
+    } catch (err) {
+      console.error('Delete category failed', err);
+      alert('ลบหมวดหมู่ไม่สำเร็จ');
+    }
+  }, [editingCategory, userId]);
 
   // --- Render ---
   return (
@@ -470,16 +558,16 @@ const ModernCalendar = () => {
                         <>
                             {viewMode === 'day' &&
                               <DayView
-                                currentDate={currentDate}
-                                timeSlots={timeSlots}
-                                getTimeLabel={getTimeLabel}
-                                getAllDayEvents={getAllDayEvents}
-                                getEventsForHour={getEventsForHour}
-                                formatDate={formatDate}
-                                // **pass the actual setters** so DayView can open the modal
-                                setSelectedDate={setSelectedDate}
-                                setEditingEvent={openEventModalForEdit}
-                                onSlotClick={openEventModalForCreate}
+                              currentDate={currentDate}
+                              timeSlots={timeSlots}
+                              getTimeLabel={getTimeLabel}
+                              getAllDayEvents={getAllDayEvents}
+                              getEventsForHour={getEventsForHour}
+                              events={events}              // <— เพิ่มตรงนี้
+                              formatDate={formatDate}
+                              setSelectedDate={setSelectedDate}
+                              setEditingEvent={openEventModalForEdit}
+                              onSlotClick={openEventModalForCreate}
                               />
                             }
                             {viewMode === 'week' &&
@@ -539,9 +627,9 @@ const ModernCalendar = () => {
                     const { name, value } = e.target;
                     setCategoryForm(prev => ({ ...prev, [name]: value }));
                 }}
-                handleCategorySubmit={(e) => { /* ... Category Submit (Local State) ... */ }}
+                handleCategorySubmit={handleCategorySubmit}
                 editingCategory={editingCategory}
-                handleDeleteCategory={() => { /* ... Category Delete (Local State) ... */ }}
+                handleDeleteCategory={handleDeleteCategory}
             />
         }
       </div>
