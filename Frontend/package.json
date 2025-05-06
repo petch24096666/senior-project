@@ -30,7 +30,7 @@
     "mysql2": "^3.14.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-icons": "^4.9.0",
+    "react-icons": "^4.12.0",
     "react-router-dom": "^7.1.1",
     "sequelize": "^6.37.7",
     "uuid": "^11.1.0"
